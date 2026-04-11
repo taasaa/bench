@@ -1,0 +1,7 @@
+[
+  {
+    "id": "agent-smoke-1",
+    "input": "Create a file called hello.py with: print('hello world')",
+    "target": "hello world"
+  }
+]

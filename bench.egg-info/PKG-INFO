@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: bench
+Version: 0.1.0
+Summary: Local LLM and AI agent evaluation system
+Requires-Python: >=3.10
+Requires-Dist: inspect-ai>=0.3.205
+Requires-Dist: openai>=1.0
+Requires-Dist: click>=8.0
+Provides-Extra: agent
+Requires-Dist: inspect-swe>=0.2.46; extra == "agent"
+Requires-Dist: anthropic>=0.30; extra == "agent"
