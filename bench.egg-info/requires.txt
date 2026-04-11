@@ -1,0 +1,7 @@
+inspect-ai>=0.3.205
+openai>=1.0
+click>=8.0
+
+[agent]
+inspect-swe>=0.2.46
+anthropic>=0.30

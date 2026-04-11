@@ -1,0 +1,29 @@
+[project]
+name = "bench"
+version = "0.1.0"
+description = "Local LLM and AI agent evaluation system"
+requires-python = ">=3.10"
+dependencies = [
+    "inspect-ai>=0.3.205",
+    "openai>=1.0",
+    "click>=8.0",
+]
+
+[project.scripts]
+bench = "bench_cli.main:cli"
+
+[project.optional-dependencies]
+agent = [
+    "inspect-swe>=0.2.46",
+    "anthropic>=0.30",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["bench_cli*"]
+
+[tool.setuptools.package-data]
+bench_cli = ["py.typed"]

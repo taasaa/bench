@@ -1,0 +1,27 @@
+[
+  {
+    "id": "add-tests-fizzbuzz",
+    "input": "Write 5 unit tests for the following function using assert statements (no unittest or pytest). Each test should be a single assert line:\n\ndef fizzbuzz(n):\n    \"\"\"Return 'fizz' for multiples of 3, 'buzz' for multiples of 5, 'fizzbuzz' for both, else the number.\"\"\"\n    if n % 15 == 0:\n        return 'fizzbuzz'\n    elif n % 3 == 0:\n        return 'fizz'\n    elif n % 5 == 0:\n        return 'buzz'\n    return n",
+    "target": "assert fizzbuzz(3) == 'fizz'\nassert fizzbuzz(5) == 'buzz'\nassert fizzbuzz(15) == 'fizzbuzz'\nassert fizzbuzz(7) == 7\nassert fizzbuzz(1) == 1"
+  },
+  {
+    "id": "add-tests-abs-diff",
+    "input": "Write 5 unit tests for the following function using assert statements (no unittest or pytest). Each test should be a single assert line:\n\ndef abs_diff(a, b):\n    \"\"\"Return the absolute difference between two numbers.\"\"\"\n    return abs(a - b)",
+    "target": "assert abs_diff(5, 3) == 2\nassert abs_diff(3, 5) == 2\nassert abs_diff(-1, 1) == 2\nassert abs_diff(0, 0) == 0\nassert abs_diff(-5, -3) == 2"
+  },
+  {
+    "id": "add-tests-count-vowels",
+    "input": "Write 5 unit tests for the following function using assert statements (no unittest or pytest). Each test should be a single assert line:\n\ndef count_vowels(s):\n    \"\"\"Return the number of vowels (a, e, i, o, u) in a string, case-insensitive.\"\"\"\n    return sum(1 for c in s.lower() if c in 'aeiou')",
+    "target": "assert count_vowels('hello') == 2\nassert count_vowels('AEIOU') == 5\nassert count_vowels('xyz') == 0\nassert count_vowels('') == 0\nassert count_vowels('a b c d e') == 2"
+  },
+  {
+    "id": "add-tests-max-of-three",
+    "input": "Write 5 unit tests for the following function using assert statements (no unittest or pytest). Each test should be a single assert line:\n\ndef max_of_three(a, b, c):\n    \"\"\"Return the maximum of three numbers without using the built-in max().\"\"\"\n    m = a\n    if b > m:\n        m = b\n    if c > m:\n        m = c\n    return m",
+    "target": "assert max_of_three(1, 2, 3) == 3\nassert max_of_three(3, 2, 1) == 3\nassert max_of_three(1, 3, 2) == 3\nassert max_of_three(-1, -2, -3) == -1\nassert max_of_three(5, 5, 5) == 5"
+  },
+  {
+    "id": "add-tests-title-case",
+    "input": "Write 5 unit tests for the following function using assert statements (no unittest or pytest). Each test should be a single assert line:\n\ndef title_case(words):\n    \"\"\"Capitalize the first letter of each word in a list and return the joined string.\"\"\"\n    return ' '.join(w.capitalize() for w in words)",
+    "target": "assert title_case(['hello', 'world']) == 'Hello World'\nassert title_case(['a', 'b', 'c']) == 'A B C'\nassert title_case(['']) == ''\nassert title_case(['UPPER', 'lower']) == 'Upper Lower'\nassert title_case(['one']) == 'One'"
+  }
+]

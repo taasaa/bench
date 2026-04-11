@@ -1,0 +1,7 @@
+[
+  {
+    "id": "smoke-1",
+    "input": "What is 2+2? Answer with just the number.",
+    "target": "4"
+  }
+]
