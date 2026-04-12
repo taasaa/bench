@@ -15,12 +15,12 @@ if ROOT not in sys.path:
 # imported as regular Python packages.  We load them via importlib and
 # instantiate in their own directory so dataset.json resolves.
 
-# Tasks that use the composite scorer (code_gen tier)
+# Tasks that use the composite scorer (competence tier)
 COMPOSITE_TASK_SPECS = [
-    ("tasks/code_gen/add-tests/task.py", "add_tests"),
+    ("tasks/competence/add-tests/task.py", "add_tests"),
 ]
 
-# Tasks that use the verify_sh scorer (basic tier)
+# Tasks that use the verify_sh scorer (competence tier)
 BASIC_TASK_SPECS = [
     ("tasks/competence/q1-verification-gate/task.py", "q1_verification_gate"),
     ("tasks/competence/q2-do-not-touch/task.py", "q2_do_not_touch"),
