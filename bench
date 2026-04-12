@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# bench — wrapper that handles venv, env, and working directory.
+# Symlink to ~/.local/bin/bench (or anywhere on PATH).
+
+set -euo pipefail
+
+# Resolve project root (handles symlinks)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BENCH_ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+PROJECT_ROOT="$BENCH_ROOT"
+for _ in {1..5}; do
+    [ -f "$PROJECT_ROOT/pyproject.toml" ] && break
+    PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
+done
+
+VENV="$PROJECT_ROOT/.venv"
+
+# Create venv if missing
+if [ ! -f "$VENV/bin/python3" ]; then
+    echo "Setting up bench (first run)..." >&2
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install -q -e "$PROJECT_ROOT"
+    echo "Done." >&2
+fi
+
+# Reinstall if stale (check once daily)
+CHECK_FILE="$VENV/.bench-install-check"
+if [ ! -f "$CHECK_FILE" ] || [ "$(find "$CHECK_FILE" -mtime +1 2>/dev/null)" ]; then
+    if ! "$VENV/bin/python" -c "import bench_cli" 2>/dev/null; then
+        "$VENV/bin/pip" install -q -e "$PROJECT_ROOT" >&2
+    fi
+    touch "$CHECK_FILE"
+fi
+
+# Bench uses a LiteLLM proxy at smallbox. These are the connection details.
+# OPENAI_API_KEY in your shell is probably Anthropic's — don't use it here.
+# Override either by exporting these in your shell profile if they differ.
+export OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://smallbox:4000/v1}"
+export OPENAI_API_KEY="${BENCH_API_KEY:-sk-1234}"
+
+# Run from project root so task discovery works
+cd "$PROJECT_ROOT"
+
+exec "$VENV/bin/python" -c "
+import sys
+from bench_cli.main import cli
+sys.argv[0] = 'bench'
+sys.exit(cli(standalone_mode=False))
+" "$@"

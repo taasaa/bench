@@ -55,7 +55,7 @@ def _run_verify(task_dir: str, input_text: str, sample_id: str | None = None) ->
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestF6PartialImpl:
-    TASK_DIR = "tasks/basic/f6-partial-impl"
+    TASK_DIR = "tasks/execution/f6-partial-impl"
 
     # ── Per-sample known-good tests ──────────────────────────────────────
 
@@ -161,7 +161,7 @@ class Cache:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestF8NegativeConstraint:
-    TASK_DIR = "tasks/basic/f8-negative-constraint"
+    TASK_DIR = "tasks/execution/f8-negative-constraint"
 
     @pytest.mark.parametrize("sample_id,func_name,param_name", [
         ("f8-fetch-user", "fetch_user", "user_id"),
@@ -284,7 +284,7 @@ def fetch_user(user_id):
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestF14InsertDontReplace:
-    TASK_DIR = "tasks/basic/f14-insert-dont-replace"
+    TASK_DIR = "tasks/execution/f14-insert-dont-replace"
 
     def test_pass_with_discount_inserted(self):
         """Discount logic inserted between subtotal and tax should PASS."""
@@ -376,7 +376,7 @@ class TestF14InsertDontReplace:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestQ4RootCause:
-    TASK_DIR = "tasks/basic/q4-root-cause"
+    TASK_DIR = "tasks/execution/q4-root-cause"
 
     def test_pass_pip_python_mismatch(self):
         """Correct root cause diagnosis for pip/python mismatch should PASS."""
@@ -468,7 +468,7 @@ You should fix your setup."""
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestF11IntermittentBug:
-    TASK_DIR = "tasks/basic/f11-intermittent-bug"
+    TASK_DIR = "tasks/execution/f11-intermittent-bug"
 
     def test_pass_sleep_timestamp(self):
         """Correct diagnosis of timing-dependent tests should PASS."""
