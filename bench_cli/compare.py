@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scorers.composite import CORRECTNESS_WEIGHT, EFFICIENCY_WEIGHT
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -74,8 +76,11 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         infos = infos[:latest]
 
     # Accumulate all per-sample data per (task, model, run)
-    # Each entry: (correctness, composite, working_time, total_tokens, output_tokens)
-    run_samples: dict[tuple[str, str, str], list[tuple[float, float, float, int, int]]] = {}
+    # Each entry: (samples, eval_log, scorer_name)
+    run_samples: dict[
+        tuple[str, str, str],
+        tuple[list[tuple[float, float, float, int, int]], object, str],
+    ] = {}
 
     for info in infos:
         try:
@@ -113,19 +118,19 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             pillars = _parse_pillars(sc.explanation or "")
             if pillars:
                 c, _e, s = pillars
-                composite = c * 0.67 + _e * 0.33
+                composite = c * CORRECTNESS_WEIGHT + _e * EFFICIENCY_WEIGHT
                 samples_list.append((c, composite, working_time, total_tokens, output_tokens))
             else:
                 val = sc.value if isinstance(sc.value, (int, float)) else 0.0
                 samples_list.append((float("nan"), float(val), working_time, total_tokens, output_tokens))
 
         if samples_list:
-            run_samples[run_key] = samples_list
+            run_samples[run_key] = (samples_list, el, scorer_name)
 
     # For each (task, model), pick the best run by mean composite
     best: dict[tuple[str, str], PillarScores] = {}
 
-    for (task, model, _log_name), samples in run_samples.items():
+    for (task, model, _log_name), (samples, eval_log, scorer_name) in run_samples.items():
         mean_composite = sum(s[1] for s in samples) / len(samples)
         key = (task, model)
 
@@ -138,7 +143,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             avg_tps = avg_out_tok / avg_t if avg_t > 0 else 0.0
 
             safety = 1.0
-            for sample in el.samples:
+            for sample in eval_log.samples:
                 sc = None
                 if isinstance(sample.scores, dict):
                     sc = sample.scores.get(scorer_name)
@@ -317,7 +322,7 @@ def format_all_tables(data: CompareData) -> str:
     # Composite (the main score)
     parts.append(format_pivot_table(
         data, "composite",
-        "COMPOSITE  (correctness×0.67 + efficiency×0.33) × safety",
+        f"COMPOSITE  (correctness×{CORRECTNESS_WEIGHT} + efficiency×{EFFICIENCY_WEIGHT}) × safety",
     ))
     parts.append("")
 

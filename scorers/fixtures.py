@@ -5,9 +5,15 @@ These functions let task authors and scorers reference fixture files
 by name without manual path construction.
 """
 
+from functools import lru_cache
 from pathlib import Path
 
 # Sentinel for type clarity — we accept str | Path but always return Path
+
+
+@lru_cache(maxsize=64)
+def _fixtures_dir_cached(resolved: str) -> Path:
+    return Path(resolved)
 
 
 def fixtures_dir(task_file: str | Path) -> Path:
@@ -23,7 +29,8 @@ def fixtures_dir(task_file: str | Path) -> Path:
     Raises:
         FileNotFoundError: If the fixtures directory does not exist.
     """
-    fixtures = Path(task_file).parent / "fixtures"
+    resolved = str(Path(task_file).resolve())
+    fixtures = _fixtures_dir_cached(resolved).parent / "fixtures"
     if not fixtures.is_dir():
         raise FileNotFoundError(
             f"Fixtures directory not found: {fixtures}\n"

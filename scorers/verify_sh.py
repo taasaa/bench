@@ -63,36 +63,22 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
         return _find_task_dir()
 
     async def score(state: TaskState, target: Target) -> Score:
-        # --- Get model output ---
         output_text = state.output.completion if state.output else ""
         if not output_text:
-            return Score(
-                value=0.0,
-                explanation="verify_sh: empty model output",
-            )
+            return Score(value=0.0, explanation="verify_sh: empty model output")
 
-        # --- Resolve script path ---
         task_dir = _cached_task_dir()
         script_path = os.path.join(task_dir, script_name)
 
         if not os.path.isfile(script_path):
-            return Score(
-                value=0.0,
-                explanation=f"verify_sh: script not found: {script_path}",
-            )
+            return Score(value=0.0, explanation=f"verify_sh: script not found: {script_path}")
 
         if not os.access(script_path, os.X_OK):
-            return Score(
-                value=0.0,
-                explanation=f"verify_sh: script not executable: {script_path}",
-            )
+            return Score(value=0.0, explanation=f"verify_sh: script not executable: {script_path}")
 
-        # --- Build env with SAMPLE_ID ---
         env = os.environ.copy()
-        sample_id = str(state.sample_id) if state.sample_id is not None else ""
-        env["SAMPLE_ID"] = sample_id
+        env["SAMPLE_ID"] = str(state.sample_id) if state.sample_id is not None else ""
 
-        # --- Run verify.sh ---
         try:
             proc = subprocess.run(
                 [script_path],
@@ -104,23 +90,14 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
                 env=env,
             )
         except subprocess.TimeoutExpired:
-            return Score(
-                value=0.0,
-                explanation=f"verify_sh: timeout after {timeout}s",
-            )
+            return Score(value=0.0, explanation=f"verify_sh: timeout after {timeout}s")
         except Exception as exc:
-            return Score(
-                value=0.0,
-                explanation=f"verify_sh: error running script: {exc}",
-            )
+            return Score(value=0.0, explanation=f"verify_sh: error running script: {exc}")
 
         stdout = proc.stdout or ""
         stderr = proc.stderr or ""
-        combined = stdout
-        if stderr.strip():
-            combined += f"\n--- stderr ---\n{stderr}"
+        combined = stdout + (f"\n--- stderr ---\n{stderr}" if stderr.strip() else "")
 
-        # --- Parse output ---
         match = _PASS_RE.search(stdout)
         if match:
             n = int(match.group(1))

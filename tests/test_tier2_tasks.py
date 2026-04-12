@@ -7,47 +7,17 @@ For each of the 5 Tier 2 tasks (f6, f8, f14, q4, f11), test verify.sh with:
 This validates the scoring logic independently of the model.
 """
 
-import os
-import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+from conftest import run_verify_script
 
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+ROOT = Path(__file__).parent.parent.resolve()
 
-
-def _run_verify(task_dir: str, input_text: str, sample_id: str | None = None) -> tuple[str, str, int]:
-    """Run verify.sh in the given task dir with input_text on stdin.
-
-    Args:
-        task_dir: Relative path from project root to the task directory.
-        input_text: Text to pipe to verify.sh via stdin.
-        sample_id: Optional SAMPLE_ID env var value.
-
-    Returns:
-        (stdout, stderr, returncode)
-    """
-    script = os.path.join(ROOT, task_dir, "verify.sh")
-    assert os.path.isfile(script), f"verify.sh not found: {script}"
-    assert os.access(script, os.X_OK), f"verify.sh not executable: {script}"
-
-    env = os.environ.copy()
-    if sample_id is not None:
-        env["SAMPLE_ID"] = sample_id
-
-    proc = subprocess.run(
-        [script],
-        input=input_text,
-        capture_output=True,
-        text=True,
-        timeout=10,
-        cwd=os.path.join(ROOT, task_dir),
-        env=env,
-    )
-    return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -76,7 +46,7 @@ class TestF6PartialImpl:
     def {m2}(self, key, value):
         self._data[key] = value
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, sample_id)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, sample_id)
         assert stdout.startswith("PASS"), f"Expected PASS for {sample_id}, got: {stdout}\nstderr: {stderr}"
 
     # ── Known-bad tests ──────────────────────────────────────────────────
@@ -99,7 +69,7 @@ class TestF6PartialImpl:
     def clear(self):
         self._data.clear()
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f6-cache-get-set")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f6-cache-get-set")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_ttl_logic(self):
@@ -120,7 +90,7 @@ class Cache:
         self._data[key] = value
         self._expiry[key] = time.time() + 3600
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f6-cache-get-set")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f6-cache-get-set")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_wrong_class_name(self):
@@ -135,7 +105,7 @@ class Cache:
     def set(self, key, value):
         self._data[key] = value
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f6-cache-get-set")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f6-cache-get-set")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_missing_method(self):
@@ -147,12 +117,12 @@ class Cache:
     def get(self, key):
         return self._data.get(key)
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f6-cache-get-set")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f6-cache-get-set")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_empty_response(self):
         """Empty response should FAIL."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, "")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, "")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
 
@@ -181,7 +151,7 @@ def {func_name}({param_name}):
     except requests.exceptions.RequestException:
         raise ConnectionError("Network request failed")
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, sample_id)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, sample_id)
         assert stdout.startswith("PASS"), f"Expected PASS for {sample_id}, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_retry_logic(self):
@@ -202,7 +172,7 @@ def {func_name}({param_name}):
             "            retry_count += 1\n"
             "    raise ConnectionError('Network request failed')\n"
         )
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f8-fetch-user")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f8-fetch-user")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_caching(self):
@@ -224,7 +194,7 @@ def fetch_user(user_id):
     except requests.exceptions.RequestException:
         raise ConnectionError("Network request failed")
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f8-fetch-user")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f8-fetch-user")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_logging(self):
@@ -244,7 +214,7 @@ def fetch_user(user_id):
     except requests.exceptions.RequestException:
         raise ConnectionError("Network request failed")
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f8-fetch-user")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f8-fetch-user")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_without_requests_import(self):
@@ -256,7 +226,7 @@ def fetch_user(user_id):
     response = urllib.request.urlopen(f"https://api.example.com/users/{user_id}")
     return response.read()
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f8-fetch-user")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f8-fetch-user")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_without_value_error(self):
@@ -270,12 +240,12 @@ def fetch_user(user_id):
     except requests.exceptions.RequestException:
         raise ConnectionError("Network request failed")
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f8-fetch-user")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f8-fetch-user")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_empty_response(self):
         """Empty response should FAIL."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, "")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, "")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
 
@@ -295,7 +265,7 @@ class TestF14InsertDontReplace:
     tax = subtotal * 0.08
     return round(subtotal + tax, 2)
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f14-discount")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f14-discount")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_with_validation_inserted(self):
@@ -307,7 +277,7 @@ class TestF14InsertDontReplace:
     age_len = len(age_str)
     return f"Age: {age_str} (digits: {age_len})"
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f14-validation")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f14-validation")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_with_free_shipping_inserted(self):
@@ -319,7 +289,7 @@ class TestF14InsertDontReplace:
         return 0.0
     return round(base_rate + handling, 2)
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f14-shipping")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f14-shipping")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_with_capitalize_inserted(self):
@@ -330,7 +300,7 @@ class TestF14InsertDontReplace:
     result = " ".join(parts)
     return result
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f14-capitalize")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f14-capitalize")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_modified_original_line(self):
@@ -340,7 +310,7 @@ class TestF14InsertDontReplace:
     tax = subtotal * 0.08
     return round(subtotal + tax, 2)
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f14-discount")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f14-discount")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_no_new_logic(self):
@@ -350,12 +320,12 @@ class TestF14InsertDontReplace:
     tax = subtotal * 0.08
     return round(subtotal + tax, 2)
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f14-discount")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f14-discount")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_empty_response(self):
         """Empty response should FAIL."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, "")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, "")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_wrong_return_value(self):
@@ -366,7 +336,7 @@ class TestF14InsertDontReplace:
     tax = subtotal * 0.08
     return round(subtotal + tax, 2)
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, code, "f14-discount")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, "f14-discount")
         # This should fail because the function returns wrong values
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
@@ -387,7 +357,7 @@ The fix is to use `python3 -m pip install requests` instead of bare `pip install
 This ensures you're installing into the same Python that python3 uses.
 
 Alternatively, create a virtualenv and activate it so both pip and python are consistent."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "q4-pip-python-mismatch")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "q4-pip-python-mismatch")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_node_npx_mismatch(self):
@@ -399,7 +369,7 @@ You can also use `npx tsc --version` to run typescript without relying on the gl
 
 To fix permanently, check `npm config get prefix` and add its bin directory to your PATH:
 `export PATH="$(npm config get prefix)/bin:$PATH"`"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "q4-node-npx-mismatch")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "q4-node-npx-mismatch")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_docker_compose_port(self):
@@ -412,7 +382,7 @@ Change your database host configuration from `localhost` to the compose service 
 
 Docker Compose creates a network where containers resolve each other by service name.
 You can also use `depends_on` in compose to ensure startup order."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "q4-docker-compose-port")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "q4-docker-compose-port")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_cron_path_issue(self):
@@ -432,7 +402,7 @@ Or source your profile first:
 ```
 
 You can also use the full path: `/usr/bin/python3`."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "q4-cron-path-issue")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "q4-cron-path-issue")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_symptom_fix(self):
@@ -440,26 +410,26 @@ You can also use the full path: `/usr/bin/python3`."""
         response = """Just run `pip install --user requests` to install it for your user.
 Or try `sudo pip install requests` for a system-wide install.
 That should fix the import error."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "q4-pip-python-mismatch")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "q4-pip-python-mismatch")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_no_root_cause(self):
         """Not identifying root cause should FAIL."""
         response = """This is a strange error. Try reinstalling everything from scratch.
 Maybe update your pip version first."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "q4-pip-python-mismatch")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "q4-pip-python-mismatch")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_no_fix(self):
         """No actionable fix command should FAIL."""
         response = """The issue is that pip and python3 are in different environments.
 You should fix your setup."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "q4-pip-python-mismatch")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "q4-pip-python-mismatch")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_empty_response(self):
         """Empty response should FAIL."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, "")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, "")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
 
@@ -480,7 +450,7 @@ The fix is to replace sleep-based waits with polling or wait-for-condition patte
 - Poll until the condition is met (e.g., `while not condition: time.sleep(0.01)`)
 - Or use `time.monotonic()` for reliable elapsed time measurement
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "f11-sleep-timestamp")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "f11-sleep-timestamp")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_concurrent_file_access(self):
@@ -501,7 +471,7 @@ while not os.path.exists(filepath):
 ```
 
 You could also use `proc.communicate()` which waits for completion."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "f11-concurrent-file-access")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "f11-concurrent-file-access")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_timeout_flaky(self):
@@ -514,7 +484,7 @@ Fix: Replace fixed sleeps with event-based waiting or polling:
 - For WebSocket: use `thread.join()` or wait for a condition with retry
 - Use exponential backoff in the poll loop
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "f11-timeout-flaky")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "f11-timeout-flaky")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_datetime_mock(self):
@@ -535,7 +505,7 @@ def is_expired(expiry, now=None):
     now = now or datetime.now()
 ```
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "f11-datetime-mock")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "f11-datetime-mock")
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_increase_sleep(self):
@@ -545,17 +515,17 @@ For test_api_response_time, increase sleep to 0.5 seconds.
 For test_cache_invalidation, change sleep to 0.2 seconds.
 This will make the tests more reliable.
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "f11-sleep-timestamp")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "f11-sleep-timestamp")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_no_diagnosis(self):
         """Not identifying timing issue should FAIL."""
         response = """This seems like a CI issue. Try running the tests again.
 Sometimes GitHub Actions is just slow. Maybe contact support."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, response, "f11-sleep-timestamp")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "f11-sleep-timestamp")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_empty_response(self):
         """Empty response should FAIL."""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, "")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, "")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"

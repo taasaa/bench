@@ -444,15 +444,15 @@ Five pivot tables are rendered:
 ### Key Source Files
 
 ```
-bench_cli/run.py          # 169 lines. _discover_tasks(), _build_eval_spec(), run_eval()
-bench_cli/compare.py      # 381 lines. CompareData, PillarScores, load/format functions
-bench_cli/main.py         # 313 lines. Click CLI root + @click.group()
+bench_cli/run.py          # 168 lines. _discover_tasks(), _build_eval_spec(), run_eval()
+bench_cli/compare.py      # 419 lines. CompareData, PillarScores, load/format functions
+bench_cli/main.py         # 19 lines. Click CLI root + @click.group()
 
-scorers/verify_sh.py      # 165 lines. verify_sh() scorer + _find_task_dir() stack introspection
-scorers/fixtures.py        # 79 lines. fixtures_dir(), load_fixture(), load_fixture_bytes()
-scorers/composite.py      # ~50 lines. composite() scorer
-scorers/efficiency.py     # ~40 lines. efficiency() scorer
-scorers/safety.py         # ~40 lines. safety() scorer
+scorers/verify_sh.py      # 123 lines. verify_sh() scorer + _find_task_dir() stack introspection
+scorers/fixtures.py        # 86 lines. fixtures_dir(), load_fixture(), load_fixture_bytes() (with lru_cache)
+scorers/composite.py      # 64 lines. composite() scorer
+scorers/efficiency.py     # 24 lines. efficiency() scorer
+scorers/safety.py         # 52 lines. safety() scorer
 scorers/__init__.py       # Exports verify_sh, fixtures_dir, load_fixture, etc.
 ```
 
