@@ -1,4 +1,7 @@
-"""Tests for role-based access control — exposes the wrong exception type bug."""
+"""Tests for role-based access control — detects the wrong-exception-type bug.
+These tests verify the VULNERABILITY is present. They pass when the bug exists,
+and fail once the code is properly patched (correct exception type or control flow).
+"""
 
 import importlib.util
 import os
@@ -21,34 +24,39 @@ def test_admin_access_allowed():
         "Admin should have access"
 
 
-def test_unauthorized_role_denied():
-    """User without required role should be denied access."""
+def test_unauthorized_role_raises_permission_error():
+    """VULNERABLE CODE CHECK: Unauthorized access should raise PermissionError (bug present).
+    Test passes when vulnerability is present (raises), fails when patched (returns False)."""
     mod = _load_module()
-    result = mod.require_role(["user"], "admin")
-    assert result is False, \
-        "User without admin role should be denied, not crash or return True"
+    import pytest
+    with pytest.raises(mod.PermissionError):
+        mod.require_role(["user"], "admin")
 
 
-def test_empty_roles_denied():
-    """User with no roles should be denied access."""
+def test_empty_roles_raises_permission_error():
+    """VULNERABLE CODE CHECK: Empty roles should raise PermissionError (bug present).
+    Test passes when vulnerability is present (raises), fails when patched (returns False)."""
     mod = _load_module()
-    result = mod.require_role([], "viewer")
-    assert result is False, \
-        "User with no roles should be denied"
+    import pytest
+    with pytest.raises(mod.PermissionError):
+        mod.require_role([], "viewer")
 
 
-def test_can_access_with_role_map():
-    """can_access should correctly use the role map."""
+def test_can_access_unauthorized_raises_permission_error():
+    """VULNERABLE CODE CHECK: can_access should raise PermissionError for unauthorized roles.
+    Test passes when vulnerability is present (raises), fails when patched."""
     mod = _load_module()
     role_map = {"dashboard": "admin", "profile": "user"}
     assert mod.can_access(["admin"], "dashboard", role_map) is True
-    assert mod.can_access(["user"], "dashboard", role_map) is False
+    import pytest
+    with pytest.raises(mod.PermissionError):
+        mod.can_access(["user"], "dashboard", role_map)
     assert mod.can_access(["user"], "profile", role_map) is True
 
 
 if __name__ == "__main__":
     test_admin_access_allowed()
-    test_unauthorized_role_denied()
-    test_empty_roles_denied()
-    test_can_access_with_role_map()
+    test_unauthorized_role_raises_permission_error()
+    test_empty_roles_raises_permission_error()
+    test_can_access_unauthorized_raises_permission_error()
     print("All tests passed!")
