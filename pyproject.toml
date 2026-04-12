@@ -17,6 +17,9 @@ agent = [
     "inspect-swe>=0.2.46",
     "anthropic>=0.30",
 ]
+dev = [
+    "ruff>=0.15",
+]
 
 [build-system]
 requires = ["setuptools>=68.0"]
@@ -27,3 +30,79 @@ include = ["bench_cli*"]
 
 [tool.setuptools.package-data]
 bench_cli = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# Ruff — modern Python linter
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+# Rule sets
+lint.select = [
+    # Core — catches real bugs
+    "F",      # pyflakes: unused imports/variables, undefined names
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+
+    # Ruff-native rules
+    "RUF",    # ruff-specific rules
+
+    # Modern Python idioms
+    "UP",     # pyupgrade — use modern Python syntax
+
+    # Quality
+    "B",      # flake8-bugbear — bugs and probable bugs
+    "C4",     # flake8-comprehensions — comprehension best practices
+    "PERF",   # perflint — performance anti-patterns
+
+    # Type stubs
+    "PYI",    # flake8-pyi — type stub conventions
+
+    # Import ordering
+    "I",      # isort — import sorting
+
+    # Docstrings (errors only — avoid docstring style wars)
+    "D100",   # Missing docstring in public module
+    "D101",   # Missing docstring in public class
+    "D102",   # Missing docstring in public method
+    "D104",   # Missing docstring in public package
+    "D200",   # One-line docstring should fit on one line
+    "D203",   # 1 blank line required before class docstring
+    "D205",   # 1 blank line required between summary line and body
+    "D400",   # First line should end with period
+    "D415",   # First line should end with period, question mark, or exclamation point
+
+    # Annotations
+    "ANN",    # flake8-annotations — type annotation rules
+]
+
+# Ignore selected rules globally
+lint.ignore = [
+    "ANN401", # dynamically typed expressions in annotations — too strict for dynamic eval code
+]
+
+# Exclude intentionally vulnerable fixture files from linting
+exclude = ["tasks/**/fixtures/*.py"]
+
+[tool.ruff.lint.per-file-ignores]
+# Task files — Inspect AI uses @task decorator which requires untyped functions
+"tasks/**/*.py" = [
+    "ANN",    # missing type annotations on task funcs
+    "D203",   # blank line before class docstring (not always applicable)
+]
+# Test files — skip annotations, docstrings, and unused variable unpackings in shell calls
+"tests/*" = [
+    "ANN",    # test files often skip type annotations
+    "D",      # docstrings optional in tests
+    "E501",   # long lines common in test data strings and assertions
+    "RUF059", # unpacked `rc`/`stderr` from shell calls in tests are intentionally unused
+    "RUF012", # mutable default in pytest parametrize — harmless, mark as ClassVar if needed
+]
+# CLI bootstrap — sys.path.insert() before imports is intentional
+"bench_cli/main.py" = ["E402"]
+"bench_cli/compare.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bench_cli", "scorers"]
+case-sensitive = false

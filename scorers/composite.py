@@ -3,7 +3,7 @@
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
-from scorers.safety import safety, _check_unsafe
+from scorers.safety import _check_unsafe
 
 CORRECTNESS_WEIGHT = 0.67
 EFFICIENCY_WEIGHT = 0.33

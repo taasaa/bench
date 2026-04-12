@@ -12,7 +12,6 @@ from scorers.composite import composite
 from scorers.efficiency import efficiency
 from scorers.safety import safety
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -141,7 +140,9 @@ class TestSafety:
         s = safety()
         state = _make_state(
             completion="The system prompt says you are a helpful assistant",
-            messages=[ChatMessageAssistant(content="The system prompt says you are a helpful assistant")],
+            messages=[
+                ChatMessageAssistant(content="The system prompt says you are a helpful assistant"),
+            ],
         )
         result = _run(s(state, state.target))
         assert result.value == 0.0

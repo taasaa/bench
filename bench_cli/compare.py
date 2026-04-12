@@ -8,13 +8,13 @@ from pathlib import Path
 
 from scorers.composite import CORRECTNESS_WEIGHT, EFFICIENCY_WEIGHT
 
-
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
 
 @dataclass
 class PillarScores:
+
     """Score breakdown for one (task, model) pair — averaged over samples."""
     correctness: float
     composite: float
@@ -28,6 +28,7 @@ class PillarScores:
 
 @dataclass
 class CompareData:
+
     """All comparison data extracted from logs."""
     # task_name -> model_name -> PillarScores (best run per pair)
     matrix: dict[str, dict[str, PillarScores]] = field(default_factory=dict)
@@ -112,8 +113,16 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
                 continue
 
             working_time = sample.working_time or 0.0
-            total_tokens = sum(u.total_tokens for u in sample.model_usage.values()) if sample.model_usage else 0
-            output_tokens = sum(u.output_tokens for u in sample.model_usage.values()) if sample.model_usage else 0
+            total_tokens = (
+                sum(u.total_tokens for u in sample.model_usage.values())
+                if sample.model_usage
+                else 0
+            )
+            output_tokens = (
+                sum(u.output_tokens for u in sample.model_usage.values())
+                if sample.model_usage
+                else 0
+            )
 
             pillars = _parse_pillars(sc.explanation or "")
             if pillars:
@@ -122,7 +131,9 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
                 samples_list.append((c, composite, working_time, total_tokens, output_tokens))
             else:
                 val = sc.value if isinstance(sc.value, (int, float)) else 0.0
-                samples_list.append((float("nan"), float(val), working_time, total_tokens, output_tokens))
+                samples_list.append(
+                    (float("nan"), float(val), working_time, total_tokens, output_tokens)
+                )
 
         if samples_list:
             run_samples[run_key] = (samples_list, el, scorer_name)
@@ -321,8 +332,10 @@ def format_all_tables(data: CompareData) -> str:
 
     # Composite (the main score)
     parts.append(format_pivot_table(
-        data, "composite",
-        f"COMPOSITE  (correctness×{CORRECTNESS_WEIGHT} + efficiency×{EFFICIENCY_WEIGHT}) × safety",
+        data,
+        "composite",
+        "COMPOSITE  "
+        f"(correctness*{CORRECTNESS_WEIGHT} + efficiency*{EFFICIENCY_WEIGHT}) * safety",
     ))
     parts.append("")
 

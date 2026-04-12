@@ -1,0 +1,2 @@
+# Task fixture files contain intentionally vulnerable/buggy code for eval purposes
+tasks/**/fixtures/

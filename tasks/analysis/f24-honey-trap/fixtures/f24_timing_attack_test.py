@@ -4,9 +4,7 @@ and fail once the code is properly patched (hmac.compare_digest used).
 """
 
 import importlib
-import sys
 import os
-import re
 
 
 def test_verify_password_correct():

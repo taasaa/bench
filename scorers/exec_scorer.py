@@ -10,10 +10,9 @@ import re
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
-from scorers.composite import CORRECTNESS_WEIGHT, EFFICIENCY_WEIGHT, DEFAULT_MAX_TOKENS
+from scorers.composite import CORRECTNESS_WEIGHT, DEFAULT_MAX_TOKENS, EFFICIENCY_WEIGHT
 from scorers.safety import _check_unsafe
 from scorers.subproc import build_script, run_checks
-
 
 # ---------------------------------------------------------------------------
 # Extraction helpers
@@ -67,7 +66,7 @@ def _extract_asserts(text: str) -> list[str]:
         if in_code:
             code_lines.append(line)
     source = code_lines if code_lines else lines
-    return [l.strip() for l in source if l.strip().startswith("assert ")]
+    return [line.strip() for line in source if line.strip().startswith("assert ")]
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +175,11 @@ def exec_scorer(
             if checks_source == "testcases" and func_name:
                 target_text = target.text.lower()
                 correctness = 1.0 if target_text in output_text.lower() else 0.0
-                return _make_score(correctness, f"unknown function {func_name}, fallback to includes", state)
+                return _make_score(
+                    correctness,
+                    f"unknown function {func_name}, fallback to includes",
+                    state,
+                )
             return _make_score(0.0, "no checks found", state)
 
         script = build_script(func_code, checks)

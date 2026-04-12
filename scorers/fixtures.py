@@ -55,10 +55,14 @@ def load_fixture(task_file: str | Path, name: str) -> str:
     """
     path = fixtures_dir(task_file) / name
     if not path.is_file():
+        available = (
+            sorted(p.name for p in path.parent.iterdir())
+            if path.parent.is_dir()
+            else "(directory missing)"
+        )
         raise FileNotFoundError(
             f"Fixture file not found: {path}\n"
-            f"Available fixtures in {path.parent}: "
-            f"{sorted(p.name for p in path.parent.iterdir()) if path.parent.is_dir() else '(directory missing)'}"
+            f"Available fixtures in {path.parent}: {available}"
         )
     return path.read_text(encoding="utf-8")
 
@@ -78,9 +82,13 @@ def load_fixture_bytes(task_file: str | Path, name: str) -> bytes:
     """
     path = fixtures_dir(task_file) / name
     if not path.is_file():
+        available = (
+            sorted(p.name for p in path.parent.iterdir())
+            if path.parent.is_dir()
+            else "(directory missing)"
+        )
         raise FileNotFoundError(
             f"Fixture file not found: {path}\n"
-            f"Available fixtures in {path.parent}: "
-            f"{sorted(p.name for p in path.parent.iterdir()) if path.parent.is_dir() else '(directory missing)'}"
+            f"Available fixtures in {path.parent}: {available}"
         )
     return path.read_bytes()

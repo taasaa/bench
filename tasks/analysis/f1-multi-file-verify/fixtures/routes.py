@@ -3,7 +3,7 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from auth import register, authenticate, get_user
+from auth import register, authenticate
 
 
 class UserRoutes(BaseHTTPRequestHandler):

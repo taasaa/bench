@@ -3,6 +3,7 @@
 import importlib.util
 import os
 import sys
+import typing
 
 import pytest
 
@@ -114,7 +115,7 @@ class TestAllTasksScorerName:
 class TestVerificationTasksUnmodified:
     """Verification tasks should NOT use the composite scorer."""
 
-    VERIFICATION_TASKS = [
+    VERIFICATION_TASKS: typing.ClassVar[list[tuple[str, str]]] = [
         ("tasks/verification/smoke/task.py", "smoke"),
         ("tasks/verification/agent_smoke/task.py", "agent_smoke"),
     ]

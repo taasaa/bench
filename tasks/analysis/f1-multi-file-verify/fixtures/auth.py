@@ -27,7 +27,6 @@ def authenticate(username: str, password: str) -> User | None:
     # BUG: uses 'password' attribute instead of 'password_hash'
     stored_hash = user.password  # should be user.password_hash
     from user_model import hashlib
-    import os
 
     candidate = hashlib.sha256(f"{user.salt}{password}".encode()).hexdigest()
     if candidate == stored_hash:

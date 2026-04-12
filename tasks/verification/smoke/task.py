@@ -1,7 +1,7 @@
 """Smoke test task: minimal eval to verify Inspect AI + LiteLLM wiring."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 from inspect_ai.scorer import includes
 
 

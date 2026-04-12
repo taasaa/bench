@@ -1,7 +1,6 @@
 """User model for authentication system."""
 
 from dataclasses import dataclass, field
-from typing import Optional
 import hashlib
 import os
 

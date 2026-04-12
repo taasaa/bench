@@ -9,7 +9,9 @@ import pytest
 ROOT = Path(__file__).parent.parent.resolve()
 
 
-def run_verify_script(task_dir: str, input_text: str, sample_id: str | None = None) -> tuple[str, str, int]:
+def run_verify_script(
+    task_dir: str, input_text: str, sample_id: str | None = None
+) -> tuple[str, str, int]:
     """Run verify.sh in a task dir with input_text on stdin.
 
     Args:

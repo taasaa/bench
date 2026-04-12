@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import click
@@ -148,7 +147,7 @@ def run(
         raise SystemExit(1)
 
 
-def _resolve_agent_solver(agent: str):
+def _resolve_agent_solver(agent: str) -> None:
     """Map agent name to an inspect-swe solver instance."""
     try:
         from inspect_swe import claude_code, codex_cli, gemini_cli  # type: ignore[import-untyped]

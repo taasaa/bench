@@ -7,11 +7,8 @@ For each task, test verify.sh with:
 This validates the scoring logic independently of the model.
 """
 
-import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 from conftest import run_verify_script
 

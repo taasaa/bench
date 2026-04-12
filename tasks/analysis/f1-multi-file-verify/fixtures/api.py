@@ -4,7 +4,6 @@ import json
 from http.server import BaseHTTPRequestHandler
 
 from url_store import URLStore
-from redirect import RedirectHandler
 
 
 class APIHandler(BaseHTTPRequestHandler):
