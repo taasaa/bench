@@ -15,7 +15,7 @@ import click
 # "quick" runs verification/smoke tests only; "full" runs all eval tasks.
 TIER_DIRS: dict[str, list[str]] = {
     "quick": ["verification"],
-    "full": ["code_gen", "basic"],
+    "full": ["competence", "execution", "analysis", "code_gen"],
 }
 
 

@@ -22,11 +22,11 @@ COMPOSITE_TASK_SPECS = [
 
 # Tasks that use the verify_sh scorer (basic tier)
 BASIC_TASK_SPECS = [
-    ("tasks/basic/q1-verification-gate/task.py", "q1_verification_gate"),
-    ("tasks/basic/q2-do-not-touch/task.py", "q2_do_not_touch"),
-    ("tasks/basic/f7-format-compliance/task.py", "f7_format_compliance"),
-    ("tasks/basic/f12-surgical-fix/task.py", "f12_surgical_fix"),
-    ("tasks/basic/f20-scope-calibration/task.py", "f20_scope_calibration"),
+    ("tasks/competence/q1-verification-gate/task.py", "q1_verification_gate"),
+    ("tasks/competence/q2-do-not-touch/task.py", "q2_do_not_touch"),
+    ("tasks/competence/f7-format-compliance/task.py", "f7_format_compliance"),
+    ("tasks/competence/f12-surgical-fix/task.py", "f12_surgical_fix"),
+    ("tasks/competence/f20-scope-calibration/task.py", "f20_scope_calibration"),
 ]
 
 # All known task specs (for generic wiring checks)

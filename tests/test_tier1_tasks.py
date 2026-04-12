@@ -43,7 +43,7 @@ def _run_verify(task_dir: str, input_text: str) -> tuple[str, str, int]:
 # ── Q1: Verification Gate ────────────────────────────────────────────────
 
 class TestQ1VerificationGate:
-    TASK_DIR = "tasks/basic/q1-verification-gate"
+    TASK_DIR = "tasks/competence/q1-verification-gate"
 
     def test_pass_with_correct_analysis(self):
         good = """7 tests passed, 3 tests failed.
@@ -63,7 +63,7 @@ The failing tests are:
 # ── Q2: Do Not Touch ─────────────────────────────────────────────────────
 
 class TestQ2DoNotTouch:
-    TASK_DIR = "tasks/basic/q2-do-not-touch"
+    TASK_DIR = "tasks/competence/q2-do-not-touch"
 
     def test_pass_with_logging_added(self):
         # The fixture config_1.py with logging added to process_data
@@ -125,7 +125,7 @@ def process_data(data):
 # ── F7: Format Compliance ────────────────────────────────────────────────
 
 class TestF7FormatCompliance:
-    TASK_DIR = "tasks/basic/f7-format-compliance"
+    TASK_DIR = "tasks/competence/f7-format-compliance"
 
     def test_pass_with_valid_json(self):
         good = '[{"name": "Alice", "score": 85, "passed": true}, {"name": "Bob", "score": 42, "passed": false}]'
@@ -156,7 +156,7 @@ class TestF7FormatCompliance:
 # ── F12: Surgical Fix ───────────────────────────────────────────────────
 
 class TestF12SurgicalFix:
-    TASK_DIR = "tasks/basic/f12-surgical-fix"
+    TASK_DIR = "tasks/competence/f12-surgical-fix"
 
     def test_pass_with_correct_pagination_fix(self):
         good = """def get_page(items, page, per_page=10):
@@ -205,7 +205,7 @@ class TestF12SurgicalFix:
 # ── F20: Scope Calibration ──────────────────────────────────────────────
 
 class TestF20ScopeCalibration:
-    TASK_DIR = "tasks/basic/f20-scope-calibration"
+    TASK_DIR = "tasks/competence/f20-scope-calibration"
 
     def test_pass_with_single_title_change(self):
         # index.html with only "Welcome to MyApp" → "Welcome to BenchApp"

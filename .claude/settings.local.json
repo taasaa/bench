@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__omnisearch__web_search",
+      "mcp__omnisearch__web_extract"
+    ]
+  }
+}
