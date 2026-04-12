@@ -1,0 +1,24 @@
+"""F10 Environmental Mismatch: model must diagnose multi-layer version/environment mismatches."""
+
+from inspect_ai import Task, task
+from inspect_ai.dataset import json_dataset, FieldSpec
+
+from scorers.verify_sh import verify_sh
+
+
+@task
+def f10_env_mismatch():
+    """Evaluate ability to diagnose multi-layer environment mismatches.
+
+    Given a scenario where no single clue is sufficient, the model must chain
+    shebang resolution, PATH/alias, and version manager settings to identify
+    the root cause — a mismatch between the environment the package was
+    installed in and the environment the script actually runs in.
+    """
+    return Task(
+        dataset=json_dataset(
+            "dataset.json",
+            FieldSpec(input="input", target="target", id="id"),
+        ),
+        scorer=verify_sh(),
+    )

@@ -1,0 +1,21 @@
+$ pytest tests/ -v
+============================= test session starts ==============================
+platform darwin -- Python 3.12.4, pytest-8.2.2
+rootdir: /home/user/project
+collected 10 items
+
+tests/test_auth.py::test_login_success PASSED                            [ 10%]
+tests/test_auth.py::test_login_invalid_password PASSED                    [ 20%]
+tests/test_auth.py::test_login_missing_fields PASSED                     [ 30%]
+tests/test_auth.py::test_logout PASSED                                    [ 40%]
+tests/test_user.py::test_create_user PASSED                              [ 50%]
+tests/test_user.py::test_update_profile PASSED                           [ 60%]
+tests/test_user.py::test_delete_user FAILED                              [ 70%]
+tests/test_user.py::test_list_users FAILED                               [ 80%]
+tests/test_api.py::test_rate_limit FAILED                                [ 90%]
+tests/test_api.py::test_health_check PASSED                              [100%]
+
+========================= 3 failed, 7 passed in 0.42s =========================
+FAIL tests/test_user.py::test_delete_user - AssertionError: Expected status 204, got 500
+FAIL tests/test_user.py::test_list_users - AttributeError: 'NoneType' object has no attribute 'json'
+FAIL tests/test_api.py::test_rate_limit - AssertionError: Expected 429, got 200

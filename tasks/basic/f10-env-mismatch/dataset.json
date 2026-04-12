@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f10-python-venv",
+    "input": "I'm getting a ModuleNotFoundError for debugpy in a Python script. The weird part is I installed it into my virtualenv:\n\n```\n$ source .venv/bin/activate\n(.venv) $ pip install debugpy\nSuccessfully installed debugpy-1.8.0\n(.venv) $ python -c \"import debugpy; print('ok')\"\nok\n```\n\nBut when I run the script directly:\n```\n$ ./debug_controller.py\nModuleNotFoundError: No module named 'debugpy'\n```\n\nEnvironment details:\n- The virtualenv was created with `python3.11 -m venv .venv`\n- I have `alias python=python3.12` in my .bashrc\n- The script starts with `#!/usr/bin/env python`\n- `which python` → `/usr/local/bin/python` (symlink to python3.12)\n- `which python3.11` → `/usr/local/bin/python3.11`\n- debugpy is confirmed at `.venv/lib/python3.11/site-packages/debugpy/`\n\nWhat's happening and how do I fix it?",
+    "target": "shebang resolves to python3.12 but debugpy installed in python3.11 venv"
+  },
+  {
+    "id": "f10-node-nvm",
+    "input": "My team's Node project fails on my machine but works for everyone else. The error:\n\n```\n$ npm start\nError: Cannot find module 'express'\n```\n\nBut I definitely have express installed:\n```\n$ npm list -g express\nexpress@4.18.2\n```\n\nHere's my setup:\n- `.nvmrc` says `20`\n- `nvm current` says `v18.17.0`\n- `node --version` → `v18.17.0`\n- I ran `nvm install 20` a while ago\n- `npm config get prefix` → `/Users/me/.nvm/versions/node/v18.17.0`\n- `cat .nvmrc` → `20`\n- express is at `/Users/me/.nvm/versions/node/v18.17.0/lib/node_modules/express/`\n- The project's package.json lists express as a dependency\n- I ran `npm install` which completed without errors\n\nEveryone else on the team has `nvm use` in their shell setup. What's going on?",
+    "target": "nvm default is 18 but .nvmrc requires 20; express global is under 18"
+  },
+  {
+    "id": "f10-ruby-rbenv",
+    "input": "My Ruby project can't find a gem that I know is installed:\n\n```\n$ ruby script.rb\n/path/to/script.rb:1:in 'require': cannot load such file -- sidekiq (LoadError)\n```\n\nBut:\n```\n$ gem list sidekiq\n*** LOCAL GEMS ***\nsidekiq (7.1.0)\n```\n\nEnvironment:\n- `rbenv local` → `3.2.2` (set in project .ruby-version)\n- `ruby --version` → `ruby 3.1.4` (active in shell)\n- `which ruby` → `/Users/me/.rbenv/versions/3.1.4/bin/ruby`\n- `gem environment gemdir` → `/Users/me/.rbenv/versions/3.1.4/lib/ruby/gems/3.1.0/`\n- sidekiq is at `/Users/me/.rbenv/versions/3.1.4/lib/ruby/gems/3.1.0/gems/sidekiq-7.1.0/`\n- `cat Gemfile.lock | head -5` shows `RUBY VERSION: ruby 3.2.2p123`\n- `rbenv which ruby` → `/Users/me/.rbenv/versions/3.2.2/bin/ruby`\n\nI tried `gem install sidekiq` again but it still fails. Help?",
+    "target": "rbenv local is 3.2 but shell uses 3.1; gem installed under 3.1, Gemfile.lock specifies 3.2"
+  },
+  {
+    "id": "f10-java-home",
+    "input": "My Java build fails with a compilation error:\n\n```\n$ mvn compile\n[ERROR] /src/main/java/com/example/App.java:[5,26] cannot find symbol\n[ERROR]   symbol:   class HttpClient\n[ERROR]   symbol:   location: package java.net.http\n```\n\nBut the code is correct — it compiles on CI. My setup:\n- `echo $JAVA_HOME` → `/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home`\n- `java -version` → `17.0.9`\n- `mvn -version` shows `Java version: 17.0.9`\n- The pom.xml has `<source>21</source>` and `<target>21</target>`\n- `java.net.http.HttpClient` was available since Java 11\n- The project uses `java.util.SequencedCollection` which is Java 21+\n- `/usr/libexec/java_home -V` shows both JDK 17 and JDK 21 installed\n- I installed the project dependencies with `mvn dependency:resolve` — no errors\n\nI tried reinstalling Maven dependencies but it didn't help. What's the issue?",
+    "target": "JAVA_HOME points to JDK 17 but project requires JDK 21 features"
+  }
+]

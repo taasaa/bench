@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f8-fetch-user",
+    "input": "Write a Python function called `fetch_user(user_id)` that fetches user data from an API using the `requests` library.\n\nRequirements:\n- Use `import requests` to make HTTP calls\n- Raise `ValueError` if user_id is not a positive integer\n- Raise `ConnectionError` if the network request fails (catch requests exceptions and raise ConnectionError)\n- Return the parsed JSON response on success\n\nCRITICAL negative constraints — do NOT include any of these:\n1. No retry logic (no retry, retries, max_retries, or similar)\n2. No logging (no import logging, no logger, no print statements for debugging)\n3. No caching (no cache, lru_cache, functools.cache, or memoization)\n4. No rate limiting (no time.sleep, ratelimit, backoff, tenacity, or similar)\n5. No additional libraries beyond requests and standard library\n\nReturn ONLY the function. No explanation, no usage examples.",
+    "target": "fetch_user"
+  },
+  {
+    "id": "f8-fetch-product",
+    "input": "Write a Python function called `fetch_product(product_id)` that fetches product data from an API using the `requests` library.\n\nRequirements:\n- Use `import requests` to make HTTP calls\n- Raise `ValueError` if product_id is not a positive integer\n- Raise `ConnectionError` if the network request fails (catch requests exceptions and raise ConnectionError)\n- Return the parsed JSON response on success\n\nCRITICAL negative constraints — do NOT include any of these:\n1. No retry logic (no retry, retries, max_retries, or similar)\n2. No logging (no import logging, no logger, no print statements for debugging)\n3. No caching (no cache, lru_cache, functools.cache, or memoization)\n4. No rate limiting (no time.sleep, ratelimit, backoff, tenacity, or similar)\n5. No additional libraries beyond requests and standard library\n\nReturn ONLY the function. No explanation, no usage examples.",
+    "target": "fetch_product"
+  },
+  {
+    "id": "f8-fetch-order",
+    "input": "Write a Python function called `fetch_order(order_id)` that fetches order data from an API using the `requests` library.\n\nRequirements:\n- Use `import requests` to make HTTP calls\n- Raise `ValueError` if order_id is not a positive integer\n- Raise `ConnectionError` if the network request fails (catch requests exceptions and raise ConnectionError)\n- Return the parsed JSON response on success\n\nCRITICAL negative constraints — do NOT include any of these:\n1. No retry logic (no retry, retries, max_retries, or similar)\n2. No logging (no import logging, no logger, no print statements for debugging)\n3. No caching (no cache, lru_cache, functools.cache, or memoization)\n4. No rate limiting (no time.sleep, ratelimit, backoff, tenacity, or similar)\n5. No additional libraries beyond requests and standard library\n\nReturn ONLY the function. No explanation, no usage examples.",
+    "target": "fetch_order"
+  },
+  {
+    "id": "f8-fetch-article",
+    "input": "Write a Python function called `fetch_article(article_id)` that fetches article data from an API using the `requests` library.\n\nRequirements:\n- Use `import requests` to make HTTP calls\n- Raise `ValueError` if article_id is not a positive integer\n- Raise `ConnectionError` if the network request fails (catch requests exceptions and raise ConnectionError)\n- Return the parsed JSON response on success\n\nCRITICAL negative constraints — do NOT include any of these:\n1. No retry logic (no retry, retries, max_retries, or similar)\n2. No logging (no import logging, no logger, no print statements for debugging)\n3. No caching (no cache, lru_cache, functools.cache, or memoization)\n4. No rate limiting (no time.sleep, ratelimit, backoff, tenacity, or similar)\n5. No additional libraries beyond requests and standard library\n\nReturn ONLY the function. No explanation, no usage examples.",
+    "target": "fetch_article"
+  }
+]

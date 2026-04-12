@@ -6,8 +6,12 @@ bench.egg-info/entry_points.txt
 bench.egg-info/requires.txt
 bench.egg-info/top_level.txt
 bench_cli/__init__.py
+bench_cli/compare.py
 bench_cli/main.py
 bench_cli/run.py
 tests/test_cli.py
+tests/test_compare.py
+tests/test_fixtures.py
 tests/test_integration.py
 tests/test_scorers.py
+tests/test_verify_patterns.py

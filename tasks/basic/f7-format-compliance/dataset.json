@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f7-basic-pass-fail",
+    "input": "Convert the following results into a JSON array. Each entry must have keys: \"name\" (string), \"score\" (number), \"passed\" (boolean).\n\nResults:\nAlice scored 85 (pass), Bob scored 42 (fail), Carol scored 91 (pass), Dave scored 67 (fail)\n\nOutput ONLY the JSON array. No markdown, no explanation, no code fences.",
+    "target": "[{\"name\": \"Alice\", \"score\": 85, \"passed\": true}, {\"name\": \"Bob\", \"score\": 42, \"passed\": false}, {\"name\": \"Carol\", \"score\": 91, \"passed\": true}, {\"name\": \"Dave\", \"score\": 67, \"passed\": false}]"
+  },
+  {
+    "id": "f7-negative-zero",
+    "input": "Convert the following results into a JSON array. Each entry must have keys: \"name\" (string), \"score\" (number), \"passed\" (boolean).\n\nResults:\nEve scored 0 (fail), Frank scored -5 (fail), Grace scored 100 (pass), Heidi scored 50 (pass)\n\nOutput ONLY the JSON array. No markdown, no explanation, no code fences.",
+    "target": "[{\"name\": \"Eve\", \"score\": 0, \"passed\": false}, {\"name\": \"Frank\", \"score\": -5, \"passed\": false}, {\"name\": \"Grace\", \"score\": 100, \"passed\": true}, {\"name\": \"Heidi\", \"score\": 50, \"passed\": true}]"
+  },
+  {
+    "id": "f7-special-chars",
+    "input": "Convert the following results into a JSON array. Each entry must have keys: \"name\" (string), \"score\" (number), \"passed\" (boolean).\n\nResults:\nO'Brien scored 78 (pass), Lee, Ann scored 63 (fail), \"Mallory\" scored 95 (pass), Ivan scored 44 (fail)\n\nOutput ONLY the JSON array. No markdown, no explanation, no code fences.",
+    "target": "[{\"name\": \"O'Brien\", \"score\": 78, \"passed\": true}, {\"name\": \"Lee, Ann\", \"score\": 63, \"passed\": false}, {\"name\": \"Mallory\", \"score\": 95, \"passed\": true}, {\"name\": \"Ivan\", \"score\": 44, \"passed\": false}]"
+  },
+  {
+    "id": "f7-single-entry",
+    "input": "Convert the following results into a JSON array. Each entry must have keys: \"name\" (string), \"score\" (number), \"passed\" (boolean).\n\nResults:\nZara scored 55 (fail)\n\nOutput ONLY the JSON array. No markdown, no explanation, no code fences.",
+    "target": "[{\"name\": \"Zara\", \"score\": 55, \"passed\": false}]"
+  }
+]

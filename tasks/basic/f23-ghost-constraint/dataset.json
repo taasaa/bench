@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f23-user-api",
+    "input": "You are going to write a small API client library. Before you start, here are the constraints you must follow for ALL code you write:\n\n**Constraints:**\n1. All function and variable names must use `snake_case` (no camelCase or PascalCase)\n2. All function definitions must include type hints for parameters and return types\n3. You must use the `httpx` library for HTTP requests (NOT `requests`)\n\n---\n\n**Turn 2:** Write a function called `fetch_user` that takes a user ID and retrieves the user record from `https://api.example.com/users/{user_id}`. Return the parsed JSON.\n\n**Turn 3:** Now write a function called `create_user` that accepts user data as a dictionary and POSTs it to `https://api.example.com/users`. Return the created user from the response.\n\n**Turn 4:** Finally, write a helper function called `validate_email` that takes an email string and returns True if it looks valid (has @ and a domain with a dot), False otherwise. This function should NOT make any HTTP calls.",
+    "target": "snake_case + type hints + httpx across all functions"
+  },
+  {
+    "id": "f23-product-api",
+    "input": "You are going to write a small API client library. Before you start, here are the constraints you must follow for ALL code you write:\n\n**Constraints:**\n1. All function and variable names must use `snake_case` (no camelCase or PascalCase)\n2. All function definitions must include type hints for parameters and return types\n3. You must use the `httpx` library for HTTP requests (NOT `requests`)\n\n---\n\n**Turn 2:** Write a function called `get_product` that takes a product ID and retrieves the product from `https://api.example.com/products/{product_id}`. Return the parsed JSON.\n\n**Turn 3:** Now write a function called `update_product` that accepts a product ID and a data dictionary, then PATCHes the data to `https://api.example.com/products/{product_id}`. Return the updated product.\n\n**Turn 4:** Finally, write a helper function called `format_price` that takes a price (as float or int) and returns a formatted string like \"$19.99\" with exactly 2 decimal places. This function should NOT make any HTTP calls.",
+    "target": "snake_case + type hints + httpx across all functions"
+  },
+  {
+    "id": "f23-order-api",
+    "input": "You are going to write a small API client library. Before you start, here are the constraints you must follow for ALL code you write:\n\n**Constraints:**\n1. All function and variable names must use `snake_case` (no camelCase or PascalCase)\n2. All function definitions must include type hints for parameters and return types\n3. You must use the `httpx` library for HTTP requests (NOT `requests`)\n\n---\n\n**Turn 2:** Write a function called `search_orders` that takes a query string and sends it as a query parameter to `https://api.example.com/orders/search`. Return the list of matching orders.\n\n**Turn 3:** Now write a function called `place_order` that accepts an order dictionary and POSTs it to `https://api.example.com/orders`. Return the created order.\n\n**Turn 4:** Finally, write a helper function called `calculate_tax` that takes a subtotal (float) and a tax rate (float, e.g. 0.08 for 8%) and returns the tax amount rounded to 2 decimal places. This function should NOT make any HTTP calls.",
+    "target": "snake_case + type hints + httpx across all functions"
+  },
+  {
+    "id": "f23-article-api",
+    "input": "You are going to write a small API client library. Before you start, here are the constraints you must follow for ALL code you write:\n\n**Constraints:**\n1. All function and variable names must use `snake_case` (no camelCase or PascalCase)\n2. All function definitions must include type hints for parameters and return types\n3. You must use the `httpx` library for HTTP requests (NOT `requests`)\n\n---\n\n**Turn 2:** Write a function called `fetch_article` that takes an article ID and retrieves it from `https://api.example.com/articles/{article_id}`. Return the parsed JSON.\n\n**Turn 3:** Now write a function called `publish_article` that accepts an article ID and POSTs to `https://api.example.com/articles/{article_id}/publish` to mark it as published. Return the updated article.\n\n**Turn 4:** Finally, write a helper function called `count_words` that takes a text string and returns the number of words (split on whitespace). This function should NOT make any HTTP calls.",
+    "target": "snake_case + type hints + httpx across all functions"
+  }
+]

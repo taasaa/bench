@@ -31,10 +31,7 @@ def tasks_root(tmp_path: Path, monkeypatch):
     for d in [
         "verification/smoke",
         "verification/agent_smoke",
-        "code_gen/write-function",
-        "code_gen/fix-bug",
-        "file_ops/edit-file",
-        "file_ops/find-replace",
+        "code_gen/add-tests",
     ]:
         (tasks / d).mkdir(parents=True)
         (tasks / d / "task.py").write_text("# task")
@@ -58,20 +55,20 @@ class TestDiscoverTasks:
 
     def test_full_tier_finds_eval_tasks(self, tasks_root):
         specs = _discover_tasks("full")
-        # Should find code_gen (2) + file_ops (2) = 4 tasks
-        assert len(specs) == 4
+        # Should find code_gen (1: add-tests) tasks
+        assert len(specs) == 1
         assert any("code_gen" in s for s in specs)
-        assert any("file_ops" in s for s in specs)
         # Should NOT include verification tasks
         assert not any("verification" in s for s in specs)
 
     def test_max_tasks_caps_results(self, tasks_root):
         specs = _discover_tasks("full", max_tasks=2)
-        assert len(specs) == 2
+        # Only 1 task exists (add-tests), so cap of 2 still returns 1
+        assert len(specs) == 1
 
     def test_max_tasks_none_returns_all(self, tasks_root):
         specs = _discover_tasks("full", max_tasks=None)
-        assert len(specs) == 4
+        assert len(specs) == 1
 
     def test_max_tasks_zero_returns_empty(self, tasks_root):
         specs = _discover_tasks("full", max_tasks=0)
