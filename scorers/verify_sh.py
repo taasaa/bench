@@ -3,9 +3,11 @@
 Parses PASS N/M or FAIL from the script's stdout and returns a normalized Score.
 """
 
+import inspect
 import os
 import re
 import subprocess
+from functools import lru_cache
 
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
@@ -17,6 +19,28 @@ DEFAULT_TIMEOUT = 30
 _PASS_RE = re.compile(r"^PASS\s+(\d+)/(\d+)\s*$", re.MULTILINE)
 # Also accept bare "PASS" as PASS 1/1
 _PASS_BARE_RE = re.compile(r"^PASS\s*$", re.MULTILINE)
+
+
+def _find_task_dir() -> str:
+    """Walk the call stack to find the task module's directory.
+
+    inspect_ai does not expose the task module path to scorers via any
+    API, so we walk stack frames until we find a .py file under tasks/.
+    This works because the scorer is called synchronously from the task
+    module during evaluation.
+    """
+    for frame_info in inspect.getouterframes(inspect.currentframe(), context=2):
+        path = frame_info.filename
+        # Match task module paths like:
+        #   /Users/rut/dev/bench/tasks/competence/f12-surgical-fix/task.py
+        #   tasks/competence/f12-surgical-fix/task.py
+        if "/tasks/" in path or "\\tasks\\" in path:
+            task_dir = os.path.dirname(path)
+            if os.path.isdir(task_dir):
+                return task_dir
+        elif path.endswith("/tasks/__init__.py") or path.endswith("\\tasks\\__init__.py"):
+            return os.path.dirname(os.path.dirname(path))
+    return os.getcwd()
 
 
 @scorer(metrics=[mean()])
@@ -32,6 +56,11 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
             Resolved relative to the task module's directory.
         timeout: Maximum seconds to wait for the script (default: 30).
     """
+    # Resolve task_dir once per scorer instance (not per sample) via stack introspection.
+    # Cache the result since all samples in the same task use the same task module.
+    @lru_cache(maxsize=1)
+    def _cached_task_dir() -> str:
+        return _find_task_dir()
 
     async def score(state: TaskState, target: Target) -> Score:
         # --- Get model output ---
@@ -43,8 +72,7 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
             )
 
         # --- Resolve script path ---
-        # Inspect AI sets the sample metadata; fall back to cwd
-        task_dir = _resolve_task_dir(state)
+        task_dir = _cached_task_dir()
         script_path = os.path.join(task_dir, script_name)
 
         if not os.path.isfile(script_path):
@@ -116,16 +144,3 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
         )
 
     return score
-
-
-def _resolve_task_dir(state: TaskState) -> str:
-    """Try to find the task directory from state metadata or sample path."""
-    # Inspect AI may store the sample file path in metadata
-    sample = state.sample if hasattr(state, "sample") else None
-    if sample and hasattr(sample, "metadata") and sample.metadata:
-        task_dir = sample.metadata.get("task_dir")
-        if task_dir and os.path.isdir(task_dir):
-            return task_dir
-
-    # Fall back to cwd — tasks are typically loaded with cwd set to their dir
-    return os.getcwd()
