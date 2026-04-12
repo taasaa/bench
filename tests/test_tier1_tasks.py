@@ -7,37 +7,19 @@ For each task, test verify.sh with:
 This validates the scoring logic independently of the model.
 """
 
-import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+from conftest import run_verify_script
+
+ROOT = Path(__file__).parent.parent.resolve()
 
 # Ensure project root is on sys.path
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
-
-
-def _run_verify(task_dir: str, input_text: str) -> tuple[str, str, int]:
-    """Run verify.sh in the given task dir with input_text on stdin.
-
-    Returns (stdout, stderr, returncode).
-    """
-    script = os.path.join(ROOT, task_dir, "verify.sh")
-    assert os.path.isfile(script), f"verify.sh not found: {script}"
-    assert os.access(script, os.X_OK), f"verify.sh not executable: {script}"
-
-    proc = subprocess.run(
-        [script],
-        input=input_text,
-        capture_output=True,
-        text=True,
-        timeout=10,
-        cwd=os.path.join(ROOT, task_dir),
-    )
-    return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 # ── Q1: Verification Gate ────────────────────────────────────────────────
@@ -52,11 +34,11 @@ The failing tests are:
 - test_list_users
 - test_rate_limit
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_empty_response(self):
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, "")
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, "")
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
 
@@ -91,7 +73,7 @@ def process_data(data):
     logger.info("Processing complete")
     return result
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_modified_credentials(self):
@@ -118,7 +100,7 @@ def process_data(data):
     logger.info("Data received")
     return data
 """
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
 
@@ -129,27 +111,27 @@ class TestF7FormatCompliance:
 
     def test_pass_with_valid_json(self):
         good = '[{"name": "Alice", "score": 85, "passed": true}, {"name": "Bob", "score": 42, "passed": false}]'
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_markdown_fences(self):
         bad = '```json\n[{"name": "Alice", "score": 85, "passed": true}]\n```'
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_extra_keys(self):
         bad = '[{"name": "Alice", "score": 85, "passed": true, "extra": "bad"}]'
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_invalid_json(self):
         bad = 'not json at all'
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_wrong_types(self):
         bad = '[{"name": "Alice", "score": "85", "passed": "true"}]'
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
 
@@ -164,7 +146,7 @@ class TestF12SurgicalFix:
     start = (page - 1) * per_page
     end = page * per_page
     return items[start:end]"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_with_correct_safe_average_fix(self):
@@ -173,7 +155,7 @@ class TestF12SurgicalFix:
     if len(values) <= 0:
         return 0.0
     return sum(values) / len(values)"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_with_correct_find_first_negative_fix(self):
@@ -183,7 +165,7 @@ class TestF12SurgicalFix:
         if numbers[i] < 0:
             return i
     return -1"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_buggy_code(self):
@@ -193,12 +175,12 @@ class TestF12SurgicalFix:
     start = (page - 1) * per_page
     end = page * per_page + 1
     return items[start:end]"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_syntax_error(self):
         bad = "def broken(:\n    return"
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
 
@@ -233,7 +215,7 @@ class TestF20ScopeCalibration:
     </footer>
 </body>
 </html>"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_with_single_debug_change(self):
@@ -242,7 +224,7 @@ DEBUG = False
 SECRET_KEY = "change-me-in-production"
 DATABASE_URL = "sqlite:///dev.db"
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_with_single_copyright_change(self):
@@ -256,7 +238,7 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1"]"""
         <a href="/terms">Terms of Service</a>
     </div>
 </footer>"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, good)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, good)
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_fail_with_no_change(self):
@@ -285,7 +267,7 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1"]"""
     </footer>
 </body>
 </html>"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_extra_changes(self):
@@ -314,5 +296,5 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1"]"""
     </footer>
 </body>
 </html>"""
-        stdout, stderr, rc = _run_verify(self.TASK_DIR, bad)
+        stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
