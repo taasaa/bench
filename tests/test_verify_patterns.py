@@ -13,9 +13,7 @@ import pytest
 # Resolve the verify scripts directory relative to this test file
 VERIFY_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "tasks",
-    "_templates",
-    "verify",
+    "templates",
 )
 
 

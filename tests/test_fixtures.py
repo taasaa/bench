@@ -34,8 +34,8 @@ class TestFixturesDir:
         assert result == task_dir / "fixtures"
 
     def test_fixtures_dir_from_nested_path(self, tmp_path):
-        """Verify it works with realistic path like tasks/code_gen/my-task/task.py."""
-        nested = tmp_path / "tasks" / "code_gen" / "my-task"
+        """Verify it works with realistic path like tasks/competence/my-task/task.py."""
+        nested = tmp_path / "tasks" / "competence" / "my-task"
         nested.mkdir(parents=True)
         (nested / "task.py").touch()
         (nested / "fixtures").mkdir()

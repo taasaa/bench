@@ -31,7 +31,7 @@ def tasks_root(tmp_path: Path, monkeypatch):
     for d in [
         "verification/smoke",
         "verification/agent_smoke",
-        "code_gen/add-tests",
+        "competence/add-tests",
     ]:
         (tasks / d).mkdir(parents=True)
         (tasks / d / "task.py").write_text("# task")
@@ -55,9 +55,9 @@ class TestDiscoverTasks:
 
     def test_full_tier_finds_eval_tasks(self, tasks_root):
         specs = _discover_tasks("full")
-        # Should find code_gen (1: add-tests) tasks
+        # Should find competence (1: add-tests) task
         assert len(specs) == 1
-        assert any("code_gen" in s for s in specs)
+        assert any("competence" in s for s in specs)
         # Should NOT include verification tasks
         assert not any("verification" in s for s in specs)
 
