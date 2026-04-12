@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f11-sleep-timestamp",
+    "input": "Our test suite has 3 tests that fail intermittently in CI (GitHub Actions) but always pass locally. Here are the failing tests:\n\n```python\ndef test_api_response_time():\n    start = time.time()\n    response = client.get('/api/data')\n    time.sleep(0.1)\n    elapsed = time.time() - start\n    assert elapsed < 0.2\n    assert response.status_code == 200\n\ndef test_cache_invalidation():\n    cache.set('key', 'value')\n    time.sleep(0.05)\n    cache.invalidate('key')\n    time.sleep(0.05)\n    assert cache.get('key') is None\n\ndef test_event_ordering():\n    bus.emit('start')\n    time.sleep(0.1)\n    assert handler.events == ['start', 'processing', 'done']\n```\n\nThey pass on my MacBook but fail about 40% of the time on CI (which uses slower Ubuntu runners). The CI logs show `AssertionError` on the assertions. What's wrong and how should I fix it?",
+    "target": "timing"
+  },
+  {
+    "id": "f11-concurrent-file-access",
+    "input": "We have a test that creates a temporary file, writes data, then reads it back. It fails about 30% of the time in CI but never locally:\n\n```python\ndef test_file_processing():\n    tmpdir = tempfile.mkdtemp()\n    filepath = os.path.join(tmpdir, 'data.json')\n    \n    # Writer process\n    subprocess.Popen(['python', 'write_data.py', filepath])\n    time.sleep(0.5)\n    \n    # Reader\n    with open(filepath) as f:\n        data = json.load(f)\n    assert data['status'] == 'complete'\n    assert len(data['records']) == 100\n```\n\nThe write_data.py script takes varying time depending on system load. On CI it sometimes takes >0.5s. Error is either `FileNotFoundError` or `json.decoder.JSONDecodeError` or `KeyError: 'status'`. How should I fix this?",
+    "target": "race"
+  },
+  {
+    "id": "f11-timeout-flaky",
+    "input": "These tests are flaky in CI — they fail about 25% of the time with TimeoutError or wrong results:\n\n```python\ndef test_background_task_completion():\n    task = BackgroundTask(process_items, items=range(100))\n    task.start()\n    time.sleep(2)\n    assert task.is_complete\n    assert task.result_count == 100\n\ndef test_websocket_reconnection():\n    ws = WebSocketClient('ws://localhost:8080')\n    ws.connect()\n    time.sleep(0.5)\n    ws.force_disconnect()\n    time.sleep(1)\n    assert ws.is_connected  # Should have reconnected\n```\n\nLocally these always pass. On CI (slower containers), the 2-second sleep in test_background_task_completion sometimes isn't enough, and the 0.5s + 1s sleeps in test_websocket_reconnection sometimes fail. Other developers suggested increasing the sleeps to 5s and 3s. What's the right fix?",
+    "target": "polling"
+  },
+  {
+    "id": "f11-datetime-mock",
+    "input": "We have tests that check date-based logic. They fail intermittently around midnight:\n\n```python\ndef test_is_expired():\n    now = datetime.now()\n    expiry = now - timedelta(hours=24)\n    assert is_expired(expiry)\n\ndef test_daily_report_generation():\n    report = generate_daily_report()\n    assert report.date == date.today()\n    time.sleep(0.1)  # Small delay for file write\n    assert os.path.exists(report.filepath)\n```\n\nThe first test fails when it runs right at midnight — `datetime.now()` captures the time just before midnight, but by the time `is_expired()` runs, it's a new day. The second test fails similarly when `date.today()` is captured at 23:59:59 but the report is written at 00:00:01. My colleague says we should wrap the tests in a retry loop or add a 1-second sleep before each assertion. What's actually wrong?",
+    "target": "timing"
+  }
+]

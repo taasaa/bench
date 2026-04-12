@@ -1,0 +1,16 @@
+$ pytest tests/ -v
+============================= test session starts ==============================
+platform darwin -- Python 3.12.4, pytest-8.2.2
+rootdir: /home/user/project
+collected 6 items
+
+tests/test_cache.py::test_cache_hit PASSED                                [ 16%]
+tests/test_cache.py::test_cache_miss PASSED                               [ 33%]
+tests/test_cache.py::test_cache_eviction FAILED                          [ 50%]
+tests/test_cache.py::test_cache_ttl FAILED                               [ 66%]
+tests/test_cache.py::test_cache_clear PASSED                             [ 83%]
+tests/test_cache.py::test_cache_concurrent PASSED                        [100%]
+
+========================= 2 failed, 4 passed in 0.28s ========================
+FAIL tests/test_cache.py::test_cache_eviction - AssertionError: Cache size 11 exceeds max 10
+FAIL tests/test_cache.py::test_cache_ttl - AssertionError: Entry should have expired after TTL

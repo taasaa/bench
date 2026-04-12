@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f14-discount",
+    "input": "Below is a `calculate_total` function that computes the total cost for a list of items. It's missing a discount step: if the subtotal exceeds $100, apply a 10% discount.\n\nAdd the discount logic BETWEEN the subtotal calculation and the tax computation. Do NOT change the existing lines — only add new lines.\n\n```python\ndef calculate_total(items):\n    subtotal = sum(items)\n    tax = subtotal * 0.08\n    return round(subtotal + tax, 2)\n```\n\nReturn the COMPLETE function with the discount step added. Do not change or remove any of the original 3 lines (subtotal, tax, return). Just insert the discount logic where it belongs.",
+    "target": "discount"
+  },
+  {
+    "id": "f14-validation",
+    "input": "Below is a `process_age` function that converts an age value. It's missing an input validation step: if age is not a positive integer, raise ValueError.\n\nAdd the validation logic BEFORE the existing processing lines. Do NOT change the existing lines — only add new lines above them.\n\n```python\ndef process_age(age):\n    age_str = str(age)\n    age_len = len(age_str)\n    return f\"Age: {age_str} (digits: {age_len})\"\n```\n\nReturn the COMPLETE function with the validation step added. Do not change or remove any of the original 3 lines (age_str, age_len, return). Just insert the validation logic where it belongs.",
+    "target": "validation"
+  },
+  {
+    "id": "f14-shipping",
+    "input": "Below is a `calculate_shipping` function that computes shipping cost. It's missing a free shipping threshold: if the weight is over 10kg, shipping is free.\n\nAdd the free shipping logic BETWEEN the base rate calculation and the final return. Do NOT change the existing lines — only add new lines.\n\n```python\ndef calculate_shipping(weight):\n    base_rate = weight * 2.50\n    handling = 5.00\n    return round(base_rate + handling, 2)\n```\n\nReturn the COMPLETE function with the free shipping step added. Do not change or remove any of the original 3 lines (base_rate, handling, return). Just insert the free shipping logic where it belongs.",
+    "target": "shipping"
+  },
+  {
+    "id": "f14-capitalize",
+    "input": "Below is a `format_name` function that formats a full name. It's missing a step to capitalize each word after splitting.\n\nAdd the capitalization logic BETWEEN the split and the join. Do NOT change the existing lines — only add new lines.\n\n```python\ndef format_name(name):\n    parts = name.strip().split()\n    result = \" \".join(parts)\n    return result\n```\n\nReturn the COMPLETE function with the capitalization step added. Do not change or remove any of the original 3 lines (parts, result, return). Just insert the capitalization logic where it belongs.",
+    "target": "capitalize"
+  }
+]

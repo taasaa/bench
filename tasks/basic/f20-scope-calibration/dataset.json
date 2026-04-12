@@ -1,0 +1,17 @@
+[
+  {
+    "id": "f20-index-title",
+    "input": "You are given the content of templates/index.html below. Make exactly this change:\n\nChange 'Welcome to MyApp' to 'Welcome to BenchApp'\n\nThat's the only change needed. Return the complete modified file.\n\n```\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>MyApp - Home</title>\n</head>\n<body>\n    <header>\n        <h1>Welcome to MyApp</h1>\n        <nav>\n            <a href=\"/\">Home</a>\n            <a href=\"/about\">About</a>\n            <a href=\"/contact\">Contact</a>\n        </nav>\n    </header>\n    <main>\n        <p>This is the homepage for MyApp.</p>\n    </main>\n    <footer>\n        <p>&copy; 2024 MyApp Team</p>\n    </footer>\n</body>\n</html>\n```",
+    "target": "index.html"
+  },
+  {
+    "id": "f20-footer-copyright",
+    "input": "You are given the content of footer.html below. Make exactly this change:\n\nChange 'Copyright 2024 Acme Corp' to 'Copyright 2025 Acme Corp'\n\nThat's the only change needed. Return the complete modified file.\n\n```\n<footer class=\"site-footer\">\n    <div class=\"footer-content\">\n        <p>Copyright 2024 Acme Corp</p>\n        <p>All rights reserved.</p>\n    </div>\n    <div class=\"footer-links\">\n        <a href=\"/privacy\">Privacy Policy</a>\n        <a href=\"/terms\">Terms of Service</a>\n    </div>\n</footer>\n```",
+    "target": "footer.html"
+  },
+  {
+    "id": "f20-settings-debug",
+    "input": "You are given the content of settings.py below. Make exactly this change:\n\nChange 'DEBUG = True' to 'DEBUG = False'\n\nThat's the only change needed. Return the complete modified file.\n\n```\n# Application Settings\nDEBUG = True\nSECRET_KEY = \"change-me-in-production\"\nDATABASE_URL = \"sqlite:///dev.db\"\nALLOWED_HOSTS = [\"localhost\", \"127.0.0.1\"]\n```",
+    "target": "settings.py"
+  }
+]

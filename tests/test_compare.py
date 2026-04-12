@@ -155,7 +155,7 @@ def log_dir(tmp_path: Path):
     )
     _make_eval_log(
         logs,
-        task="find-replace",
+        task="add-tests",
         model="openai/model-a",
         score_value=0.75,
         metric_name="mean",
@@ -182,13 +182,13 @@ def log_dir(tmp_path: Path):
 class TestLoadRows:
     def test_loads_all_successful_rows(self, log_dir):
         rows = _load_rows(str(log_dir))
-        # smoke x2 + find-replace x1 + error x1 = 4 rows
+        # smoke x2 + add-tests x1 + error x1 = 4 rows
         assert len(rows) == 4
 
     def test_correct_task_names(self, log_dir):
         rows = _load_rows(str(log_dir))
         tasks = {r.task for r in rows}
-        assert tasks == {"smoke", "find-replace", "broken-task"}
+        assert tasks == {"smoke", "add-tests", "broken-task"}
 
     def test_score_values(self, log_dir):
         rows = _load_rows(str(log_dir))
@@ -206,7 +206,7 @@ class TestLoadRows:
 
     def test_samples_count(self, log_dir):
         rows = _load_rows(str(log_dir))
-        fr = [r for r in rows if r.task == "find-replace"]
+        fr = [r for r in rows if r.task == "add-tests"]
         assert fr[0].samples == 3
 
     def test_latest_limits_rows(self, log_dir):
@@ -335,7 +335,7 @@ class TestCompareCLI:
         result = runner.invoke(cli, ["compare", "--log-dir", str(log_dir)])
         assert result.exit_code == 0
         assert "smoke" in result.output
-        assert "find-replace" in result.output
+        assert "add-tests" in result.output
         assert "broken-task" in result.output
 
     def test_compare_json_output(self, log_dir):

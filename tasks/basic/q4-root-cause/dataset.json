@@ -1,0 +1,22 @@
+[
+  {
+    "id": "q4-pip-python-mismatch",
+    "input": "I'm having a frustrating issue. When I run `pip install requests`, it says \"Successfully installed requests-2.31.0\". But when I run `python3 script.py` (which does `import requests`), I get:\n\n```\nModuleNotFoundError: No module named 'requests'\n```\n\nI've tried running `pip install requests` three more times and it keeps saying \"Requirement already satisfied\". What's going on and how do I fix it?",
+    "target": "pip and python3 point to different installations"
+  },
+  {
+    "id": "q4-node-npx-mismatch",
+    "input": "Something weird is happening with my Node.js setup. I installed a package globally with `npm install -g typescript` and it succeeded. But when I run `tsc --version` in my project directory, I get:\n\n```\nbash: tsc: command not found\n```\n\nBut `npm list -g typescript` shows it's installed at `/usr/local/lib/node_modules/typescript`. I tried reinstalling twice — same result. What's the real problem?",
+    "target": "npm global bin directory not in PATH or nvm/node version mismatch"
+  },
+  {
+    "id": "q4-docker-compose-port",
+    "input": "My web app won't connect to the database. I'm running both in Docker Compose. The app container logs show:\n\n```\nconnection refused: localhost:5432\n```\n\nI can connect to the database fine from my host machine using `psql -h localhost -p 5432 -U myuser`. The database container is definitely running. I even tried changing the port to 5433 in compose — same error. What's the actual issue?",
+    "target": "containers use Docker networking, not localhost"
+  },
+  {
+    "id": "q4-cron-path-issue",
+    "input": "I have a Python script that works perfectly when I run it from my terminal:\n\n```\n$ python3 /opt/scripts/daily_report.py\n# Works fine, sends email report\n```\n\nBut when cron runs it with this crontab entry:\n\n```\n0 9 * * * python3 /opt/scripts/daily_report.py\n```\n\nIt fails with:\n\n```\nImportError: No module named 'pandas'\n```\n\nI confirmed pandas is installed — `python3 -c 'import pandas'` works in my terminal. I even reinstalled pandas. What's really going on?",
+    "target": "cron has a minimal PATH and different environment than interactive shell"
+  }
+]

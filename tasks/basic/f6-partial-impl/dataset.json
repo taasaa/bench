@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f6-cache-get-set",
+    "input": "Implement a Python class called `Cache` with exactly two methods: `get(key)` and `set(key, value)`. Use a simple internal dictionary for storage.\n\nImportant constraints:\n- The class must be named `Cache`\n- It must have exactly `get` and `set` methods — nothing else\n- Do NOT add delete, clear, or any cleanup methods\n- Do NOT add TTL or expiry logic of any kind\n- Do NOT add any private helper methods like _cleanup, _evict, or check_expired\n- No imports beyond what's strictly necessary\n\nReturn ONLY the Python class. No explanation, no usage examples.",
+    "target": "Cache"
+  },
+  {
+    "id": "f6-store-read-write",
+    "input": "Implement a Python class called `Store` with exactly two methods: `read(key)` and `write(key, value)`. Use a simple internal dictionary for storage.\n\nImportant constraints:\n- The class must be named `Store`\n- It must have exactly `read` and `write` methods — nothing else\n- Do NOT add delete, clear, remove, or any cleanup methods\n- Do NOT add TTL, expiry, or lifetime logic of any kind\n- Do NOT add any private helper methods like _cleanup, _evict, or check_expired\n- No imports beyond what's strictly necessary\n\nReturn ONLY the Python class. No explanation, no usage examples.",
+    "target": "Store"
+  },
+  {
+    "id": "f6-registry-find-register",
+    "input": "Implement a Python class called `Registry` with exactly two methods: `find(name)` and `register(name, handler)`. Use a simple internal dictionary for storage.\n\nImportant constraints:\n- The class must be named `Registry`\n- It must have exactly `find` and `register` methods — nothing else\n- Do NOT add unregister, remove, clear, or any cleanup methods\n- Do NOT add TTL, expiry, or lifetime logic of any kind\n- Do NOT add any private helper methods like _cleanup, _evict, or check_expired\n- No imports beyond what's strictly necessary\n\nReturn ONLY the Python class. No explanation, no usage examples.",
+    "target": "Registry"
+  },
+  {
+    "id": "f6-lookup-query-store",
+    "input": "Implement a Python class called `Lookup` with exactly two methods: `query(id)` and `store(id, data)`. Use a simple internal dictionary for storage.\n\nImportant constraints:\n- The class must be named `Lookup`\n- It must have exactly `query` and `store` methods — nothing else\n- Do NOT add delete, remove, clear, purge, or any cleanup methods\n- Do NOT add TTL, expiry, or lifetime logic of any kind\n- Do NOT add any private helper methods like _cleanup, _evict, or check_expired\n- No imports beyond what's strictly necessary\n\nReturn ONLY the Python class. No explanation, no usage examples.",
+    "target": "Lookup"
+  }
+]

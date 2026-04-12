@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f9-conn-pool",
+    "input": "Our API started returning 500 errors during peak hours. The postgres container is running — I can connect to it from my laptop via psql. But the app logs show:\n\n```\npsycopg2.pool.PoolError: connection pool exhausted\n```\n\nI tried restarting postgres but that didn't help. The postgres logs look clean — no errors, plenty of available connections. Should I just restart the app server or increase postgres max_connections?\n\nCurrent config:\n```yaml\ndatabase:\n  pool_size: 5\n  max_overflow: 0\nconcurrency:\n  max_workers: 20\n```",
+    "target": "connection pool size too small for concurrency"
+  },
+  {
+    "id": "f9-fd-leak",
+    "input": "Our production server has crashed three times this week, always after running for several hours. The monitoring shows it handling traffic fine, then suddenly:\n\n```\nOSError: [Errno 24] Too many open files\n```\n\nI checked — the current ulimit is 1024. The server shouldn't need that many files open. Here's the relevant code:\n\n```python\ndef process_upload(file_path):\n    f = open(file_path, 'rb')\n    data = f.read()\n    result = transform(data)\n    log_entry = open('/var/log/uploads.log', 'a')\n    log_entry.write(f'Processed {file_path}\\n')\n    return result\n```\n\nShould I increase ulimit to 65535? That seems like the standard fix.",
+    "target": "file descriptor leak from missing close() calls"
+  },
+  {
+    "id": "f9-memory-cache",
+    "input": "Our web service keeps getting OOM-killed by the kernel. The monitoring shows RSS growing steadily from ~200MB at startup to ~2GB over 4 hours, then the kernel kills it. There's no obvious memory leak in the application logic.\n\nThe only caching code:\n```python\nclass ResultCache:\n    def __init__(self):\n        self._cache = {}\n\n    def get_or_compute(self, key, compute_fn):\n        if key not in self._cache:\n            self._cache[key] = compute_fn()\n        return self._cache[key]\n```\n\nThis cache stores computation results so we don't recompute them. Keys are request IDs, which are unique per request. We process ~50 requests/minute.\n\nShould I just add more RAM to the instance? Or maybe switch to a bigger instance type?",
+    "target": "unbounded cache growth using unique request IDs as keys"
+  },
+  {
+    "id": "f9-thread-starve",
+    "input": "Our service's health check endpoint keeps failing during high load, triggering alerts. But when I check, the service IS running and eventually responds to normal requests. The health check itself is a simple GET /health that returns 200.\n\nThread pool config:\n```yaml\nthread_pool:\n  max_threads: 10\n  queue_size: 100\n```\n\nThe service makes outbound API calls to a slow third-party service (~5s per call). During peak load, all 10 threads are occupied with these slow calls. The health check endpoint can't get a thread. I tried increasing the request timeout to 30s, but the health checks still fail. Maybe I should increase it more?",
+    "target": "thread pool starvation from blocking I/O on shared pool"
+  }
+]
