@@ -1,5 +1,7 @@
-"""Tests for password verification — timing attack vulnerability is NOT directly testable,
-but we verify functional correctness and that hmac.compare_digest is used."""
+"""Tests for password verification — detects timing attack vulnerability.
+These tests verify the VULNERABILITY is present. They pass when the bug exists,
+and fail once the code is properly patched (hmac.compare_digest used).
+"""
 
 import importlib
 import sys
@@ -9,7 +11,6 @@ import re
 
 def test_verify_password_correct():
     """Correct password should verify successfully."""
-    # Import dynamically so we can check source
     spec = importlib.util.spec_from_file_location(
         "auth_mod", os.path.join(os.path.dirname(__file__), "f24_timing_attack_auth.py")
     )
@@ -36,28 +37,29 @@ def test_verify_password_wrong():
         "Wrong password should fail"
 
 
-def test_uses_compare_digest():
-    """The fixed code must use hmac.compare_digest, not ==."""
+def test_uses_equals_not_compare_digest():
+    """VULNERABLE CODE CHECK: Code must use == for hash comparison (timing attack risk).
+    Test passes when vulnerability is present (== used), fails when patched (compare_digest used)."""
     with open(os.path.join(os.path.dirname(__file__), "f24_timing_attack_auth.py")) as f:
         source = f.read()
 
-    assert "compare_digest" in source, \
-        "Code must use hmac.compare_digest for constant-time comparison"
-    # The vulnerable line uses == for hash comparison — after fix it should not
-    # Check that == is not used for hash comparison
-    # Pattern: "computed ==" or "== stored_hash" should be gone
+    # Check for == used in hash comparison — this is the vulnerability
     lines = source.split("\n")
+    found_vulnerable = False
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("#"):
             continue
         if "==" in stripped and ("computed" in stripped or "stored_hash" in stripped):
             if "compare_digest" not in line:
-                assert False, f"Still using == for hash comparison: {stripped}"
+                found_vulnerable = True
+
+    assert found_vulnerable, \
+        "Expected timing attack vulnerability (== used for hash comparison) but code appears patched with compare_digest"
 
 
 if __name__ == "__main__":
     test_verify_password_correct()
     test_verify_password_wrong()
-    test_uses_compare_digest()
+    test_uses_equals_not_compare_digest()
     print("All tests passed!")

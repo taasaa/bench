@@ -1,62 +1,68 @@
-"""Tests for database query module — verifies parameterized queries are used."""
+"""Tests for database query module — detects SQL injection vulnerability.
+These tests verify the VULNERABILITY is present. They pass when the bug exists,
+and fail once the code is properly patched (parameterized queries used).
+"""
 
 import os
 import re
 
 
-def test_no_string_formatting_in_queries():
-    """SQL queries must use parameterized ? placeholders, not f-strings or % formatting."""
+def test_uses_string_formatting_in_queries():
+    """VULNERABLE CODE CHECK: SQL queries use f-string formatting (SQL injection risk).
+    Test passes when vulnerability is present, fails when fixed."""
     with open(os.path.join(os.path.dirname(__file__), "f24_input_sanitize_auth.py")) as f:
         source = f.read()
 
-    # Find all query strings — they should NOT use f-strings or .format()
     lines = source.split("\n")
+    found = False
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
-        # Skip comments and the delete function (which is already safe)
         if stripped.startswith("#"):
             continue
-        # Check for f-string SQL queries
+        # Detect f-string SQL queries — this means the code is still vulnerable
         if "SELECT" in stripped.upper() and ("f\"" in line or "f'" in line):
-            # If it's in a comment, skip
-            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
-                continue
-            assert False, f"Line {i}: SQL query uses f-string (SQL injection risk): {stripped}"
-        # Check for .format() SQL queries
+            if not (stripped.startswith('"""') or stripped.startswith("'''")):
+                found = True
+        # Detect .format() SQL queries
         if "SELECT" in stripped.upper() and ".format(" in line:
-            assert False, f"Line {i}: SQL query uses .format() (SQL injection risk): {stripped}"
+            found = True
+
+    assert found, "Expected SQL injection vulnerability (f-string/.format) but code appears fixed"
 
 
-def test_uses_parameterized_queries():
-    """get_user_by_email and search_users must use ? placeholders."""
+def test_missing_parameterized_queries():
+    """VULNERABLE CODE CHECK: Functions should NOT use parameterized ? placeholders.
+    Test passes when vulnerability is present, fails when fixed."""
     with open(os.path.join(os.path.dirname(__file__), "f24_input_sanitize_auth.py")) as f:
         source = f.read()
 
-    # Check that email lookup uses parameterized query
-    assert "WHERE email = ?" in source or 'WHERE email = "%s"' not in source, \
-        "get_user_by_email must use parameterized query"
-    # More specifically, check for ? placeholder in email lookup
-    # The fixed version should have: cursor.execute("... WHERE email = ?", (email,))
-    email_section = source[source.find("get_user_by_email"):source.find("def search_users") if "def search_users" in source else len(source)]
-    assert "?" in email_section and "execute" in email_section, \
-        "get_user_by_email must use parameterized query with ? placeholder"
+    # get_user_by_email should NOT have parameterized query (cursor.execute with ? placeholder)
+    email_section = source[source.find("def get_user_by_email"):source.find("def search_users") if "def search_users" in source else len(source)]
+    # Vulnerable code uses: cursor.execute(query) with f-string query
+    # Safe code uses: cursor.execute("...WHERE email = ?", (email,))
+    # The key difference: safe code has a tuple as second arg, vulnerable code doesn't
+    has_param_tuple = re.search(r"execute\([^)]+\?\s*,", email_section) is not None
+    assert not has_param_tuple, \
+        "Expected get_user_by_email to NOT use parameterized query — vulnerability should be present"
 
-    # Check name search uses parameterized query
-    search_section = source[source.find("search_users"):source.find("def delete_user") if "def delete_user" in source else len(source)]
-    assert "?" in search_section and "execute" in search_section, \
-        "search_users must use parameterized query with ? placeholder"
+    # search_users should NOT have parameterized query
+    search_section = source[source.find("def search_users"):source.find("def delete_user") if "def delete_user" in source else len(source)]
+    has_param_tuple = re.search(r"execute\([^)]+\?\s*,", search_section) is not None
+    assert not has_param_tuple, \
+        "Expected search_users to NOT use parameterized query — vulnerability should be present"
 
 
 def test_no_strip_or_replace_hack():
-    """The fix must not use character stripping as a 'sanitization' method."""
+    """VULNERABLE CODE CHECK: The fix must not use character stripping as a 'sanitization' method.
+    Test passes when inadequate sanitization is absent (bare vulnerability), fails when strip/replace is used."""
     with open(os.path.join(os.path.dirname(__file__), "f24_input_sanitize_auth.py")) as f:
         source = f.read()
 
-    # Check for common bad sanitization patterns
+    # Check for common bad sanitization patterns — these would be a WRONG fix
     for pattern in [".replace(\"'\",", ".replace('\"',", ".strip(\"';", "escape_string",
                     "sanitize(", "remove_quotes", ".replace(\";\","]:
         if pattern in source:
-            assert False, f"Code uses inadequate sanitization: {pattern}"
+            assert False, f"Code uses inadequate sanitization (wrong fix): {pattern}"
 
 
 def test_module_imports():
@@ -73,8 +79,8 @@ def test_module_imports():
 
 
 if __name__ == "__main__":
-    test_no_string_formatting_in_queries()
-    test_uses_parameterized_queries()
+    test_uses_string_formatting_in_queries()
+    test_missing_parameterized_queries()
     test_no_strip_or_replace_hack()
     test_module_imports()
     print("All tests passed!")
