@@ -29,3 +29,6 @@ vendor/
 coverage/
 .cache/
 tmp/
+logs/
+.pytest_cache/
+.ruff_cache/
