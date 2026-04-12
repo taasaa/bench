@@ -1,7 +1,7 @@
 """Agent eval smoke test: verify claude_code() solver works in Docker sandbox."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 from inspect_ai.scorer import includes
 from inspect_swe import claude_code
 

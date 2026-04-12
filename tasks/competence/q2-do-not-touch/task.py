@@ -1,7 +1,7 @@
 """Q2 Do Not Touch: model must add logging to process_data without modifying get_credentials."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.verify_sh import verify_sh
 

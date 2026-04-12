@@ -6,9 +6,6 @@ verifying the PASS/FAIL output format and exit codes.
 
 import os
 import subprocess
-import tempfile
-
-import pytest
 
 # Resolve the verify scripts directory relative to this test file
 VERIFY_DIR = os.path.join(

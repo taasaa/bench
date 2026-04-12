@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -15,9 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bench_cli.main import cli
-from bench_cli.run import _discover_tasks
-
+from bench_cli.main import cli  # noqa: E402
+from bench_cli.run import _discover_tasks  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -161,10 +159,18 @@ class TestRunIntegration:
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args
         # Verify task specs were passed
-        tasks_arg = call_kwargs.kwargs.get("tasks") or call_kwargs[1].get("tasks") or call_kwargs[0][0]
+        tasks_arg = (
+            call_kwargs.kwargs.get("tasks")
+            or call_kwargs[1].get("tasks")
+            or call_kwargs[0][0]
+        )
         assert len(tasks_arg) == 2
         # Verify model was passed
-        assert call_kwargs.kwargs.get("model") == "openai/rut-small" or "openai/rut-small" in str(call_kwargs)
+        model_arg = (
+            call_kwargs.kwargs.get("model")
+            or "openai/rut-small" in str(call_kwargs)
+        )
+        assert model_arg
 
     def test_run_exits_1_on_error_status(self, tasks_root):
         """Verify non-zero exit when any eval task errors."""

@@ -1,7 +1,7 @@
 """F20 Scope Calibration: model must make exactly one text change and nothing else."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.verify_sh import verify_sh
 

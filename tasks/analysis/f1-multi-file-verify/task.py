@@ -1,7 +1,7 @@
-"""F1 Multi-File Verification: model must cross-reference claims against actual code across multiple files."""
+"""F1 Multi-File Verification: cross-reference model claims against actual code."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.verify_sh import verify_sh
 

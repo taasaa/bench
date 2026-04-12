@@ -1,7 +1,7 @@
 """Q4 Root Cause Not Symptom: model must identify root cause rather than treating symptoms."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.verify_sh import verify_sh
 

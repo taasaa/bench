@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bench_cli.compare import (
+from bench_cli.compare import (  # noqa: E402
     CompareData,
     PillarScores,
     format_all_tables,
@@ -19,7 +19,6 @@ from bench_cli.compare import (
     format_pivot_table,
     load_compare_data,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test data fixtures
@@ -97,7 +96,7 @@ class TestCompareData:
 
     def test_matrix_access(self, two_model_data):
         assert two_model_data.matrix["task_a"]["model-x"].composite == 0.75
-        assert two_model_data.matrix["task_b"].get("model-y") is None  # no data for model-y on task_b
+        assert two_model_data.matrix["task_b"].get("model-y") is None
         assert two_model_data.matrix["task_b"]["model-x"].composite == 0.7
 
 

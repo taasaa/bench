@@ -7,11 +7,11 @@ from scorers.safety import safety
 from scorers.verify_sh import verify_sh
 
 __all__ = [
-    "efficiency",
-    "safety",
     "composite",
-    "verify_sh",
+    "efficiency",
     "fixtures_dir",
     "load_fixture",
     "load_fixture_bytes",
+    "safety",
+    "verify_sh",
 ]

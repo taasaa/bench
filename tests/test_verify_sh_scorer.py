@@ -3,8 +3,6 @@
 import asyncio
 import os
 import stat
-import subprocess
-from unittest.mock import MagicMock, patch
 
 import pytest
 from inspect_ai.model import ChatMessageAssistant, ModelOutput
@@ -12,7 +10,6 @@ from inspect_ai.scorer import Target
 from inspect_ai.solver import TaskState
 
 from scorers.verify_sh import verify_sh
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -53,7 +50,7 @@ def _make_script(content: str, tmpdir: str, name: str = "verify.sh") -> str:
 class TestVerifyShPass:
     def test_pass_full(self, tmp_path):
         """PASS 3/3 → score 1.0"""
-        script = _make_script(
+        _make_script(
             '#!/bin/bash\necho "PASS 3/3"',
             str(tmp_path),
         )
@@ -70,7 +67,7 @@ class TestVerifyShPass:
 
     def test_pass_partial(self, tmp_path):
         """PASS 2/3 → score ≈ 0.667"""
-        script = _make_script(
+        _make_script(
             '#!/bin/bash\necho "PASS 2/3"',
             str(tmp_path),
         )
@@ -88,7 +85,7 @@ class TestVerifyShPass:
 class TestVerifyShFail:
     def test_fail_output(self, tmp_path):
         """FAIL → score 0.0"""
-        script = _make_script(
+        _make_script(
             '#!/bin/bash\necho "FAIL"\necho "something wrong" >&2',
             str(tmp_path),
         )
@@ -107,7 +104,7 @@ class TestVerifyShFail:
 class TestVerifyShTimeout:
     def test_timeout(self, tmp_path):
         """Script timeout → score 0.0 with error explanation"""
-        script = _make_script(
+        _make_script(
             '#!/bin/bash\nsleep 10\necho "PASS 1/1"',
             str(tmp_path),
         )
@@ -149,7 +146,7 @@ class TestVerifyShEdgeCases:
 
     def test_bare_pass(self, tmp_path):
         """Bare PASS (no fraction) → score 1.0"""
-        script = _make_script(
+        _make_script(
             '#!/bin/bash\necho "PASS"',
             str(tmp_path),
         )
@@ -165,7 +162,7 @@ class TestVerifyShEdgeCases:
 
     def test_pass_with_stderr(self, tmp_path):
         """PASS with stderr diagnostics → score value correct, stderr in explanation"""
-        script = _make_script(
+        _make_script(
             '#!/bin/bash\necho "some diagnostic" >&2\necho "PASS 1/1"',
             str(tmp_path),
         )
@@ -182,7 +179,7 @@ class TestVerifyShEdgeCases:
 
     def test_pass_in_middle_of_output(self, tmp_path):
         """PASS line in middle of multi-line output → correctly parsed"""
-        script = _make_script(
+        _make_script(
             '#!/bin/bash\necho "Checking..."\necho "PASS 4/5"\necho "done"',
             str(tmp_path),
         )

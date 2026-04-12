@@ -1,7 +1,7 @@
-"""F8 Negative Constraint Chain: model must follow 5 negative constraints while building a function."""
+"""F8 Negative Constraint Chain: model must follow 5 negative constraints."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.verify_sh import verify_sh
 

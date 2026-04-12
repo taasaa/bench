@@ -44,7 +44,7 @@ def _find_task_dir() -> str:
 
 
 @scorer(metrics=[mean()])
-def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIMEOUT):
+def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIMEOUT) -> None:
     """Scorer that pipes model output through a verify.sh script.
 
     The script receives the model's text completion on stdin and must write

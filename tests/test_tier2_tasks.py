@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from conftest import run_verify_script
 
 ROOT = Path(__file__).parent.parent.resolve()

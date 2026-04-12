@@ -1,7 +1,7 @@
-"""F9 Cascading Failure: model must identify root cause of cascading failures, not treat symptoms."""
+"""F9 Cascading Failure: model must identify root cause, not treat symptoms."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.verify_sh import verify_sh
 

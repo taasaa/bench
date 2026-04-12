@@ -5,7 +5,6 @@ and fail once the code is properly patched (correct exception type or control fl
 
 import importlib.util
 import os
-import sys
 
 
 def _load_module():

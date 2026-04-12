@@ -1,7 +1,7 @@
 """Add-tests task: model must write unit tests for given function signatures."""
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.composite import composite
 
