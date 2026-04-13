@@ -35,7 +35,7 @@ class TestVerifyShPass:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
@@ -53,7 +53,7 @@ class TestVerifyShPass:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
@@ -71,7 +71,7 @@ class TestVerifyShFail:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
@@ -90,7 +90,7 @@ class TestVerifyShTimeout:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
@@ -105,7 +105,7 @@ class TestVerifyShScriptNotFound:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
@@ -132,7 +132,7 @@ class TestVerifyShEdgeCases:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
@@ -148,7 +148,7 @@ class TestVerifyShEdgeCases:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
@@ -165,7 +165,7 @@ class TestVerifyShEdgeCases:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = make_task_state("model response")
+            state = make_task_state("model response", bench_task_dir=str(tmp_path))
             result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)

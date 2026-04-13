@@ -7,6 +7,7 @@ import inspect
 import os
 import re
 import subprocess
+
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
@@ -42,12 +43,13 @@ def _find_task_dir() -> str:
                 if file and ("/tasks/" in file or "\\tasks\\" in file):
                     task_dir = os.path.dirname(os.path.abspath(file))
                     if os.path.isdir(task_dir):
-                        print(f"[verify_sh _find_task_dir] HIT: task_dir={task_dir}", file=sys.stderr, flush=True)
+                        print(f"[_find_task_dir] HIT: {task_dir}", file=sys.stderr, flush=True)
                         return task_dir
             except Exception:
                 pass
             frame = frame.f_back
-        print(f"[verify_sh _find_task_dir] no tasks/ frame in {len(frames_checked)} frames: {frames_checked}", file=sys.stderr, flush=True)
+        n = len(frames_checked)
+        print(f"[_find_task_dir] no tasks/ frame in {n} frames", file=sys.stderr, flush=True)
     finally:
         del frame  # avoid cycle
 
@@ -60,11 +62,12 @@ def _find_task_dir() -> str:
             if file and ("/tasks/" in file or "\\tasks\\" in file):
                 task_dir = os.path.dirname(file)
                 if os.path.isdir(task_dir):
-                    print(f"[verify_sh _find_task_dir] fallback HIT via sys.modules: {task_dir}", file=sys.stderr, flush=True)
+                    n = os.path.basename(task_dir)
+                    print(f"[_find_task_dir] sys.modules: .../{n}", file=sys.stderr, flush=True)
                     return task_dir
         except Exception:
             continue
-    print(f"[verify_sh _find_task_dir] all strategies failed, cwd={os.getcwd()}", file=sys.stderr, flush=True)
+    print("[_find_task_dir] all failed, falling back to cwd", file=sys.stderr, flush=True)
     return os.getcwd()
 
 
@@ -95,9 +98,7 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
         # Resolve script path.
         # Priority: bench_task_dir injected by bench run CLI via Task metadata.
         # Falls back to cached frame-walk detection if not available.
-        bench_task_dir = None
-        if state.metadata:
-            bench_task_dir = state.metadata_as.get("bench_task_dir")
+        bench_task_dir = state.metadata.get("bench_task_dir") if state.metadata else None
         if bench_task_dir:
             script_path = os.path.join(bench_task_dir, script_name)
             return _score_with_sh(state, script_path, bench_task_dir)
