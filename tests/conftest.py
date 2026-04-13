@@ -1,5 +1,6 @@
 """Shared pytest helpers for Bench tests."""
 
+import asyncio
 import os
 import subprocess
 from pathlib import Path
@@ -42,12 +43,33 @@ def run_verify_script(
     return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
 
 
-@pytest.fixture
-def run_async():
+def run_async(coro):
     """Run an async coroutine in a sync context."""
-    import asyncio
+    return asyncio.run(coro)
 
-    def _runner(coro):
-        return asyncio.run(coro)
 
-    return _runner
+def make_task_state(
+    completion: str = "test output",
+    messages: list | None = None,
+    target: str = "expected",
+) -> TaskState:
+    """Factory for TaskState objects for scorer testing.
+
+    Usage:
+        state = make_task_state("my output")
+        state = make_task_state("my output", target="expected")
+    """
+    from inspect_ai.model import ChatMessageAssistant, ModelOutput
+    from inspect_ai.scorer import Target
+    from inspect_ai.solver import TaskState
+
+    output = ModelOutput.from_content(model="test-model", content=completion)
+    return TaskState(
+        model="test-model",
+        sample_id="test-sample",
+        epoch=0,
+        input="test input",
+        messages=messages or [ChatMessageAssistant(content=completion)],
+        target=Target(target),
+        output=output,
+    )

@@ -185,3 +185,83 @@ class TestVerificationTasksUnmodified:
     def test_agent_smoke_task_scorer_behavior(self):
         """agent_smoke task scorer returns result with explanation."""
         pass  # can't run — inspect_swe not installed
+
+
+class TestTaskCoverage:
+    """Every task with verify.sh must have a test file covering it.
+
+    This CI gate catches tasks that get added but never tested.
+    """
+
+    # All tasks that use verify.sh — scanned from tasks/ directory.
+    # Coverage sources:
+    #   test_tier1_tasks.py: q1, q2, f7, f12, f20
+    #   test_tier2_tasks.py: f6, f8, f11, f14, q4
+    #   test_integration.py (TestBasicTasksUseVerifySh): q1, q2, f7, f12, f20
+    #   test_integration.py (TestCompositeScorerWiring): add-tests (via composite)
+    #   Fixture tests (test_tier2_tasks.py + test_fixtures.py): f1, f9, f10, f23, f24
+    VERIFY_TASKS_WITH_COVERAGE = {
+        "tasks/analysis/f1-multi-file-verify",      # f24 fixture tests
+        "tasks/analysis/f10-env-mismatch",           # f24 fixture tests
+        "tasks/analysis/f23-ghost-constraint",       # f24 fixture tests
+        "tasks/analysis/f24-honey-trap",             # f24 fixture tests
+        "tasks/analysis/f9-cascading-failure",        # f24 fixture tests
+        "tasks/competence/add-tests",                # TestCompositeScorerWiring
+        "tasks/competence/f12-surgical-fix",         # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/f20-scope-calibration",    # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/f7-format-compliance",      # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/q1-verification-gate",     # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/q2-do-not-touch",          # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/execution/f11-intermittent-bug",      # test_tier2_tasks.py
+        "tasks/execution/f14-insert-dont-replace",   # test_tier2_tasks.py
+        "tasks/execution/f6-partial-impl",           # test_tier2_tasks.py
+        "tasks/execution/f8-negative-constraint",    # test_tier2_tasks.py
+        "tasks/execution/q4-root-cause",              # test_tier2_tasks.py
+        # NOTE: verification/smoke has coverage (test_smoke_task_scorer_behavior)
+        # NOTE: verification/agent_smoke has skip + no verify.sh (uses includes() scorer)
+    }
+
+    def test_all_verify_tasks_have_coverage(self):
+        """Every task directory with verify.sh must be in VERIFY_TASKS_WITH_COVERAGE."""
+        import os
+
+        tasks_root = os.path.join(ROOT, "tasks")
+        missing = []
+        for tier in os.listdir(tasks_root):
+            tier_path = os.path.join(tasks_root, tier)
+            if not os.path.isdir(tier_path):
+                continue
+            for task_name in os.listdir(tier_path):
+                task_dir = os.path.join(tier_path, task_name)
+                if not os.path.isdir(task_dir):
+                    continue
+                if os.path.isfile(os.path.join(task_dir, "verify.sh")):
+                    rel = os.path.join("tasks", tier, task_name)
+                    if rel not in self.VERIFY_TASKS_WITH_COVERAGE:
+                        missing.append(rel)
+
+        assert missing == [], (
+            f"Tasks with verify.sh but no test coverage: {missing}\n"
+            f"Add them to VERIFY_TASKS_WITH_COVERAGE in test_integration.py"
+        )
+
+    def test_all_verify_tasks_have_coverage_stated_count(self):
+        """Coverage list must match actual verify.sh count."""
+        import os
+
+        tasks_root = os.path.join(ROOT, "tasks")
+        actual_verify_tasks = []
+        for tier in os.listdir(tasks_root):
+            tier_path = os.path.join(tasks_root, tier)
+            if not os.path.isdir(tier_path):
+                continue
+            for task_name in os.listdir(tier_path):
+                task_dir = os.path.join(tier_path, task_name)
+                if os.path.isdir(task_dir) and os.path.isfile(os.path.join(task_dir, "verify.sh")):
+                    actual_verify_tasks.append(os.path.join("tasks", tier, task_name))
+
+        assert len(self.VERIFY_TASKS_WITH_COVERAGE) == len(actual_verify_tasks), (
+            f"VERIFY_TASKS_WITH_COVERAGE has {len(self.VERIFY_TASKS_WITH_COVERAGE)} entries "
+            f"but found {len(actual_verify_tasks)} verify.sh files: "
+            f"{sorted(actual_verify_tasks)}"
+        )

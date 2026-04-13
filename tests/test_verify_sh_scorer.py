@@ -1,37 +1,14 @@
 """Unit tests for verify_sh scorer."""
 
-import asyncio
 import os
 import stat
 
 import pytest
-from inspect_ai.model import ChatMessageAssistant, ModelOutput
-from inspect_ai.scorer import Target
-from inspect_ai.solver import TaskState
 
 from scorers.verify_sh import verify_sh
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_state(completion: str = "test output") -> TaskState:
-    """Build a TaskState suitable for scorer tests."""
-    output = ModelOutput.from_content(model="test-model", content=completion)
-    return TaskState(
-        model="test-model",
-        sample_id="test-sample",
-        epoch=0,
-        input="test input",
-        messages=[ChatMessageAssistant(content=completion)],
-        target=Target(""),
-        output=output,
-    )
-
-
-def _run(coro):
-    """Run an async coroutine synchronously."""
-    return asyncio.run(coro)
+# Helpers imported from conftest.py
+from conftest import make_task_state, run_async
 
 
 def _make_script(content: str, tmpdir: str, name: str = "verify.sh") -> str:
@@ -58,8 +35,8 @@ class TestVerifyShPass:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == 1.0
@@ -76,8 +53,8 @@ class TestVerifyShPass:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == pytest.approx(2 / 3)
@@ -94,8 +71,8 @@ class TestVerifyShFail:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == 0.0
@@ -113,8 +90,8 @@ class TestVerifyShTimeout:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == 0.0
@@ -128,8 +105,8 @@ class TestVerifyShScriptNotFound:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == 0.0
@@ -140,8 +117,8 @@ class TestVerifyShEdgeCases:
     def test_empty_output(self):
         """Empty model output → score 0.0"""
         s = verify_sh()
-        state = _make_state("")
-        result = _run(s(state, state.target))
+        state = make_task_state("")
+        result = run_async(s(state, state.target))
         assert result.value == 0.0
         assert "empty" in result.explanation.lower()
 
@@ -155,8 +132,8 @@ class TestVerifyShEdgeCases:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == 1.0
@@ -171,8 +148,8 @@ class TestVerifyShEdgeCases:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == 1.0
@@ -188,8 +165,8 @@ class TestVerifyShEdgeCases:
         orig = os.getcwd()
         try:
             os.chdir(str(tmp_path))
-            state = _make_state("model response")
-            result = _run(s(state, state.target))
+            state = make_task_state("model response")
+            result = run_async(s(state, state.target))
         finally:
             os.chdir(orig)
         assert result.value == pytest.approx(0.8)

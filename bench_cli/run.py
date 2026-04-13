@@ -94,12 +94,19 @@ DEFAULT_MODEL = "openai/rut-small"
     type=click.Path(),
     help="Directory for EvalLog output.",
 )
+@click.option(
+    "--no-compare",
+    is_flag=True,
+    default=False,
+    help="Skip automatic bench compare after eval completes.",
+)
 def run(
     model: str,
     tier: str,
     agent: str | None,
     max_tasks: int | None,
     log_dir: str,
+    no_compare: bool,
 ) -> None:
     """Discover and run evaluation tasks via Inspect AI."""
     # Lazy import so CLI --help stays fast when Inspect is not configured.
@@ -145,6 +152,17 @@ def run(
     # Exit with non-zero if any task errored.
     if any(log.status == "error" for log in results):
         raise SystemExit(1)
+
+    # 5. Auto-compare results (unless suppressed).
+    if not no_compare:
+        from bench_cli.compare import format_all_tables, load_compare_data
+
+        click.echo("\n── Comparing results ──")
+        data = load_compare_data(log_dir, latest=1)
+        if data.tasks:
+            click.echo(format_all_tables(data))
+        else:
+            click.echo("  (no scored logs found in log dir — run bench compare after eval completes)")
 
 
 def _resolve_agent_solver(agent: str) -> None:
