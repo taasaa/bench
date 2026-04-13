@@ -3,18 +3,20 @@
 from unittest.mock import PropertyMock, patch
 
 import pytest
+
+# Helpers imported from conftest.py
+# Backwards-compat aliases (deprecated — use make_task_state and run_async)
+from conftest import (
+    make_task_state,
+    run_async,
+    run_verify_script,  # noqa: F401
+)
 from inspect_ai.model import ChatMessageAssistant, ChatMessageUser
 from inspect_ai.solver import TaskState
 
 from scorers.composite import composite
 from scorers.efficiency import efficiency
 from scorers.safety import safety
-
-# Helpers imported from conftest.py
-from conftest import make_task_state, run_async
-
-# Backwards-compat aliases (deprecated — use make_task_state and run_async)
-from conftest import run_verify_script  # noqa: F401
 
 
 def _patch_token_usage(state: TaskState, value: int):
@@ -258,7 +260,6 @@ class TestScorerSchema:
         import re
 
         from inspect_ai.model import ChatMessageAssistant
-        from inspect_ai.scorer import Target
 
         pillar_re = re.compile(
             r"correctness=([\d.]+).*efficiency=([\d.]+).*safety(?:_gate)?=([\d.]+)",

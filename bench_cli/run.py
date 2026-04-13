@@ -162,7 +162,7 @@ def run(
         if data.tasks:
             click.echo(format_all_tables(data))
         else:
-            click.echo("  (no scored logs found in log dir — run bench compare after eval completes)")
+            click.echo("  (no scored logs found — run bench compare after eval completes)")
 
 
 def _resolve_agent_solver(agent: str) -> None:

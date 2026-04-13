@@ -5,10 +5,10 @@ import stat
 
 import pytest
 
-from scorers.verify_sh import verify_sh
-
 # Helpers imported from conftest.py
 from conftest import make_task_state, run_async
+
+from scorers.verify_sh import verify_sh
 
 
 def _make_script(content: str, tmpdir: str, name: str = "verify.sh") -> str:

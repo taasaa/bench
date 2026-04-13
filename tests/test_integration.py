@@ -3,7 +3,6 @@
 import importlib.util
 import os
 import sys
-import typing
 
 import pytest
 
@@ -68,6 +67,7 @@ class TestCompositeScorerWiring:
         scorer = _get_scorer_fn(t)
 
         import asyncio
+
         from inspect_ai.model import ChatMessageAssistant, ModelOutput
         from inspect_ai.scorer import Target
         from inspect_ai.solver import TaskState
@@ -104,6 +104,7 @@ class TestBasicTasksUseVerifySh:
         scorer = _get_scorer_fn(t)
 
         import asyncio
+
         from inspect_ai.model import ChatMessageAssistant, ModelOutput
         from inspect_ai.scorer import Target
         from inspect_ai.solver import TaskState
@@ -160,6 +161,7 @@ class TestVerificationTasksUnmodified:
         scorer = _get_scorer_fn(t)
 
         import asyncio
+
         from inspect_ai.model import ChatMessageAssistant, ModelOutput
         from inspect_ai.scorer import Target
         from inspect_ai.solver import TaskState

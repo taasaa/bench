@@ -5,8 +5,6 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).parent.parent.resolve()
 
 
@@ -52,7 +50,7 @@ def make_task_state(
     completion: str = "test output",
     messages: list | None = None,
     target: str = "expected",
-) -> TaskState:
+):
     """Factory for TaskState objects for scorer testing.
 
     Usage:
