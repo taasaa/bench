@@ -23,16 +23,16 @@ from scorers.baseline_store import BaselineStore
 from scorers.protocol import (
     LOOP_MESSAGE_THRESHOLD,
     MIN_RATIO_FLOOR,
-    SYSTEM_DEFAULT_BUDGETS,
     RatioSource,
-    TaskBudget,
+    resolve_baseline_reference,
 )
+from scorers.protocol import TaskBudget as TaskBudgetType
 
 
 @scorer(metrics=[mean()])
 def token_ratio_scorer(
     baseline_store: BaselineStore | None = None,
-    task_budget: TaskBudget | None = None,
+    task_budget: TaskBudgetType | None = None,
 ) -> None:
     """Score efficiency via unbounded token ratio.
 
@@ -43,47 +43,32 @@ def token_ratio_scorer(
                      to the next tier in the resolution chain.
     """
 
-    def _resolve_reference(task_id: str, model_id: str) -> tuple[float, RatioSource, str | None]:
-        """Resolve reference tokens and source for a (task, model) pair.
-
-        Returns (reference_tokens, source, reference_model).
-        """
-        # Tier 1: Baseline store
-        if baseline_store is not None:
-            baseline = baseline_store.load(task_id, model_id)
-            if baseline is not None and baseline.valid_for_reference:
-                return float(
-                    baseline.output_tokens or baseline.total_tokens,
-                ), RatioSource.BASELINE, baseline.model_id
-
-        # Tier 2: Task budget
-        if task_budget is not None and task_budget.output_tokens is not None:
-            return float(task_budget.output_tokens), RatioSource.TASK_BUDGET, None
-
-        # Tier 3: System default
-        return SYSTEM_DEFAULT_BUDGETS["output_tokens"], RatioSource.SYSTEM_DEFAULT, None
-
     async def score(state: TaskState, target: Target) -> Score:
-        actual_tokens = state.token_usage  # total tokens only (no input/output split in TaskState)
+        actual_tokens = state.token_usage  # total tokens only (no input/output split)
 
-        # Extract task_id from metadata or fallback to sample_id
-        task_id = state.metadata.get("task_name", str(state.sample_id))
+        task_id = (
+            state.metadata.get("task_name", str(state.sample_id))
+            if state.metadata
+            else str(state.sample_id)
+        )
         model_id = str(state.model)
 
-        reference_tokens, source, ref_model = _resolve_reference(task_id, model_id)
+        # Tier 1: baseline
+        reference_tokens, source, ref_model = resolve_baseline_reference(
+            baseline_store, task_id, model_id, "output_tokens"
+        )
+        # Tier 2: task budget override
+        if task_budget is not None and task_budget.output_tokens is not None:
+            reference_tokens = float(task_budget.output_tokens)
+            source = RatioSource.TASK_BUDGET
+            ref_model = None
 
-        # Compute ratio
         raw_ratio = reference_tokens / actual_tokens if actual_tokens > 0 else MIN_RATIO_FLOOR
 
-        # Loop detection heuristic: too many messages suggests re-reading/looping
-        # (Cannot use input/output ratio — TaskState only exposes total tokens)
         message_count = len(state.messages)
         potential_loop = message_count > LOOP_MESSAGE_THRESHOLD
-
-        # For MEAN computation: floor to avoid log(0). Actual ratio NOT floored.
         ratio_for_mean = max(MIN_RATIO_FLOOR, raw_ratio)
 
-        # Build explanation
         loop_note = " ⚇" if potential_loop else ""
         explanation = (
             f"efficiency_ratio={raw_ratio:.3f}{loop_note}, "
@@ -98,9 +83,9 @@ def token_ratio_scorer(
             explanation=explanation,
             metadata={
                 "pillar": "efficiency",
-                "ratio": raw_ratio,  # actual ratio (unfloored for display)
+                "ratio": raw_ratio,
                 "actual_total_tokens": actual_tokens,
-                "actual_input_tokens": None,  # unavailable — TaskState.token_usage is total only
+                "actual_input_tokens": None,
                 "reference_tokens": int(reference_tokens),
                 "reference_source": source.value,
                 "reference_model": ref_model,
