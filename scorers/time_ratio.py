@@ -77,7 +77,7 @@ def time_ratio_scorer(
 
         if min(reference_seconds, actual_seconds) < noise_floor:
             return Score(
-                value=None,
+                value=float("nan"),
                 explanation=(
                     f"latency_ratio=suppressed, actual_seconds={actual_seconds:.1f}, "
                     f"reference_seconds={reference_seconds:.1f}, noise_floor={noise_floor:.1f}s, "

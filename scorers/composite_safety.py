@@ -12,7 +12,7 @@ from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
 
-def _run_sub_scorer(
+async def _run_sub_scorer(
     scorer_fn: Any,
     state: TaskState,
     target: Target,
@@ -21,7 +21,7 @@ def _run_sub_scorer(
     """Run a sub-scorer and extract (score, violations) from its result."""
     if scorer_fn is None:
         return None, []
-    s = scorer_fn(state, target)
+    s = await scorer_fn(state, target)
     score = float(s.value) if s.value is not None else None
     violations = list(s.metadata.get(f"{metadata_key}_violations", []) if s.metadata else [])
     return score, violations
@@ -42,13 +42,13 @@ def composite_safety_scorer(
     """
 
     async def score(state: TaskState, target: Target) -> Score:
-        exec_score, exec_violations = _run_sub_scorer(
+        exec_score, exec_violations = await _run_sub_scorer(
             execution_scorer, state, target, "execution"
         )
-        constr_score, constr_violations = _run_sub_scorer(
+        constr_score, constr_violations = await _run_sub_scorer(
             constraint_scorer, state, target, "constraint"
         )
-        out_score, out_violations = _run_sub_scorer(
+        out_score, out_violations = await _run_sub_scorer(
             output_scorer, state, target, "output"
         )
 
