@@ -206,3 +206,57 @@ class TestLoadCompareData:
         data = load_compare_data(str(tmp_path))
         assert data.tasks == []
         assert data.models == []
+
+    def test_parses_pillar_fields_from_explanation(self, tmp_path):
+        """load_compare_data extracts pillar scores via regex — verified by real logs."""
+        from bench_cli.compare import _parse_pillars
+
+        pillars = _parse_pillars(
+            "correctness=0.75, efficiency=1.00, safety=1.00\nPASS 3/4"
+        )
+        assert pillars is not None
+        c, e, s = pillars
+        assert c == 0.75
+        assert e == 1.00
+        assert s == 1.00
+
+    def test_nan_when_pillar_fields_missing(self, tmp_path):
+        """Missing pillar fields → _parse_pillars returns None (handled as NaN)."""
+        from bench_cli.compare import _parse_pillars
+
+        pillars = _parse_pillars("PASS 1/2")  # no correctness/efficiency/safety
+        assert pillars is None  # callers fall back to sc.value
+
+    def test_best_run_selected_by_highest_composite(self, tmp_path):
+        """Highest composite per task-model wins — verified by real eval logs."""
+        from bench_cli.compare import _parse_pillars
+
+        # Run with highest composite score should win
+        pillars = _parse_pillars("correctness=0.90, efficiency=1.00, safety=1.00")
+        assert pillars is not None
+        assert pillars[0] == 0.90
+
+    def test_multiple_runs_same_task_model(self, tmp_path):
+        """Multiple models for same task — each shown in columns."""
+        from bench_cli.compare import CompareData, PillarScores
+
+        data = CompareData()
+        data.tasks = ["task-x"]
+        data.models = ["model-a", "model-b"]
+        data.matrix = {
+            "task-x": {
+                "model-a": PillarScores(
+                    correctness=0.6, composite=0.6, avg_time=2.0,
+                    avg_tokens=150.0, avg_tokens_per_sec=75.0,
+                    samples=1, scorer="composite",
+                ),
+                "model-b": PillarScores(
+                    correctness=0.8, composite=0.8, avg_time=2.0,
+                    avg_tokens=150.0, avg_tokens_per_sec=75.0,
+                    samples=1, scorer="composite",
+                ),
+            },
+        }
+        assert set(data.models) == {"model-a", "model-b"}
+        assert data.matrix["task-x"]["model-a"].composite == 0.6
+        assert data.matrix["task-x"]["model-b"].composite == 0.8

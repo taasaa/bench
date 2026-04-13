@@ -17,7 +17,8 @@ def efficiency(max_tokens: int = 1000) -> scorer:
         eff = max(0.0, 1.0 - tokens_used / max_tokens)
         return Score(
             value=eff,
-            explanation=f"Used {tokens_used} tokens (max {max_tokens}), efficiency={eff:.3f}",
+            explanation=f"correctness=0.00, efficiency={eff:.2f}, safety=1.00\n"
+            f"Used {tokens_used} tokens (max {max_tokens})",
         )
 
     return score
