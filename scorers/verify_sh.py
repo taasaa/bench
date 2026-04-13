@@ -7,8 +7,6 @@ import inspect
 import os
 import re
 import subprocess
-from functools import lru_cache
-
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
@@ -22,24 +20,51 @@ _PASS_BARE_RE = re.compile(r"^PASS\s*$", re.MULTILINE)
 
 
 def _find_task_dir() -> str:
-    """Walk the call stack to find the task module's directory.
+    """Find the task module directory.
 
-    inspect_ai does not expose the task module path to scorers via any
-    API, so we walk stack frames until we find a .py file under tasks/.
-    This works because the scorer is called synchronously from the task
-    module during evaluation.
+    Strategy: manually walk the frame chain (via f_back) checking f_globals["__file__"]
+    for a path under tasks/.  This works because the scorer's closure is created
+    inside task.py (which calls verify_sh()), so task.py's globals are on the chain.
+
+    inspect.getfile(code_object) does NOT work in async contexts because it uses
+    co_filename, not f_globals["__file__"].  Manual f_back walking always works.
     """
-    for frame_info in inspect.getouterframes(inspect.currentframe(), context=2):
-        path = frame_info.filename
-        # Match task module paths like:
-        #   /Users/rut/dev/bench/tasks/competence/f12-surgical-fix/task.py
-        #   tasks/competence/f12-surgical-fix/task.py
-        if "/tasks/" in path or "\\tasks\\" in path:
-            task_dir = os.path.dirname(path)
-            if os.path.isdir(task_dir):
-                return task_dir
-        elif path.endswith("/tasks/__init__.py") or path.endswith("\\tasks\\__init__.py"):
-            return os.path.dirname(os.path.dirname(path))
+    import sys
+    frame = inspect.currentframe()
+    frames_checked = []
+    try:
+        depth = 0
+        while frame is not None and depth < 30:
+            depth += 1
+            try:
+                file = frame.f_globals.get("__file__", "")
+                frames_checked.append(file)
+                if file and ("/tasks/" in file or "\\tasks\\" in file):
+                    task_dir = os.path.dirname(os.path.abspath(file))
+                    if os.path.isdir(task_dir):
+                        print(f"[verify_sh _find_task_dir] HIT: task_dir={task_dir}", file=sys.stderr, flush=True)
+                        return task_dir
+            except Exception:
+                pass
+            frame = frame.f_back
+        print(f"[verify_sh _find_task_dir] no tasks/ frame in {len(frames_checked)} frames: {frames_checked}", file=sys.stderr, flush=True)
+    finally:
+        del frame  # avoid cycle
+
+    # Fallback: scan sys.modules for any module under tasks/
+    for module in sys.modules.values():
+        if module is None:
+            continue
+        try:
+            file = getattr(module, "__file__", None)
+            if file and ("/tasks/" in file or "\\tasks\\" in file):
+                task_dir = os.path.dirname(file)
+                if os.path.isdir(task_dir):
+                    print(f"[verify_sh _find_task_dir] fallback HIT via sys.modules: {task_dir}", file=sys.stderr, flush=True)
+                    return task_dir
+        except Exception:
+            continue
+    print(f"[verify_sh _find_task_dir] all strategies failed, cwd={os.getcwd()}", file=sys.stderr, flush=True)
     return os.getcwd()
 
 
@@ -56,19 +81,35 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
             Resolved relative to the task module's directory.
         timeout: Maximum seconds to wait for the script (default: 30).
     """
-    # Resolve task_dir once per scorer instance (not per sample) via stack introspection.
-    # Cache the result since all samples in the same task use the same task module.
-    @lru_cache(maxsize=1)
+    # Resolve task_dir once per scorer instance (not per sample).
+    # task_dir does not change across samples in the same task.
+    _task_dir: str | None = None
+
     def _cached_task_dir() -> str:
-        return _find_task_dir()
+        nonlocal _task_dir
+        if _task_dir is None:
+            _task_dir = _find_task_dir()
+        return _task_dir
 
     async def score(state: TaskState, target: Target) -> Score:
+        # Resolve script path.
+        # Priority: bench_task_dir injected by bench run CLI via Task metadata.
+        # Falls back to cached frame-walk detection if not available.
+        bench_task_dir = None
+        if state.metadata:
+            bench_task_dir = state.metadata_as.get("bench_task_dir")
+        if bench_task_dir:
+            script_path = os.path.join(bench_task_dir, script_name)
+            return _score_with_sh(state, script_path, bench_task_dir)
+
+        # Fallback: detect via frame walk + sys.modules scan.
+        script_path = os.path.join(_cached_task_dir(), script_name)
+        return _score_with_sh(state, script_path, _cached_task_dir())
+
+    def _score_with_sh(state: TaskState, script_path: str, task_dir: str) -> Score:
         output_text = state.output.completion if state.output else ""
         if not output_text:
             return Score(value=0.0, explanation="verify_sh: empty model output")
-
-        task_dir = _cached_task_dir()
-        script_path = os.path.join(task_dir, script_name)
 
         if not os.path.isfile(script_path):
             return Score(value=0.0, explanation=f"verify_sh: script not found: {script_path}")
