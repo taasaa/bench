@@ -12,8 +12,10 @@ def cli() -> None:
 
 # Import and register subcommands so they attach to the group.
 # Placed at bottom to avoid circular imports.
+from bench_cli.baseline import baseline
 from bench_cli.compare import compare
 from bench_cli.run import run
 
 cli.add_command(run)
 cli.add_command(compare)
+cli.add_command(baseline)
