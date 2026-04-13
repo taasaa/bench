@@ -102,71 +102,75 @@ class TestCompareData:
 
 class TestFormatPivotTable:
     def test_empty_message(self, empty_data):
-        result = format_pivot_table(empty_data, "composite")
+        result = format_pivot_table(empty_data, "PILLAR SCORES")
         assert "No scored eval logs" in result
 
     def test_task_names_shown(self, two_model_data):
-        result = format_pivot_table(two_model_data, "composite")
+        result = format_pivot_table(two_model_data, "PILLAR SCORES")
         assert "task_a" in result
         assert "task_b" in result
 
-    def test_model_names_shortened(self, two_model_data):
-        result = format_pivot_table(two_model_data, "composite")
-        # model names should be shortened (openai/ prefix stripped by _short_model)
+    def test_model_names_shown(self, two_model_data):
+        result = format_pivot_table(two_model_data, "PILLAR SCORES")
         assert "model-x" in result
         assert "model-y" in result
 
-    def test_composite_values(self, two_model_data):
-        result = format_pivot_table(two_model_data, "composite")
-        # task_a / model-x has composite 0.75
+    def test_correctness_column(self, two_model_data):
+        result = format_pivot_table(two_model_data, "PILLAR SCORES")
         assert "task_a" in result
-        # NaN/missing cells should show as "—"
-        assert "—" in result  # task_b / model-y has no data
+        assert "—" in result  # missing cells
 
-    def test_correctness_pillar(self, two_model_data):
-        result = format_pivot_table(two_model_data, "correctness")
-        assert "task_a" in result
-        # model-x task_a has correctness 0.9
+    def test_pillar_columns_present(self, two_model_data):
+        result = format_pivot_table(two_model_data, "PILLAR SCORES")
+        assert "CORRECT" in result
+        assert "EFF_RATIO" in result
+        assert "LAT_RATIO" in result
+        assert "EXEC_SAFE" in result
+        assert "CONSTR" in result
+        assert "OUT_SAFE" in result
 
-    def test_time_pillar(self, two_model_data):
-        result = format_pivot_table(two_model_data, "time")
-        assert "task_a" in result
-        # time should be formatted as seconds
-
-    def test_tokens_pillar(self, two_model_data):
-        result = format_pivot_table(two_model_data, "tokens")
-        assert "task_a" in result
-
-    def test_speed_pillar(self, two_model_data):
-        result = format_pivot_table(two_model_data, "speed")
-        assert "task_a" in result
+    def test_absolute_metrics_columns(self, two_model_data):
+        result = format_pivot_table(two_model_data, "PILLAR SCORES")
+        assert "TOK_OUT" in result
+        assert "LAT_S" in result
 
     def test_mean_row(self, two_model_data):
-        result = format_pivot_table(two_model_data, "composite")
+        result = format_pivot_table(two_model_data, "PILLAR SCORES")
         assert "MEAN" in result
 
 
 class TestFormatAllTables:
-    def test_composite_section(self, two_model_data):
+    def test_pillar_table_section(self, two_model_data):
         result = format_all_tables(two_model_data)
-        assert "COMPOSITE" in result
+        # New two-tier format shows PILLAR SCORES table
+        assert "PILLAR SCORES" in result
 
-    def test_correctness_section(self, two_model_data):
+    def test_correctness_column(self, two_model_data):
         result = format_all_tables(two_model_data)
-        assert "CORRECTNESS" in result
+        # CORRECT column should be present
+        assert "CORRECT" in result
 
-    def test_tokens_section(self, two_model_data):
+    def test_efficiency_ratio_column(self, two_model_data):
         result = format_all_tables(two_model_data)
-        # Should have tokens section
-        assert "TOKENS" in result
+        # EFF_RATIO column should be present
+        assert "EFF_RATIO" in result
 
-    def test_time_section(self, two_model_data):
+    def test_latency_column(self, two_model_data):
         result = format_all_tables(two_model_data)
-        assert "TIME" in result
+        assert "LAT_RATIO" in result
 
-    def test_speed_section(self, two_model_data):
+    def test_safety_columns(self, two_model_data):
         result = format_all_tables(two_model_data)
-        assert "TOKENS/SEC" in result
+        # Safety sub-score columns
+        assert "EXEC_SAFE" in result
+        assert "CONSTR" in result
+        assert "OUT_SAFE" in result
+
+    def test_absolute_metrics_columns(self, two_model_data):
+        result = format_all_tables(two_model_data)
+        # Absolute metric columns
+        assert "TOK_OUT" in result
+        assert "LAT_S" in result
 
 
 class TestFormatJson:
@@ -195,8 +199,13 @@ class TestFormatJson:
         assert "composite" in row
         assert "correctness" in row
         assert "avg_tokens" in row
+        assert "avg_output_tokens" in row
         assert "avg_time" in row
-        assert "tokens_per_sec" in row
+        assert "efficiency_ratio" in row
+        assert "latency_ratio" in row
+        assert "exec_safety" in row
+        assert "constraint_adherence" in row
+        assert "output_safety" in row
         assert "samples" in row
 
 
