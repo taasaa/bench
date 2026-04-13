@@ -24,15 +24,31 @@ from bench_cli.run import _discover_tasks  # noqa: E402
 
 @pytest.fixture
 def tasks_root(tmp_path: Path, monkeypatch):
-    """Create a temporary tasks/ directory tree with fake task.py files."""
+    """Create a temporary tasks/ directory tree with valid @task files.
+
+    Each task.py contains a minimal @task-decorated function so _resolve_task()
+    can load and call it without needing real dataset files or verify.sh.
+    """
     tasks = tmp_path / "tasks"
+    task_file_content = '''\
+"""Fixture task for CLI testing."""
+from inspect_ai import Task, task
+from inspect_ai.dataset import MemoryDataset
+
+@task
+def fixture_task():
+    return Task(
+        dataset=MemoryDataset(samples=[]),
+        scorer=None,
+    )
+'''
     for d in [
         "verification/smoke",
         "verification/agent_smoke",
         "competence/add-tests",
     ]:
         (tasks / d).mkdir(parents=True)
-        (tasks / d / "task.py").write_text("# task")
+        (tasks / d / "task.py").write_text(task_file_content)
     monkeypatch.chdir(tmp_path)
     return tasks
 
@@ -123,7 +139,7 @@ class TestCLIInvocation:
     def test_run_help_shows_defaults(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["run", "--help"])
-        assert "openai/rut-small" in result.output
+        assert "openai/default" in result.output
         assert "quick" in result.output
         assert "logs" in result.output
 
@@ -139,26 +155,30 @@ class TestRunIntegration:
 
     def test_run_discovers_and_passes_specs(self, tasks_root):
         """Verify bench run discovers tasks and calls eval() with them."""
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
-            # Return a fake EvalLog-like object
             from types import SimpleNamespace
 
             fake_log = SimpleNamespace(
                 status="success",
-                eval=SimpleNamespace(task="smoke"),
+                eval=SimpleNamespace(task="fixture_task"),
                 results=SimpleNamespace(
                     scores=[SimpleNamespace(metrics={"mean": SimpleNamespace(value=1.0)})]
                 ),
             )
             mock_eval.return_value = [fake_log]
-
-            result = runner.invoke(cli, ["run", "--model", "openai/rut-small", "--tier", "quick"])
+            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                result = runner.invoke(
+                    cli, ["run", "--model", "openai/default", "--tier", "quick"]
+                )
 
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args
-        # Verify task specs were passed
+        # Verify tasks were resolved and passed
         tasks_arg = (
             call_kwargs.kwargs.get("tasks")
             or call_kwargs[1].get("tasks")
@@ -166,31 +186,34 @@ class TestRunIntegration:
         )
         assert len(tasks_arg) == 2
         # Verify model was passed
-        model_arg = (
-            call_kwargs.kwargs.get("model")
-            or "openai/rut-small" in str(call_kwargs)
-        )
-        assert model_arg
+        model_arg = call_kwargs.kwargs.get("model")
+        assert model_arg == "openai/default"
 
     def test_run_exits_1_on_error_status(self, tasks_root):
         """Verify non-zero exit when any eval task errors."""
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             from types import SimpleNamespace
 
             error_log = SimpleNamespace(
                 status="error",
-                eval=SimpleNamespace(task="smoke"),
+                eval=SimpleNamespace(task="fixture_task"),
                 results=None,
             )
             mock_eval.return_value = [error_log]
-
-            result = runner.invoke(cli, ["run", "--tier", "quick"])
+            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                result = runner.invoke(cli, ["run", "--tier", "quick"])
 
         assert result.exit_code == 1
 
     def test_run_with_agent_flag(self, tasks_root):
         """Verify --agent passes a solver to eval()."""
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             with patch("bench_cli.run._resolve_agent_solver") as mock_solver:
@@ -199,12 +222,14 @@ class TestRunIntegration:
                 mock_solver.return_value = "fake_solver"
                 fake_log = SimpleNamespace(
                     status="success",
-                    eval=SimpleNamespace(task="agent_smoke"),
+                    eval=SimpleNamespace(task="fixture_task"),
                     results=None,
                 )
                 mock_eval.return_value = [fake_log]
-
-                result = runner.invoke(cli, ["run", "--agent", "claude", "--tier", "quick"])
+                with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                    result = runner.invoke(
+                        cli, ["run", "--agent", "claude", "--tier", "quick"]
+                    )
 
         assert result.exit_code == 0, result.output
         mock_solver.assert_called_once_with("claude")
