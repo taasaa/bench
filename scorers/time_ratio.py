@@ -19,16 +19,16 @@ from scorers.baseline_store import BaselineStore
 from scorers.protocol import (
     DEFAULT_NOISE_FLOOR,
     MIN_RATIO_FLOOR,
-    SYSTEM_DEFAULT_BUDGETS,
     RatioSource,
-    TaskBudget,
+    resolve_baseline_reference,
 )
+from scorers.protocol import TaskBudget as TaskBudgetType
 
 
 @scorer(metrics=[mean()])
 def time_ratio_scorer(
     baseline_store: BaselineStore | None = None,
-    task_budget: TaskBudget | None = None,
+    task_budget: TaskBudgetType | None = None,
 ) -> None:
     """Score latency via unbounded ratio.
 
@@ -43,22 +43,7 @@ def time_ratio_scorer(
             return task_budget.noise_floor_seconds
         return DEFAULT_NOISE_FLOOR
 
-    def _resolve_reference(task_id: str, model_id: str) -> tuple[float, RatioSource, str | None]:
-        # Tier 1: Baseline store
-        if baseline_store is not None:
-            baseline = baseline_store.load(task_id, model_id)
-            if baseline is not None and baseline.valid_for_reference:
-                return baseline.latency_seconds, RatioSource.BASELINE, baseline.model_id
-
-        # Tier 2: Task budget
-        if task_budget is not None and task_budget.latency_seconds is not None:
-            return float(task_budget.latency_seconds), RatioSource.TASK_BUDGET, None
-
-        # Tier 3: System default
-        return SYSTEM_DEFAULT_BUDGETS["latency_seconds"], RatioSource.SYSTEM_DEFAULT, None
-
     async def score(state: TaskState, target: Target) -> Score:
-        # bench_working_time injected by bench run CLI into Task metadata
         actual_seconds = state.metadata.get("bench_working_time") if state.metadata else None
         if actual_seconds is None:
             return Score(
@@ -80,10 +65,16 @@ def time_ratio_scorer(
         model_id = str(state.model)
         noise_floor = _noise_floor()
 
-        reference_seconds, source, ref_model = _resolve_reference(task_id, model_id)
+        # Tier 1: baseline
+        reference_seconds, source, ref_model = resolve_baseline_reference(
+            baseline_store, task_id, model_id, "latency_seconds"
+        )
+        # Tier 2: task budget override
+        if task_budget is not None and task_budget.latency_seconds is not None:
+            reference_seconds = float(task_budget.latency_seconds)
+            source = RatioSource.TASK_BUDGET
+            ref_model = None
 
-        # Noise floor: suppress if min(reference, actual) < noise_floor
-        # Applies per-sample. Multi-sample means average out the noise.
         if min(reference_seconds, actual_seconds) < noise_floor:
             return Score(
                 value=None,
@@ -103,10 +94,7 @@ def time_ratio_scorer(
                 },
             )
 
-        # Compute ratio
         raw_ratio = reference_seconds / actual_seconds
-
-        # For MEAN: floor avoids log(0). Actual ratio unfloored.
         ratio_for_mean = max(MIN_RATIO_FLOOR, raw_ratio)
 
         explanation = (

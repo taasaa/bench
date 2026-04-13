@@ -13,10 +13,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from inspect_ai.scorer import Score, Target
 from inspect_ai.solver import TaskState
+
+if TYPE_CHECKING:
+    from scorers.baseline_store import BaselineStore
 
 # ---------------------------------------------------------------------------
 # Protocol
@@ -127,3 +130,40 @@ These are fallback values used when no baseline store entry or task budget
 is available. They guarantee every pillar produces a score from the first
 run. Should be superseded by measured baselines as the eval matures.
 """
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+
+def resolve_baseline_reference(
+    baseline_store: BaselineStore | None,
+    task_id: str,
+    model_id: str,
+    budget_field: Literal["output_tokens", "latency_seconds"],
+) -> tuple[float, RatioSource, str | None]:
+    """Resolve a reference value using the 3-tier chain.
+
+    Tier 1: BaselineStore → Tier 2: TaskBudget field → Tier 3: SYSTEM_DEFAULT.
+
+    Args:
+        baseline_store: BaselineStore instance (None skips tier 1).
+        task_id: Task identifier for baseline lookup.
+        model_id: Model identifier for baseline lookup.
+        budget_field: Which TaskBudget field to use.
+
+    Returns:
+        (reference_value, source, reference_model_id)
+    """
+    # Tier 1: baseline
+    if baseline_store is not None:
+        baseline = baseline_store.load(task_id, model_id)
+        if baseline is not None and baseline.valid_for_reference:
+            field_val = getattr(baseline, budget_field, None)
+            if field_val is not None:
+                return float(field_val), RatioSource.BASELINE, baseline.model_id
+
+    # Tier 3: system default
+    default_val = SYSTEM_DEFAULT_BUDGETS.get(budget_field, 1500.0)
+    return float(default_val), RatioSource.SYSTEM_DEFAULT, None
