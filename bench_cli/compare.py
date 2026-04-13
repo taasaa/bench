@@ -46,13 +46,24 @@ _RE_SAFETY = re.compile(r"safety(?:_gate)?=([\d.]+)")
 
 
 def _parse_pillars(explanation: str) -> tuple[float, float, float] | None:
-    """Extract correctness, efficiency, safety from a score explanation."""
+    """Extract correctness, efficiency, safety from a score explanation.
+
+    Handles both new format (all three pillars present) and legacy format
+    (correctness only, e.g. 'correctness=0.00\\nFAIL'). For legacy format,
+    efficiency and safety default to 1.00.
+    """
     m_c = _RE_CORRECTNESS.search(explanation)
+    if not m_c:
+        return None
+    c = float(m_c.group(1))
+
     m_e = _RE_EFFICIENCY.search(explanation)
+    e = float(m_e.group(1)) if m_e else 1.0
+
     m_s = _RE_SAFETY.search(explanation)
-    if m_c and m_e and m_s:
-        return float(m_c.group(1)), float(m_e.group(1)), float(m_s.group(1))
-    return None
+    s = float(m_s.group(1)) if m_s else 1.0
+
+    return (c, e, s)
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +159,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         if key not in best or mean_composite > best[key].composite:
             n = len(samples)
             avg_c = sum(s[0] for s in samples) / n
+
             avg_t = sum(s[2] for s in samples) / n
             avg_tok = sum(s[3] for s in samples) / n
             avg_out_tok = sum(s[4] for s in samples) / n
