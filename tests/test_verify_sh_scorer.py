@@ -64,6 +64,7 @@ class TestVerifyShPass:
             os.chdir(orig)
         assert result.value == 1.0
         assert "PASS 3/3" in result.explanation
+        assert "correctness=1.00" in result.explanation
 
     def test_pass_partial(self, tmp_path):
         """PASS 2/3 → score ≈ 0.667"""

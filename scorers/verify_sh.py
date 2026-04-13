@@ -105,19 +105,19 @@ def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIM
             value = n / m if m > 0 else 0.0
             return Score(
                 value=value,
-                explanation=combined,
+                explanation=f"correctness={value:.2f}\n{combined}",
             )
 
         if _PASS_BARE_RE.search(stdout):
             return Score(
                 value=1.0,
-                explanation=combined,
+                explanation=f"correctness=1.00\n{combined}",
             )
 
         # FAIL or unrecognised output
         return Score(
             value=0.0,
-            explanation=combined,
+            explanation=f"correctness=0.00\n{combined}",
         )
 
     return score
