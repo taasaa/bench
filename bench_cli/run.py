@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from inspect_ai import Task, task
 from pathlib import Path
 
 import click
+from inspect_ai import Task, task
 
 # ---------------------------------------------------------------------------
 # Task discovery
@@ -157,7 +157,7 @@ def run(
     if list_tasks:
         specs = _discover_tasks(tier, max_tasks=None, task_filter=None)
         click.echo(f"Tasks available for tier '{tier}':")
-        click.echo(f"  (use --tier to filter; default is 'quick')")
+        click.echo("  (use --tier to filter; default is 'quick')")
         click.echo()
         for spec in specs:
             click.echo(f"  {spec}")
@@ -198,7 +198,12 @@ def run(
         all_results = []
         for i, spec in enumerate(specs, 1):
             click.echo(f"[{i}/{len(specs)}] Running {spec}")
-            result = inspect_eval(tasks=[tasks_with_metadata[i - 1]], model=model, solver=solver, log_dir=log_dir)
+            result = inspect_eval(
+                tasks=[tasks_with_metadata[i - 1]],
+                model=model,
+                solver=solver,
+                log_dir=log_dir,
+            )
             all_results.extend(result)
             click.echo(f"  → {result[0].eval.task}: {result[0].status}")
             if result[0].results and result[0].results.scores:

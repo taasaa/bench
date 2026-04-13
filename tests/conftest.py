@@ -50,18 +50,21 @@ def make_task_state(
     completion: str = "test output",
     messages: list | None = None,
     target: str = "expected",
+    bench_task_dir: str | None = None,
 ):
     """Factory for TaskState objects for scorer testing.
 
     Usage:
         state = make_task_state("my output")
         state = make_task_state("my output", target="expected")
+        state = make_task_state("my output", bench_task_dir="/path/to/task")
     """
     from inspect_ai.model import ChatMessageAssistant, ModelOutput
     from inspect_ai.scorer import Target
     from inspect_ai.solver import TaskState
 
     output = ModelOutput.from_content(model="test-model", content=completion)
+    metadata = {"bench_task_dir": bench_task_dir} if bench_task_dir else None
     return TaskState(
         model="test-model",
         sample_id="test-sample",
@@ -70,4 +73,5 @@ def make_task_state(
         messages=messages or [ChatMessageAssistant(content=completion)],
         target=Target(target),
         output=output,
+        metadata=metadata,
     )
