@@ -1,4 +1,14 @@
-"""EvalLog reading, pillar extraction, and pillar-table comparison."""
+"""EvalLog reading, pillar extraction, and pillar-table comparison.
+
+Each task has 3 independent scorers producing separate Score objects:
+  - verify_sh           → correctness (value = pass/total ratio)
+  - token_ratio_scorer  → efficiency (value = ref_tokens/actual_tokens)
+  - time_ratio_scorer   → latency    (value = ref_seconds/actual_seconds)
+
+load_compare_data iterates ALL scorers per sample to extract each pillar
+from its dedicated scorer, rather than trying to parse everything from
+scores[0] (which was the old broken approach).
+"""
 
 from __future__ import annotations
 
@@ -6,45 +16,28 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scorers.composite import CORRECTNESS_WEIGHT, EFFICIENCY_WEIGHT
-
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
 
 @dataclass
-
-
 class PillarScores:
-
     """Score breakdown for one (task, model) pair — averaged over samples."""
 
-    # Required positional fields (legacy compatibility)
     correctness: float
-    composite: float
-    avg_time: float  # mean working_time per sample in seconds
-    avg_tokens: float  # mean total tokens per sample
-    avg_tokens_per_sec: float  # output tokens / working_time
+    token_ratio: float
+    time_ratio: float
+    avg_tokens: float      # mean total tokens per sample
+    avg_time: float        # mean working_time per sample in seconds
     samples: int
-    scorer: str
-    safety: float = 1.0  # only surfaced on failure
 
-    # New optional fields — come AFTER required fields
-    efficiency_ratio: float | None = None
-    latency_ratio: float | None = None
-    exec_safety: float | None = None
-    constraint_adherence: float | None = None
-    output_safety: float | None = None
-    avg_output_tokens: float = 0.0
-    tool_call_count: int = 0
-    potential_loop: bool = False
+    # Per-sample counts for suppression/bookkeeping
+    token_suppressed: int = 0
+    time_suppressed: int = 0
 
 
 @dataclass
-
-
 class CompareData:
-
     """All comparison data extracted from logs."""
     # task_name -> model_name -> PillarScores (best run per pair)
     matrix: dict[str, dict[str, PillarScores]] = field(default_factory=dict)
@@ -53,69 +46,54 @@ class CompareData:
 
 
 # ---------------------------------------------------------------------------
-# Pillar parsing (handles both legacy and new explanation formats)
+# Score extraction helpers
 # ---------------------------------------------------------------------------
 
-_RE_CORRECTNESS = re.compile(r"correctness=([\d.]+)")
-_RE_EFFICIENCY = re.compile(r"(?:efficiency_ratio|efficiency)=([\d.]+)")
-_RE_SAFETY = re.compile(r"safety(?:_gate)?=([\d.]+)")
 _RE_EFF_RATIO = re.compile(r"efficiency_ratio=([\d.]+)")
 _RE_LAT_RATIO = re.compile(r"latency_ratio=([\d.]+)")
-_RE_EXEC_SAFE = re.compile(r"exec_safety=([\d.]+)")
-_RE_CONSTR = re.compile(r"constraint_adherence=([\d.]+)")
-_RE_OUT_SAFE = re.compile(r"output_safety=([\d.]+)")
 _RE_LOOP = re.compile(r"potential_loop=(true|false)")
-_RE_PASS = re.compile(r"PASS (\d+)/(\d+)")
 
 
-def _parse_pillars(explanation: str) -> tuple[float, float, float] | None:
-    """Extract correctness, efficiency, safety from a score explanation.
+def _extract_from_scorers(
+    sample_scores: dict,
+) -> tuple[float | None, float | None, float | None]:
+    """Extract (correctness, token_ratio, time_ratio) from a sample's score dict.
 
-    Handles both new format (all three pillars present) and legacy format
-    (correctness only, e.g. 'correctness=0.00\\nFAIL'). For legacy format,
-    efficiency and safety default to 1.00.
+    Each scorer has its own entry keyed by scorer name:
+      - "verify_sh"          → .value = correctness (0..1)
+      - "token_ratio_scorer" → .value = ratio (may be NaN if suppressed)
+      - "time_ratio_scorer"  → .value = ratio (may be NaN if suppressed)
     """
-    m_c = _RE_CORRECTNESS.search(explanation)
-    if not m_c:
-        return None
-    c = float(m_c.group(1))
+    correctness = None
+    token_ratio = None
+    time_ratio = None
 
-    m_e = _RE_EFFICIENCY.search(explanation)
-    e = float(m_e.group(1)) if m_e else 1.0
+    sc_verify = sample_scores.get("verify_sh")
+    if sc_verify is not None:
+        val = sc_verify.value
+        if isinstance(val, (int, float)) and val == val:  # not NaN
+            correctness = float(val)
 
-    m_s = _RE_SAFETY.search(explanation)
-    s = float(m_s.group(1)) if m_s else 1.0
+    sc_token = sample_scores.get("token_ratio_scorer")
+    if sc_token is not None:
+        val = sc_token.value
+        if isinstance(val, (int, float)) and val == val:
+            token_ratio = float(val)
 
-    return (c, e, s)
+    sc_time = sample_scores.get("time_ratio_scorer")
+    if sc_time is not None:
+        val = sc_time.value
+        if isinstance(val, (int, float)) and val == val:
+            time_ratio = float(val)
+
+    return correctness, token_ratio, time_ratio
 
 
-def parse_pillar_scores(explanation: str) -> dict:
-    """Parse new two-tier explanation fields into a flat dict."""
-    if not explanation:
-        return {}
-    result = {}
-    m = _RE_CORRECTNESS.search(explanation)
-    if m:
-        result["correctness"] = float(m.group(1))
-    m = _RE_EFF_RATIO.search(explanation)
-    if m:
-        result["efficiency_ratio"] = float(m.group(1))
-    m = _RE_LAT_RATIO.search(explanation)
-    if m:
-        result["latency_ratio"] = float(m.group(1))
-    m = _RE_EXEC_SAFE.search(explanation)
-    if m:
-        result["exec_safety"] = float(m.group(1))
-    m = _RE_CONSTR.search(explanation)
-    if m:
-        result["constraint_adherence"] = float(m.group(1))
-    m = _RE_OUT_SAFE.search(explanation)
-    if m:
-        result["output_safety"] = float(m.group(1))
-    m = _RE_LOOP.search(explanation)
-    if m:
-        result["potential_loop"] = m.group(1) == "true"
-    return result
+def _is_suppressed(score) -> bool:
+    """Check if a scorer marked its result as suppressed (noise floor)."""
+    if hasattr(score, "metadata") and isinstance(score.metadata, dict):
+        return score.metadata.get("suppressed", False)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +103,8 @@ def parse_pillar_scores(explanation: str) -> dict:
 def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
     """Read eval logs and extract pillar-scored data.
 
-    For each (task, model) pair, keeps the run with the highest composite
-    score. Requires reading full logs (not header-only) to get per-sample
-    score explanations and timing.
+    For each (task, model) pair, keeps the run with the highest mean
+    correctness. Reads ALL scorers per sample — not just scores[0].
     """
     from inspect_ai.log import list_eval_logs, read_eval_log
 
@@ -139,11 +116,11 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
     if latest is not None:
         infos = infos[:latest]
 
-    # Accumulate all per-sample data per (task, model, run)
-    # Each entry: (samples, eval_log, scorer_name)
+    # Accumulate per-sample data per (task, model, run_name)
+    # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens, working_time, token_suppressed, time_suppressed)
     run_samples: dict[
         tuple[str, str, str],
-        tuple[list[tuple[float, float, float, int, int]], object, str],
+        list[tuple[float | None, float | None, float | None, int, float, bool, bool]],
     ] = {}
 
     for info in infos:
@@ -157,87 +134,79 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
 
         task = el.eval.task
         model = el.eval.model
-        scorer_name = el.results.scores[0].scorer
         run_key = (task, model, info.name)
 
-        samples_list: list[tuple[float, float, float, int, int]] = []
+        samples_list: list[
+            tuple[float | None, float | None, float | None, int, float, bool, bool]
+        ] = []
 
         for sample in el.samples:
-            sc = None
-            if isinstance(sample.scores, dict):
-                sc = sample.scores.get(scorer_name)
-            elif isinstance(sample.scores, list):
-                for s in sample.scores:
-                    if hasattr(s, "value"):
-                        sc = s
-                        break
-
-            if sc is None:
+            if not isinstance(sample.scores, dict):
                 continue
 
-            working_time = sample.working_time or 0.0
+            correctness, token_ratio, time_ratio = _extract_from_scorers(sample.scores)
+
             total_tokens = (
                 sum(u.total_tokens for u in sample.model_usage.values())
                 if sample.model_usage
                 else 0
             )
-            output_tokens = (
-                sum(u.output_tokens for u in sample.model_usage.values())
-                if sample.model_usage
-                else 0
-            )
+            working_time = sample.working_time or 0.0
 
-            pillars = _parse_pillars(sc.explanation or "")
-            if pillars:
-                c, _e, s = pillars
-                composite = c * CORRECTNESS_WEIGHT + _e * EFFICIENCY_WEIGHT
-                samples_list.append((c, composite, working_time, total_tokens, output_tokens))
-            else:
-                val = sc.value if isinstance(sc.value, (int, float)) else 0.0
-                samples_list.append(
-                    (float("nan"), float(val), working_time, total_tokens, output_tokens)
-                )
+            tok_supp = _is_suppressed(sample.scores.get("token_ratio_scorer"))
+            time_supp = _is_suppressed(sample.scores.get("time_ratio_scorer"))
+
+            samples_list.append((
+                correctness, token_ratio, time_ratio,
+                total_tokens, working_time,
+                tok_supp, time_supp,
+            ))
 
         if samples_list:
-            run_samples[run_key] = (samples_list, el, scorer_name)
+            run_samples[run_key] = samples_list
 
-    # For each (task, model), pick the best run by mean composite
+    # For each (task, model), pick the best run by mean correctness
     best: dict[tuple[str, str], PillarScores] = {}
 
-    for (task, model, _log_name), (samples, eval_log, scorer_name) in run_samples.items():
-        mean_composite = sum(s[1] for s in samples) / len(samples)
+    for (task, model, _log_name), samples_list in run_samples.items():
+        # Mean correctness for run ranking
+        valid_c = [s[0] for s in samples_list if s[0] is not None]
+        mean_c = sum(valid_c) / len(valid_c) if valid_c else 0.0
+
         key = (task, model)
+        if key in best and mean_c <= best[key].correctness:
+            continue
 
-        if key not in best or mean_composite > best[key].composite:
-            n = len(samples)
-            avg_c = sum(s[0] for s in samples) / n
+        n = len(samples_list)
 
-            avg_t = sum(s[2] for s in samples) / n
-            avg_tok = sum(s[3] for s in samples) / n
-            avg_out_tok = sum(s[4] for s in samples) / n
-            avg_tps = avg_out_tok / avg_t if avg_t > 0 else 0.0
+        # Correctness average
+        avg_correctness = sum(valid_c) / len(valid_c) if valid_c else 0.0
 
-            safety = 1.0
-            for sample in eval_log.samples:
-                sc = None
-                if isinstance(sample.scores, dict):
-                    sc = sample.scores.get(scorer_name)
-                if sc and sc.explanation:
-                    m_s = _RE_SAFETY.search(sc.explanation)
-                    if m_s:
-                        safety = float(m_s.group(1))
-                        break
+        # Token ratio average (skip None/NaN)
+        valid_tr = [s[1] for s in samples_list if s[1] is not None]
+        avg_token_ratio = sum(valid_tr) / len(valid_tr) if valid_tr else 0.0
 
-            best[key] = PillarScores(
-                correctness=avg_c,
-                composite=mean_composite,
-                avg_time=avg_t,
-                avg_tokens=avg_tok,
-                avg_tokens_per_sec=avg_tps,
-                samples=n,
-                scorer="composite",
-                safety=safety,
-            )
+        # Time ratio average (skip None/NaN)
+        valid_lr = [s[2] for s in samples_list if s[2] is not None]
+        avg_time_ratio = sum(valid_lr) / len(valid_lr) if valid_lr else 0.0
+
+        # Absolute metrics
+        avg_tokens = sum(s[3] for s in samples_list) / n
+        avg_time = sum(s[4] for s in samples_list) / n
+
+        token_suppressed = sum(1 for s in samples_list if s[5])
+        time_suppressed = sum(1 for s in samples_list if s[6])
+
+        best[key] = PillarScores(
+            correctness=avg_correctness,
+            token_ratio=avg_token_ratio,
+            time_ratio=avg_time_ratio,
+            avg_tokens=avg_tokens,
+            avg_time=avg_time,
+            samples=n,
+            token_suppressed=token_suppressed,
+            time_suppressed=time_suppressed,
+        )
 
     # Build ordered task and model lists
     tasks = sorted({t for t, _ in best})
@@ -268,24 +237,18 @@ def _fmt(val: float) -> str:
     return f"{val:.2f}"
 
 
-def _fmt_ratio(val: float | None) -> str:
-    """Format a ratio value with < prefix when at floor."""
-    if val is None:
+def _fmt_ratio(val: float) -> str:
+    """Format a ratio value."""
+    if val != val:  # NaN
         return "  --"
-    if val <= 0.01:
-        return "<0.01"
-    return f"{val:.2f}"
-
-
-def _fmt_safety(val: float | None) -> str:
-    """Format a safety sub-score."""
-    if val is None:
-        return "  -"
+    if val <= 0.0:
+        return " <0.1"
+    if val < 0.1:
+        return f"<{val:.2f}"
     return f"{val:.2f}"
 
 
 def _fmt_time(seconds: float) -> str:
-    """Format time as human-readable."""
     if seconds != seconds:  # NaN
         return "  --"
     if seconds < 60:
@@ -304,8 +267,9 @@ def _fmt_tokens(tokens: float) -> str:
 
 
 def _geometric_mean(vals: list[float]) -> float:
-    """Geometric mean, guarded against zero/negative."""
     import math
+    if not vals:
+        return float("nan")
     product = 1.0
     for v in vals:
         if v <= 0:
@@ -314,105 +278,26 @@ def _geometric_mean(vals: list[float]) -> float:
     return math.exp(math.log(product) / len(vals))
 
 
-def _harmonic_mean(vals: list[float]) -> float:
-    """Harmonic mean, guarded against zero."""
-    sum_recip = sum(1.0 / v for v in vals if v > 0)
-    if sum_recip == 0:
-        return float("nan")
-    return len(vals) / sum_recip
-
-
-# ---------------------------------------------------------------------------
-# Column layout constants
-# ---------------------------------------------------------------------------
-
-# Two-tier column layout: each entry is (header_line1, header_line2, width)
-# header_line1=None means this column is in the metric row (no spanning header)
-_PILLAR_COLS = [
-    ("CORRECT", "CORRECT", 6),
-    ("EFF_RATIO", "EFF_RATIO", 8),
-    ("LAT_RATIO", "LAT_RATIO", 8),
-    ("EXEC_SAFE", "EXEC_SAFE", 8),
-    ("CONSTR", "CONSTR", 6),
-    ("OUT_SAFE", "OUT_SAFE", 7),
-]
-_ABSOLUTE_COLS = [
-    ("TOK_OUT", "TOK_OUT", 7),
-    ("LAT_S", "LAT_S", 6),
-    ("TOOLS", "TOOLS", 5),
-]
-
-
-def _get_pillar_cell(ps: PillarScores, key: str) -> str:
-    """Get formatted cell value for a given pillar key."""
-    val = getattr(ps, key, None)
-    if key in ("efficiency_ratio", "latency_ratio"):
-        result = _fmt_ratio(val)
-        # Add loop warning suffix
-        if key == "efficiency_ratio" and getattr(ps, "potential_loop", False):
-            result = result.strip() + " *"
-        return result
-    if key in ("exec_safety", "constraint_adherence", "output_safety"):
-        return _fmt_safety(val)
-    if key == "avg_output_tokens":
-        return _fmt_tokens(val if val == val else float("nan"))
-    if key == "avg_time":
-        return _fmt_time(val if val == val else float("nan"))
-    if key == "tool_call_count":
-        if val is None or val != val:
-            return "  --"
-        return str(int(val))
-    return _fmt(val if val == val else float("nan"))
-
-
-def _mean_cell_for_key(data: CompareData, model: str, key: str) -> str:
-    """Compute mean for a specific key across all tasks, format as cell."""
-    vals = []
-    for task in data.tasks:
-        ps = data.matrix.get(task, {}).get(model)
-        if ps:
-            v = getattr(ps, key, None)
-            vals.append(v)
-    if key in ("efficiency_ratio", "latency_ratio"):
-        valid = [v for v in vals if v is not None and v == v]
-        if valid:
-            if any(v <= 0.01 for v in valid):
-                mean_val = _harmonic_mean(valid)
-            else:
-                mean_val = _geometric_mean(valid)
-        else:
-            mean_val = None
-    else:
-        valid = [v for v in vals if v is not None and v == v]
-        mean_val = sum(valid) / len(valid) if valid else None
-
-    # Format using a minimal PillarScores
-    if mean_val is not None and mean_val == mean_val:
-        fake_ps = PillarScores(
-            correctness=1.0, composite=1.0, avg_time=1.0,
-            avg_tokens=1.0, avg_tokens_per_sec=1.0,
-            samples=1, scorer="mean",
-        )
-        setattr(fake_ps, key, mean_val)
-        return _get_pillar_cell(fake_ps, key)
-    return "  --"
-
-
 # ---------------------------------------------------------------------------
 # Table formatting
 # ---------------------------------------------------------------------------
 
+# Columns: TASK | CORRECT | TOK_RATIO | TIME_RATIO | TOKENS | TIME
+_COL_HEADERS = ["CORRECT", "TOK_RATIO", "TIME_RATIO", "TOKENS", "TIME"]
+_COL_KEYS = ["correctness", "token_ratio", "time_ratio", "avg_tokens", "avg_time"]
+_COL_WIDTHS = [7, 9, 10, 7, 7]
+
+
 def format_pillar_table(
     data: CompareData,
     title: str | None = None,
-    include_absolute: bool = True,
 ) -> str:
-    """Two-tier pillar table with a model-name header row.
+    """Single pillar table with per-model columns.
 
-    Layout (3 header rows, then task rows + MEAN):
+    Layout:
       [title line]
-      [model name spanning across all columns per model]
-      [column labels: CORRECT EFF_RATIO LAT_RATIO EXEC_SAFE CONSTR OUT_SAFE TOK_OUT LAT_S TOOLS]
+      [model name spanning all columns per model]
+      [column headers]
       [task rows]
       [MEAN row]
     """
@@ -420,23 +305,10 @@ def format_pillar_table(
         return "No scored eval logs found."
 
     model_names = [_short_model(m) for m in data.models]
-    all_cols = _PILLAR_COLS + (_ABSOLUTE_COLS if include_absolute else [])
-    # Key name for each column (matches PillarScores attribute)
-    col_keys = [
-        "correctness",
-        "efficiency_ratio",
-        "latency_ratio",
-        "exec_safety",
-        "constraint_adherence",
-        "output_safety",
-        "avg_output_tokens",
-        "avg_time",
-        "tool_call_count",
-    ][: len(all_cols)]
 
-    # Column widths: task label + each column
+    # Column widths
     task_col_w = max(len(t) for t in data.tasks) + 2
-    col_widths = [max(w, len(h)) for _, h, w in all_cols]
+    body_w_per_model = sum(_COL_WIDTHS) + len(_COL_WIDTHS) + 1  # +spaces
 
     lines: list[str] = []
 
@@ -444,141 +316,78 @@ def format_pillar_table(
         lines.append(f"{'━' * 3} {title} {'━' * 3}")
         lines.append("")
 
-    # ── Row 1: model name spanning total table width ──────────────────────
-    table_body_w = sum(col_widths) + len(col_widths) + 1
+    # Row 1: model names
     row1 = " " * task_col_w
     for model in model_names:
-        row1 += model.center(table_body_w) + "  "
+        row1 += model.center(body_w_per_model) + "  "
     lines.append(row1)
 
-    # Separator after model names
-    sep_w = task_col_w + (table_body_w + 2) * len(model_names)
+    # Separator
+    sep_w = task_col_w + (body_w_per_model + 2) * len(model_names)
     lines.append("─" * sep_w)
 
-    # ── Row 2: metric column headers ───────────────────────────────────────
-    metric_header = " " * task_col_w
-    for (abbrev, _full, col_w) in all_cols:
-        metric_header += " " + abbrev.center(col_w)
-    lines.append(metric_header)
+    # Row 2: column headers
+    header = " " * task_col_w
+    for _ in model_names:
+        for col_name, col_w in zip(_COL_HEADERS, _COL_WIDTHS):
+            header += " " + col_name.rjust(col_w)
+        header += " "
+    lines.append(header)
 
-    # ── Row 3: sub-metric names (second tier) ─────────────────────────────
-    metric_names = [h for _, h, _ in all_cols]
-    sub_header = " " * task_col_w
-    for i, col_w in enumerate(col_widths):
-        sub_header += " " + metric_names[i].center(col_w)
-    lines.append(sub_header)
-
-    # ── Task rows ──────────────────────────────────────────────────────────
-    body_sep = "─" * sep_w
-    lines.append(body_sep)
+    # Task rows
+    lines.append("─" * sep_w)
 
     for task in data.tasks:
         row = task.ljust(task_col_w)
         for model in data.models:
             ps = data.matrix.get(task, {}).get(model)
             if ps:
-                for key, (_, _, col_w) in zip(col_keys, all_cols, strict=True):
-                    cell = _get_pillar_cell(ps, key)
+                cells = [
+                    _fmt(ps.correctness),
+                    _fmt_ratio(ps.token_ratio),
+                    _fmt_ratio(ps.time_ratio),
+                    _fmt_tokens(ps.avg_tokens),
+                    _fmt_time(ps.avg_time),
+                ]
+                for cell, col_w in zip(cells, _COL_WIDTHS):
                     row += " " + cell.rjust(col_w)
                 row += " "
             else:
-                for _, _, col_w in all_cols:
+                for col_w in _COL_WIDTHS:
                     row += " " + "—".rjust(col_w) + " "
         lines.append(row)
 
-    # ── MEAN row ───────────────────────────────────────────────────────────
-    lines.append(body_sep)
+    # MEAN row
+    lines.append("─" * sep_w)
     mean_row = "MEAN".ljust(task_col_w)
     for model in data.models:
-        for key, (_, _, col_w) in zip(col_keys, all_cols, strict=True):
-            cell = _mean_cell_for_key(data, model, key)
+        # Collect per-task values
+        c_vals, tr_vals, lr_vals = [], [], []
+        tok_vals, time_vals = [], []
+        for task in data.tasks:
+            ps = data.matrix.get(task, {}).get(model)
+            if ps:
+                c_vals.append(ps.correctness)
+                if ps.token_ratio > 0:
+                    tr_vals.append(ps.token_ratio)
+                if ps.time_ratio > 0:
+                    lr_vals.append(ps.time_ratio)
+                tok_vals.append(ps.avg_tokens)
+                time_vals.append(ps.avg_time)
+
+        cells = [
+            _fmt(sum(c_vals) / len(c_vals)) if c_vals else "  --",
+            _fmt_ratio(_geometric_mean(tr_vals)) if tr_vals else "  --",
+            _fmt_ratio(_geometric_mean(lr_vals)) if lr_vals else "  --",
+            _fmt_tokens(sum(tok_vals) / len(tok_vals)) if tok_vals else "  --",
+            _fmt_time(sum(time_vals) / len(time_vals)) if time_vals else "  --",
+        ]
+        for cell, col_w in zip(cells, _COL_WIDTHS):
             mean_row += " " + cell.rjust(col_w)
         mean_row += " "
     lines.append(mean_row)
 
     return "\n".join(lines)
-
-
-# Keep format_pivot_table as alias for backward compat / simple view
-def format_pivot_table(
-    data: CompareData,
-    pillar: str = "composite",
-    title: str | None = None,
-) -> str:
-    """Format a simple pivot table (backward compatible view)."""
-    return format_pillar_table(data, title, include_absolute=True)
-
-
-def _safety_warnings(data: CompareData) -> str | None:
-    """Return safety warnings if any model/task has safety < 1.0."""
-    warnings = []
-    for task in data.tasks:
-        for model in data.models:
-            ps = data.matrix.get(task, {}).get(model)
-            if ps and ps.safety == ps.safety and ps.safety < 1.0:  # not NaN
-                short_model = _short_model(model)
-                warnings.append(f"  ⚠ {short_model} / {task}: safety_gate={ps.safety:.2f}")
-    if not warnings:
-        return None
-    return "⚠ SAFETY FAILURES:\n" + "\n".join(warnings)
-
-
-def format_all_tables(data: CompareData) -> str:
-    """Format all pillar tables."""
-    parts = []
-
-    # Pillar scores table (two-tier)
-    parts.append(format_pillar_table(
-        data,
-        "PILLAR SCORES",
-        include_absolute=True,
-    ))
-    parts.append("")
-
-    # Composite (legacy)
-    parts.append(format_pivot_table(
-        data,
-        "composite",
-        "COMPOSITE  "
-        f"(correctness*{CORRECTNESS_WEIGHT} + efficiency*{EFFICIENCY_WEIGHT}) * safety",
-    ))
-    parts.append("")
-
-    # Correctness
-    parts.append(format_pivot_table(
-        data, "correctness",
-        "CORRECTNESS  (did the model produce the right output?)",
-    ))
-    parts.append("")
-
-    # Tokens
-    parts.append(format_pivot_table(
-        data, "tokens",
-        "AVG TOKENS PER SAMPLE  (total tokens — lower is better)",
-    ))
-    parts.append("")
-
-    # Time
-    parts.append(format_pivot_table(
-        data, "time",
-        "AVG TIME PER SAMPLE  (model API latency)",
-    ))
-    parts.append("")
-
-    # Speed (tokens/s)
-    parts.append(format_pivot_table(
-        data, "speed",
-        "OUTPUT TOKENS/SEC  (throughput — higher is better)",
-    ))
-    parts.append("")
-
-    # Safety warnings only if failures exist
-    safety = _safety_warnings(data)
-    if safety:
-        parts.append(safety)
-        parts.append("")
-
-    return "\n".join(parts)
 
 
 def format_json(data: CompareData) -> str:
@@ -590,30 +399,17 @@ def format_json(data: CompareData) -> str:
         for model in data.models:
             ps = data.matrix.get(task, {}).get(model)
             if ps:
-                eff_ratio = round(ps.efficiency_ratio, 4) \
-                    if ps.efficiency_ratio is not None else None
-                lat_ratio = round(ps.latency_ratio, 4) \
-                    if ps.latency_ratio is not None else None
-                exec_s = round(ps.exec_safety, 4) \
-                    if ps.exec_safety is not None else None
-                constr = round(ps.constraint_adherence, 4) \
-                    if ps.constraint_adherence is not None else None
-                out_s = round(ps.output_safety, 4) if ps.output_safety is not None else None
                 rows.append({
                     "task": task,
                     "model": model,
-                    "scorer": ps.scorer,
-                    "composite": round(ps.composite, 4),
                     "correctness": round(ps.correctness, 4),
+                    "token_ratio": round(ps.token_ratio, 4),
+                    "time_ratio": round(ps.time_ratio, 4),
                     "avg_tokens": round(ps.avg_tokens, 1),
-                    "avg_output_tokens": round(ps.avg_output_tokens, 1),
                     "avg_time": round(ps.avg_time, 2),
-                    "efficiency_ratio": eff_ratio,
-                    "latency_ratio": lat_ratio,
-                    "exec_safety": exec_s,
-                    "constraint_adherence": constr,
-                    "output_safety": out_s,
                     "samples": ps.samples,
+                    "token_suppressed": ps.token_suppressed,
+                    "time_suppressed": ps.time_suppressed,
                 })
     return json.dumps(rows, indent=2)
 
@@ -628,7 +424,7 @@ import click
 @click.command()
 @click.option(
     "--log-dir",
-    default="logs",
+    default="baselines",
     show_default=True,
     type=click.Path(),
     help="Directory containing EvalLog files.",
@@ -653,4 +449,4 @@ def compare(log_dir: str, latest: int | None, as_json: bool) -> None:
     if as_json:
         click.echo(format_json(data))
     else:
-        click.echo(format_all_tables(data))
+        click.echo(format_pillar_table(data, "BENCHMARK RESULTS"))
