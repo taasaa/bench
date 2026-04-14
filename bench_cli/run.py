@@ -190,7 +190,7 @@ def run(
     # one-by-one mode: eval one task at a time so each result + log can be
     # inspected before moving on.  compare runs after each task.
     # batch mode (default): eval all tasks in one call, compare once at end.
-    from bench_cli.compare import format_all_tables, load_compare_data
+    from bench_cli.compare import format_pillar_table, load_compare_data
 
     if one_by_one:
         click.echo("Running tasks one-by-one (--one-by-one mode)")
@@ -216,7 +216,7 @@ def run(
             if not no_compare:
                 data = load_compare_data(log_dir, latest=1)
                 if data.tasks:
-                    click.echo(format_all_tables(data))
+                    click.echo(format_pillar_table(data))
             click.echo()
         results = all_results
     else:
@@ -249,12 +249,12 @@ def run(
 
     # 5. Auto-compare results (unless suppressed).
     if not no_compare:
-        from bench_cli.compare import format_all_tables, load_compare_data
+        from bench_cli.compare import format_pillar_table, load_compare_data
 
         click.echo("\n── Comparing results ──")
         data = load_compare_data(log_dir, latest=1)
         if data.tasks:
-            click.echo(format_all_tables(data))
+            click.echo(format_pillar_table(data))
         else:
             click.echo("  (no scored logs found — run bench compare after eval completes)")
 
@@ -323,14 +323,15 @@ def _resolve_task(spec: str) -> task:
     # minutes.  Default OpenAI SDK timeout is 600s which is fine, but some
     # proxy configs or model servers impose shorter limits.  Setting
     # attempt_timeout=300 gives the model 5 minutes per attempt before retry.
-    config = task_obj.config or {}
-    if isinstance(config, dict):
-        config.setdefault("timeout", 600)
-        config.setdefault("attempt_timeout", 300)
-    else:
-        # GenerateConfig object
-        if config.timeout is None:
-            config = {**{k: getattr(config, k) for k in config.model_fields if getattr(config, k) is not None}, "timeout": 600, "attempt_timeout": 300}
+    from inspect_ai._eval.task.run import GenerateConfig
+
+    orig_config = task_obj.config
+    config_overrides: dict = {}
+    if orig_config is None or getattr(orig_config, "timeout", None) is None:
+        config_overrides["timeout"] = 600
+    if orig_config is None or getattr(orig_config, "attempt_timeout", None) is None:
+        config_overrides["attempt_timeout"] = 300
+    config = GenerateConfig(**config_overrides)
 
     return Task(
         dataset=task_obj.dataset,
