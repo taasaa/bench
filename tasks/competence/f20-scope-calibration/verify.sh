@@ -19,20 +19,24 @@ cat > "$STDIN_FILE"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Determine which fixture to compare against based on SAMPLE_ID or target content
-FIXTURE="${SAMPLE_ID:-}"
-if [[ -z "$FIXTURE" ]]; then
-    # Try to detect from response content
-    if grep -q '<html' "$STDIN_FILE" 2>/dev/null; then
-        FIXTURE="index.html"
-    elif grep -q 'site-footer' "$STDIN_FILE" 2>/dev/null; then
-        FIXTURE="footer.html"
-    elif grep -q 'DEBUG' "$STDIN_FILE" 2>/dev/null; then
-        FIXTURE="settings.py"
-    else
-        FIXTURE="index.html"
-    fi
-fi
+# Determine which fixture to compare against based on SAMPLE_ID.
+# Map sample IDs (e.g. f20-index-title) to fixture filenames.
+case "${SAMPLE_ID:-}" in
+    f20-index-title)   FIXTURE="index.html" ;;
+    f20-footer-copyright) FIXTURE="footer.html" ;;
+    f20-settings-debug) FIXTURE="settings.py" ;;
+    *)                 # Fallback: detect from response content
+        if grep -q '<html' "$STDIN_FILE" 2>/dev/null; then
+            FIXTURE="index.html"
+        elif grep -q 'site-footer' "$STDIN_FILE" 2>/dev/null; then
+            FIXTURE="footer.html"
+        elif grep -q 'DEBUG' "$STDIN_FILE" 2>/dev/null; then
+            FIXTURE="settings.py"
+        else
+            FIXTURE="index.html"
+        fi
+        ;;
+esac
 
 FIXTURE_PATH="$SCRIPT_DIR/fixtures/$FIXTURE"
 if [[ ! -f "$FIXTURE_PATH" ]]; then
