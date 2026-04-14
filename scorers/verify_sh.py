@@ -226,24 +226,19 @@ def _find_task_dir() -> str:
     co_filename, not f_globals["__file__"].  Manual f_back walking always works.
     """
     frame = inspect.currentframe()
-    frames_checked: list[str] = []
     try:
         depth = 0
         while frame is not None and depth < 30:
             depth += 1
             try:
                 file = frame.f_globals.get("__file__", "")
-                frames_checked.append(file)
                 if file and ("/tasks/" in file or "\\tasks\\" in file):
                     task_dir = os.path.dirname(os.path.abspath(file))
                     if os.path.isdir(task_dir):
-                        print(f"[_find_task_dir] HIT: {task_dir}", file=sys.stderr, flush=True)
                         return task_dir
             except Exception:
                 pass
             frame = frame.f_back
-        n = len(frames_checked)
-        print(f"[_find_task_dir] no tasks/ frame in {n} frames", file=sys.stderr, flush=True)
     finally:
         del frame  # avoid cycle
 
@@ -256,12 +251,9 @@ def _find_task_dir() -> str:
             if file and ("/tasks/" in file or "\\tasks\\" in file):
                 task_dir = os.path.dirname(file)
                 if os.path.isdir(task_dir):
-                    bn = os.path.basename(task_dir)
-                    print(f"[_find_task_dir] sys.modules: .../{bn}", file=sys.stderr, flush=True)
                     return task_dir
         except Exception:
             continue
-    print("[_find_task_dir] all failed, falling back to cwd", file=sys.stderr, flush=True)
     return os.getcwd()
 
 

@@ -111,24 +111,27 @@ class TaskBudget:
     """
 
     output_tokens: int | None = None
-    """Override for system default output token budget (1500)."""
+    """Override for system default output token budget (1000)."""
 
     latency_seconds: float | None = None
-    """Override for system default latency budget (60.0)."""
+    """Override for system default latency budget (30.0)."""
 
     noise_floor_seconds: float | None = None
     """Override for DEFAULT_NOISE_FLOOR (5.0). Lower = more sensitive."""
 
 
 SYSTEM_DEFAULT_BUDGETS: dict[str, float] = {
-    "output_tokens": 1500.0,
-    "latency_seconds": 60.0,
+    "output_tokens": 1000.0,
+    "latency_seconds": 30.0,
 }
-"""System-level scaffolding defaults.
+"""System-level scaffolding defaults (calibrated from qwen-local baseline run).
 
 These are fallback values used when no baseline store entry or task budget
-is available. They guarantee every pillar produces a score from the first
-run. Should be superseded by measured baselines as the eval matures.
+is available. Calibrated from 62 samples across 16 tasks:
+  tokens: mean=1047, median=857 → default 1000
+  working_time: mean=29.7s, median=27.5s → default 30.0s
+
+Should be superseded by measured baselines as the eval matures.
 """
 
 
