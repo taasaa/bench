@@ -2,7 +2,10 @@
 
 Ratio = reference_seconds / actual_seconds
 
-Reads bench_working_time from state.metadata (injected by bench run CLI).
+Uses Inspect AI's own working_time tracker (sample_working_time()) which
+measures time spent in model generation + sandbox calls, excluding
+concurrency wait time. Available during scoring via ContextVar.
+
 Noise floor suppresses single-sample runs below the threshold to avoid
 API jitter dominating the signal.
 
@@ -12,6 +15,7 @@ Reference resolution priority (same as TokenRatioScorer):
 
 from __future__ import annotations
 
+from inspect_ai._util.working import sample_working_time
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
@@ -44,13 +48,15 @@ def time_ratio_scorer(
         return DEFAULT_NOISE_FLOOR
 
     async def score(state: TaskState, target: Target) -> Score:
-        actual_seconds = state.metadata.get("bench_working_time") if state.metadata else None
-        if actual_seconds is None:
+        actual_seconds = sample_working_time()
+        # Outside eval context, sample_working_time returns a huge number
+        # (uninitialized ContextVar). Cap sanity check: if > 1 day, treat as unavailable.
+        if actual_seconds is None or actual_seconds > 86400:
             return Score(
                 value=1.0,
                 explanation=(
                     "latency_ratio=1.00, "
-                    "note=bench_working_time not in metadata, using 1.0"
+                    "note=sample_working_time unavailable, using 1.0"
                 ),
                 metadata={
                     "pillar": "latency",

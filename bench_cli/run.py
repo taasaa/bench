@@ -203,6 +203,8 @@ def run(
                 model=model,
                 solver=solver,
                 log_dir=log_dir,
+                fail_on_error=0.5,
+                retry_on_error=2,
             )
             all_results.extend(result)
             click.echo(f"  → {result[0].eval.task}: {result[0].status}")
@@ -223,6 +225,8 @@ def run(
             model=model,
             solver=solver,
             log_dir=log_dir,
+            fail_on_error=0.5,
+            retry_on_error=2,
         )
 
     # 4. Print summary.
@@ -306,9 +310,28 @@ def _resolve_task(spec: str) -> task:
     finally:
         os.chdir(orig_cwd)
 
-    # Clone with bench_task_dir injected.
-    metadata = dict(task_obj.metadata or {})
-    metadata["bench_task_dir"] = task_dir
+    # Inject bench_task_dir into each sample's metadata (not Task metadata).
+    # Inspect propagates sample.metadata → state.metadata during scoring,
+    # but Task.metadata does NOT reach state.metadata.
+    for sample in task_obj.dataset:
+        if sample.metadata is None:
+            sample.metadata = {}
+        sample.metadata["bench_task_dir"] = task_dir
+
+    # Merge generous timeout into task config.  Local models behind LiteLLM
+    # can be slow — a single generate() on a complex prompt may take 2-3
+    # minutes.  Default OpenAI SDK timeout is 600s which is fine, but some
+    # proxy configs or model servers impose shorter limits.  Setting
+    # attempt_timeout=300 gives the model 5 minutes per attempt before retry.
+    config = task_obj.config or {}
+    if isinstance(config, dict):
+        config.setdefault("timeout", 600)
+        config.setdefault("attempt_timeout", 300)
+    else:
+        # GenerateConfig object
+        if config.timeout is None:
+            config = {**{k: getattr(config, k) for k in config.model_fields if getattr(config, k) is not None}, "timeout": 600, "attempt_timeout": 300}
+
     return Task(
         dataset=task_obj.dataset,
         setup=task_obj.setup,
@@ -317,7 +340,7 @@ def _resolve_task(spec: str) -> task:
         scorer=task_obj.scorer,
         metrics=task_obj.metrics,
         model=task_obj.model,
-        config=task_obj.config,
+        config=config,
         model_roles=task_obj.model_roles,
         sandbox=task_obj.sandbox,
         approval=task_obj.approval,
@@ -333,7 +356,7 @@ def _resolve_task(spec: str) -> task:
         display_name=task_obj.display_name,
         name=task_obj.name or task_obj.display_name,
         version=task_obj.version,
-        metadata=metadata,
+        metadata=dict(task_obj.metadata or {}),
         tags=task_obj.tags,
     )
 

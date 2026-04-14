@@ -81,6 +81,8 @@ def record(
         tasks=tasks_with_metadata,
         model=model,
         log_dir=BASELINES_DIR,
+        fail_on_error=0.5,
+        retry_on_error=2,
     )
     wall_time = time.monotonic() - start
 
@@ -114,9 +116,16 @@ def record(
         if result.samples:
             for sample in result.samples:
                 if sample.model_usage:
-                    total_tokens += sample.model_usage.total_tokens or 0
-                    output_tokens += sample.model_usage.output_tokens or 0
-                    input_tokens += sample.model_usage.input_tokens or 0
+                    # model_usage is a dict keyed by model name
+                    if isinstance(sample.model_usage, dict):
+                        for usage in sample.model_usage.values():
+                            total_tokens += usage.total_tokens or 0
+                            output_tokens += usage.output_tokens or 0
+                            input_tokens += usage.input_tokens or 0
+                    else:
+                        total_tokens += sample.model_usage.total_tokens or 0
+                        output_tokens += sample.model_usage.output_tokens or 0
+                        input_tokens += sample.model_usage.input_tokens or 0
                 tool_call_count += len(
                     [m for m in sample.messages if getattr(m, "type", None) == "tool"]
                 )

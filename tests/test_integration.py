@@ -16,12 +16,11 @@ if ROOT not in sys.path:
 # instantiate in their own directory so dataset.json resolves.
 
 # Tasks that use the composite scorer (competence tier)
-COMPOSITE_TASK_SPECS = [
-    ("tasks/competence/add-tests/task.py", "add_tests"),
-]
+COMPOSITE_TASK_SPECS: list[tuple[str, str]] = []
 
 # Tasks that use the verify_sh scorer (competence tier)
 BASIC_TASK_SPECS = [
+    ("tasks/competence/add-tests/task.py", "add_tests"),
     ("tasks/competence/q1-verification-gate/task.py", "q1_verification_gate"),
     ("tasks/competence/q2-do-not-touch/task.py", "q2_do_not_touch"),
     ("tasks/competence/f7-format-compliance/task.py", "f7_format_compliance"),
