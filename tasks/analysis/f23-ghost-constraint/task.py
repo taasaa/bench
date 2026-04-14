@@ -3,10 +3,10 @@
 from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
+from scorers.llm_judge import llm_judge
 from scorers.time_ratio import time_ratio_scorer
 from scorers.task_budgets import get_task_budget
 from scorers.token_ratio import token_ratio_scorer
-from scorers.verify_sh import verify_sh
 
 
 @task
@@ -22,11 +22,13 @@ def f23_ghost_constraint():
     beginning, or forget them as the prompt grows longer. A common failure
     mode is switching to camelCase, dropping type hints, or using the
     requests library by default.
+
+    Graded by LLM judge — qualitative constraint compliance across turns.
     """
     return Task(
         dataset=json_dataset(
             "dataset.json",
             FieldSpec(input="input", target="target", id="id"),
         ),
-        scorer=[verify_sh(), token_ratio_scorer(task_budget=get_task_budget("f23_ghost_constraint")), time_ratio_scorer(task_budget=get_task_budget("f23_ghost_constraint"))],
+        scorer=[llm_judge(), token_ratio_scorer(task_budget=get_task_budget("f23_ghost_constraint")), time_ratio_scorer(task_budget=get_task_budget("f23_ghost_constraint"))],
     )

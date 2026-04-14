@@ -1,9 +1,12 @@
 """EvalLog reading, pillar extraction, and pillar-table comparison.
 
 Each task has 3 independent scorers producing separate Score objects:
-  - verify_sh           → correctness (value = pass/total ratio)
-  - token_ratio_scorer  → efficiency (value = ref_tokens/actual_tokens)
-  - time_ratio_scorer   → latency    (value = ref_seconds/actual_seconds)
+  - verify_sh or llm_judge → correctness (value = 0..1)
+  - token_ratio_scorer     → efficiency (value = ref_tokens/actual_tokens)
+  - time_ratio_scorer      → latency    (value = ref_seconds/actual_seconds)
+
+Correctness comes from whichever scorer is present: verify_sh for script-graded
+tasks, llm_judge for LLM-graded tasks. Tasks use one or the other, not both.
 
 load_compare_data iterates ALL scorers per sample to extract each pillar
 from its dedicated scorer, rather than trying to parse everything from
@@ -54,42 +57,42 @@ _RE_LAT_RATIO = re.compile(r"latency_ratio=([\d.]+)")
 _RE_LOOP = re.compile(r"potential_loop=(true|false)")
 
 
+def _numeric_val(score: object) -> float | None:
+    """Extract a non-NaN numeric value from a score object, or None."""
+    if score is None:
+        return None
+    val = getattr(score, "value", None)
+    if isinstance(val, (int, float)) and val == val:  # not NaN
+        return float(val)
+    return None
+
+
 def _extract_from_scorers(
     sample_scores: dict,
 ) -> tuple[float | None, float | None, float | None]:
     """Extract (correctness, token_ratio, time_ratio) from a sample's score dict.
 
     Each scorer has its own entry keyed by scorer name:
-      - "verify_sh"          → .value = correctness (0..1)
+      - "llm_judge"          → .value = correctness (0..1), takes precedence
+      - "verify_sh"          → .value = correctness (0..1), fallback
       - "token_ratio_scorer" → .value = ratio (may be NaN if suppressed)
       - "time_ratio_scorer"  → .value = ratio (may be NaN if suppressed)
+
+    Correctness: llm_judge is checked first, then verify_sh. Tasks use
+    one or the other, not both.
     """
-    correctness = None
-    token_ratio = None
-    time_ratio = None
+    # Correctness: prefer llm_judge, fall back to verify_sh
+    correctness = _numeric_val(sample_scores.get("llm_judge"))
+    if correctness is None:
+        correctness = _numeric_val(sample_scores.get("verify_sh"))
 
-    sc_verify = sample_scores.get("verify_sh")
-    if sc_verify is not None:
-        val = sc_verify.value
-        if isinstance(val, (int, float)) and val == val:  # not NaN
-            correctness = float(val)
-
-    sc_token = sample_scores.get("token_ratio_scorer")
-    if sc_token is not None:
-        val = sc_token.value
-        if isinstance(val, (int, float)) and val == val:
-            token_ratio = float(val)
-
-    sc_time = sample_scores.get("time_ratio_scorer")
-    if sc_time is not None:
-        val = sc_time.value
-        if isinstance(val, (int, float)) and val == val:
-            time_ratio = float(val)
+    token_ratio = _numeric_val(sample_scores.get("token_ratio_scorer"))
+    time_ratio = _numeric_val(sample_scores.get("time_ratio_scorer"))
 
     return correctness, token_ratio, time_ratio
 
 
-def _is_suppressed(score) -> bool:
+def _is_suppressed(score: object) -> bool:
     """Check if a scorer marked its result as suppressed (noise floor)."""
     if hasattr(score, "metadata") and isinstance(score.metadata, dict):
         return score.metadata.get("suppressed", False)

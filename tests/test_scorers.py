@@ -1,8 +1,15 @@
 """Unit tests for scorers: efficiency, safety, and composite."""
 
+import sys
+from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 import pytest
+
+# Ensure project root is on sys.path for scorers imports.
+ROOT = Path(__file__).parent.parent.resolve()
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 # Helpers imported from conftest.py
 # Backwards-compat aliases (deprecated — use make_task_state and run_async)
@@ -574,3 +581,245 @@ class TestResolveBaselineReference:
         )
         assert ref_val == 30.0
         assert source == RatioSource.SYSTEM_DEFAULT
+
+
+# ---------------------------------------------------------------------------
+# LLM Judge scorer tests
+# ---------------------------------------------------------------------------
+
+
+class TestParseScore:
+    """Unit tests for _parse_score regex extraction and normalization."""
+
+    def test_integer_score(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("Great work. SCORE: 8") == 0.8
+
+    def test_fractional_score(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("Score: 7.5") == 0.75
+
+    def test_perfect_score(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("SCORE: 10") == 1.0
+
+    def test_zero_score(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("Score: 0") == 0.0
+
+    def test_score_with_slash_10(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("SCORE: 8/10") == 0.8
+
+    def test_case_insensitive(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("score: 6") == 0.6
+
+    def test_no_space_after_colon(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("SCORE:5") == 0.5
+
+    def test_clamp_above_10(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("SCORE: 15") == 1.0
+
+    def test_no_score_returns_none(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("no score here") is None
+
+    def test_negative_returns_none(self):
+        from scorers.llm_judge import _parse_score
+
+        assert _parse_score("SCORE: -1") is None
+
+
+class TestLoadRubric:
+    """Unit tests for _load_rubric file loading."""
+
+    def test_loads_existing_rubric(self):
+        from scorers.llm_judge import _load_rubric
+
+        rubric = _load_rubric("tasks/execution/q4-root-cause")
+        assert rubric is not None
+        assert "SCORE" in rubric
+        assert len(rubric) > 100
+
+    def test_returns_none_for_missing_rubric(self):
+        from scorers.llm_judge import _load_rubric
+
+        assert _load_rubric("tasks/execution/f6-partial-impl") is None
+
+    def test_returns_none_for_nonexistent_dir(self):
+        from scorers.llm_judge import _load_rubric
+
+        assert _load_rubric("/nonexistent/path") is None
+
+
+class TestLLMJudgeScorer:
+    """Integration tests for the llm_judge scorer with mocked model."""
+
+    def test_no_bench_task_dir_returns_error(self):
+        """Missing bench_task_dir metadata → error score."""
+        from scorers.llm_judge import llm_judge
+
+        s = llm_judge()
+        state = make_task_state(completion="some output")
+        result = run_async(s(state, state.target))
+        assert result.value == 0.0
+        assert result.metadata.get("judge_error") == "no_task_dir"
+
+    def test_missing_rubric_returns_error(self):
+        """Task dir without judge.md → error score."""
+        from scorers.llm_judge import llm_judge
+
+        s = llm_judge()
+        state = make_task_state(
+            completion="some output", bench_task_dir="tasks/execution/f6-partial-impl"
+        )
+        result = run_async(s(state, state.target))
+        assert result.value == 0.0
+        assert result.metadata.get("judge_error") == "missing_rubric"
+
+    def test_empty_output_returns_error(self):
+        """Empty model output → error score."""
+        from scorers.llm_judge import llm_judge
+
+        s = llm_judge()
+        state = make_task_state(
+            completion="", bench_task_dir="tasks/execution/q4-root-cause"
+        )
+        result = run_async(s(state, state.target))
+        assert result.value == 0.0
+        assert result.metadata.get("judge_error") == "empty_output"
+
+    def test_api_error_returns_error(self):
+        """Judge model API error → error score with exception details."""
+        from unittest.mock import AsyncMock, patch
+
+        from scorers.llm_judge import llm_judge
+
+        mock_model = AsyncMock()
+        mock_model.generate.side_effect = ConnectionError("proxy down")
+
+        s = llm_judge()
+        # Patch the model resolved at factory time
+        with patch("scorers.llm_judge.get_model", return_value=mock_model):
+            s = llm_judge()
+
+        state = make_task_state(
+            completion="some output", bench_task_dir="tasks/execution/q4-root-cause"
+        )
+        result = run_async(s(state, state.target))
+        assert result.value == 0.0
+        assert result.metadata.get("judge_error") == "api_error"
+        assert "proxy down" in result.metadata.get("exception", "")
+
+    def test_unparseable_response_returns_error(self):
+        """Judge response without SCORE: N → error score."""
+        from unittest.mock import AsyncMock, patch
+
+        from inspect_ai.model import ModelOutput
+
+        from scorers.llm_judge import llm_judge
+
+        mock_model = AsyncMock()
+        mock_model.generate.return_value = ModelOutput.from_content(
+            model="judge", content="I think this is a good response but no score"
+        )
+
+        with patch("scorers.llm_judge.get_model", return_value=mock_model):
+            s = llm_judge()
+
+        state = make_task_state(
+            completion="some output", bench_task_dir="tasks/execution/q4-root-cause"
+        )
+        result = run_async(s(state, state.target))
+        assert result.value == 0.0
+        assert result.metadata.get("judge_error") == "unparseable"
+
+    def test_successful_judge_score(self):
+        """Judge returns SCORE: 8 → value 0.8 with metadata."""
+        from unittest.mock import AsyncMock, patch
+
+        from inspect_ai.model import ModelOutput
+
+        from scorers.llm_judge import llm_judge
+
+        mock_model = AsyncMock()
+        mock_model.generate.return_value = ModelOutput.from_content(
+            model="judge",
+            content="Good analysis. SCORE: 8",
+        )
+
+        with patch("scorers.llm_judge.get_model", return_value=mock_model):
+            s = llm_judge()
+
+        state = make_task_state(
+            completion="The root cause is environment mismatch",
+            bench_task_dir="tasks/execution/q4-root-cause",
+        )
+        result = run_async(s(state, state.target))
+        assert result.value == pytest.approx(0.8)
+        assert result.metadata.get("pillar") == "correctness"
+        assert result.metadata.get("judge_score_raw") == pytest.approx(8.0)
+        assert result.metadata.get("judge_model") == "openai/judge"
+
+    def test_perfect_score(self):
+        """Judge returns SCORE: 10 → value 1.0."""
+        from unittest.mock import AsyncMock, patch
+
+        from inspect_ai.model import ModelOutput
+
+        from scorers.llm_judge import llm_judge
+
+        mock_model = AsyncMock()
+        mock_model.generate.return_value = ModelOutput.from_content(
+            model="judge", content="Perfect. SCORE: 10"
+        )
+
+        with patch("scorers.llm_judge.get_model", return_value=mock_model):
+            s = llm_judge()
+
+        state = make_task_state(
+            completion="correct answer", bench_task_dir="tasks/execution/q4-root-cause"
+        )
+        result = run_async(s(state, state.target))
+        assert result.value == 1.0
+
+    def test_rubric_cached_across_calls(self):
+        """Rubric loaded once per task dir, not per sample."""
+        from unittest.mock import AsyncMock, patch
+
+        from inspect_ai.model import ModelOutput
+
+        from scorers.llm_judge import llm_judge
+
+        mock_model = AsyncMock()
+        mock_model.generate.return_value = ModelOutput.from_content(
+            model="judge", content="OK. SCORE: 7"
+        )
+
+        with patch("scorers.llm_judge.get_model", return_value=mock_model):
+            s = llm_judge()
+
+        # Call twice with same task dir
+        state1 = make_task_state(
+            completion="output1", bench_task_dir="tasks/execution/q4-root-cause"
+        )
+        state2 = make_task_state(
+            completion="output2", bench_task_dir="tasks/execution/q4-root-cause"
+        )
+        run_async(s(state1, state1.target))
+        run_async(s(state2, state2.target))
+
+        # Both succeeded (rubric was cached, no file-not-found on second call)
+        assert mock_model.generate.call_count == 2
