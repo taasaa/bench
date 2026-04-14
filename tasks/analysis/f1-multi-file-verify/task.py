@@ -3,8 +3,8 @@
 from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
-from scorers.composite_safety import composite_safety_scorer
 from scorers.time_ratio import time_ratio_scorer
+from scorers.task_budgets import get_task_budget
 from scorers.token_ratio import token_ratio_scorer
 from scorers.verify_sh import verify_sh
 
@@ -27,5 +27,5 @@ def f1_multi_file_verify():
             "dataset.json",
             FieldSpec(input="input", target="target", id="id"),
         ),
-        scorer=[verify_sh(), token_ratio_scorer(), time_ratio_scorer(), composite_safety_scorer()],
+        scorer=[verify_sh(), token_ratio_scorer(task_budget=get_task_budget("f1_multi_file_verify")), time_ratio_scorer(task_budget=get_task_budget("f1_multi_file_verify"))],
     )
