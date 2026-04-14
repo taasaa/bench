@@ -34,7 +34,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **Default model:** `openai/default` (maps to whatever LiteLLM configures as default)
 
 ## Current Focus
-PRD v6 complete (post Inspect AI feature audit). Phase 1 scorers implemented. Phase 1B: baseline data collection.
+Phase 1 complete (scorers, compare, baselines). Baselines recorded for qwen-local and gemma-4-26-local. Compare fixed for multi-scorer aggregation.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
@@ -46,10 +46,10 @@ PRD v6 complete (post Inspect AI feature audit). Phase 1 scorers implemented. Ph
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
 - **Tiers:** quick (verification tasks) + full (competence/execution/analysis — 16 tasks)
-- **Scoring:** Pillar-based — verify_sh (correctness) + token_ratio + time_ratio + composite_safety per task
+- **Scoring:** 3 independent scorers per task — verify_sh (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency)
 - **Task format:** Directory with task.py + dataset.json + verify.sh + fixtures/
 - **Viewer:** `inspect view` (localhost:7575) for interactive log inspection
-- **Comparison:** `bench compare` — two-tier pillar table with spanning headers, harmonic/geometric mean
+- **Comparison:** `bench compare` — single pillar table with CORRECT/TOK_RATIO/TIME_RATIO/TOKENS/TIME columns, multi-model side-by-side, geometric mean for ratio aggregates
 
 ## Key Decisions
 - Standalone project — no connection to PAI
@@ -60,5 +60,5 @@ PRD v6 complete (post Inspect AI feature audit). Phase 1 scorers implemented. Ph
 - Use `.eval` binary format by default, caching enabled, execution limits configured
 
 ## Next Steps
-- Phase 1B: baseline data collection + calibration
+- Phase 1B: more model baselines, calibrate per-task budgets from multi-model data
 - Phase 2: LLM judge, statistics, Docker sandboxing
