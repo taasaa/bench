@@ -1,7 +1,7 @@
 # Bench — Implementation Notes
 
-> Comprehensive record of M001 and M002: architecture, decisions, tasks, current state.
-> Derived from GSD artifacts, PRDs, and direct code analysis. Updated 2026-04-12.
+> Comprehensive record of architecture, decisions, tasks, and current state.
+> Derived from PRDs, code analysis, and session history. Updated 2026-04-14.
 
 ---
 
@@ -13,13 +13,13 @@
 4. [Task Format and Infrastructure](#4-task-format-and-infrastructure)
 5. [Scorers](#5-scorers)
 6. [Eval Task Inventory](#6-eval-task-inventory)
-7. [Bench Compare — Pivot Table](#7-bench-compare--pivot-table)
+7. [Bench Compare — Pillar Table](#7-bench-compare--pillar-table)
 8. [File Layout](#8-file-layout)
 9. [Scoring Design](#9-scoring-design)
 10. [Key Decisions](#10-key-decisions)
 11. [Test Suite](#11-test-suite)
 12. [Known Issues and Gotchas](#12-known-issues-and-gotchas)
-13. [Milestone History](#13-milestone-history)
+13. [History](#13-history)
 14. [What's Next](#14-whats-next)
 
 ---
@@ -28,11 +28,11 @@
 
 **Bench** is a standalone local LLM and AI agent evaluation system built on [Inspect AI](https://inspect.ai). It runs evaluation tasks against models (via Inspect's `generate()` solver) or agents (via `inspect-swe` solvers) and scores results against custom scorers.
 
-**Purpose:** Compare local LLMs on Rut's actual work — not benchmarks, but real code, real bugs, real patterns derived from actual failures.
+**Purpose:** Compare local LLMs on real code, real bugs, real patterns derived from actual failures.
 
 **No external dependencies.** No PAI, no cloud services, no proprietary APIs. Everything runs locally.
 
-**Current state:** M002 complete. 16 eval tasks organized by cognitive tier, verify_sh scorer working, pivot-table comparison working. Awaiting re-run with configured model to get real scores.
+**Current state:** 16 eval tasks, dual correctness scoring (verify_sh + LLM judge), 3-pillar scoring (correctness + efficiency + latency), multi-model comparison with baselines. Phase 1 complete.
 
 ---
 
@@ -42,46 +42,42 @@
 bench/                        # Python package (pip install -e .)
 │
 ├── bench_cli/                # User-facing CLI
-│   ├── __main__.py           # entry_point: bench run | bench compare
+│   ├── __main__.py           # entry_point: bench run | bench compare | bench baseline
 │   ├── main.py               # Click root + shared config
 │   ├── run.py                # bench run: task discovery + eval invocation
-│   └── compare.py            # bench compare: EvalLog parsing + pivot table
+│   ├── compare.py            # bench compare: EvalLog parsing + pillar table
+│   └── baseline.py           # bench baseline record/list
 │
 ├── scorers/                  # Custom Inspect AI scorers
-│   ├── verify_sh.py           # verify.sh runner + call-stack task-dir resolution
-│   ├── fixtures.py            # fixtures_dir(), load_fixture(), load_fixture_bytes()
-│   ├── composite.py          # (correctness×0.67 + efficiency×0.33) × safety
-│   ├── efficiency.py         # Token count + latency from EvalLog
-│   ├── safety.py             # Safety gate scorer
+│   ├── verify_sh.py          # Shell-script correctness scorer (PASS N/M)
+│   ├── llm_judge.py          # LLM-as-judge correctness scorer (SCORE: N)
+│   ├── token_ratio.py        # Efficiency scorer (ref_tokens / actual_tokens)
+│   ├── time_ratio.py         # Latency scorer (ref_seconds / actual_seconds)
+│   ├── task_budgets.py       # Per-task calibrated budgets from baselines
+│   ├── baseline_store.py     # Baseline persistence (baselines/{task}/{model}.json)
+│   ├── protocol.py           # PillarScorer protocol, constants, helpers
+│   ├── fixtures.py           # fixtures_dir(), load_fixture(), load_fixture_bytes()
+│   ├── composite_safety.py   # min() of active safety sub-scores
+│   ├── execution_safety.py   # Dangerous command pattern detection
+│   ├── constraint.py         # Constraint adherence scorer
+│   ├── output_safety.py      # PII/pattern output safety
+│   ├── composite.py          # Legacy composite scorer (add-tests task)
+│   ├── efficiency.py         # Legacy efficiency scorer
+│   ├── safety.py             # Legacy safety scorer
 │   ├── exec_scorer.py        # Subprocess execution scorer
 │   └── subproc.py            # Subprocess utilities
 │
 ├── tasks/                    # Eval task definitions
-│   ├── competence/            # Tier 1 (6 tasks)
-│   ├── execution/             # Tier 2 (5 tasks)
-│   ├── analysis/             # Tier 3 (5 tasks)
+│   ├── competence/            # 6 tasks
+│   ├── execution/             # 5 tasks
+│   ├── analysis/             # 5 tasks
 │   └── verification/          # Smoke tests (2 tasks)
 │
 ├── templates/                # verify.sh reference scripts
-│   ├── byte-identical.sh      # Byte-for-byte output comparison
-│   ├── forbidden-string.sh    # Check output doesn't contain forbidden patterns
-│   ├── json-parse.sh         # Validate output is valid JSON
-│   ├── line-count-delta.sh   # Check output line count delta
-│   └── README.md             # Reference documentation
 │
 ├── logs/                     # EvalLog .eval files (binary ZIP)
-│   └── *.eval
 │
-└── tests/                    # pytest test suite
-    ├── test_cli.py           # Task discovery + tier config
-    ├── test_compare.py        # Pivot table formatting
-    ├── test_fixtures.py      # Fixture loading
-    ├── test_integration.py   # End-to-end scorer wiring
-    ├── test_scorers.py       # Scorer unit tests
-    ├── test_verify_patterns.py # verify.sh pattern tests
-    ├── test_verify_sh_scorer.py # verify_sh scorer tests
-    ├── test_tier1_tasks.py   # Competence task tests
-    └── test_tier2_tasks.py   # Execution task tests
+└── tests/                    # pytest test suite (238 tests)
 ```
 
 ### Inspect AI Integration
@@ -92,7 +88,7 @@ Inspect AI provides the core evaluation engine:
 - **Solver execution:** `generate()` for model eval, `claude_code()` for agent eval
 - **EvalLog format:** Binary ZIP containing `header.json`, `samples/`, `_journal/`
 - **Native adapters:** Anthropic, OpenAI, Google, Ollama (local models work)
-- **Hooks:** 15 lifecycle events for monitoring
+- **Scoring:** `@scorer(metrics=[mean()])` decorator, async `score(state, target) -> Score`
 
 Inspect runs tasks in a sandbox environment (Docker/K8s/local). Phase 1 uses local execution.
 
@@ -105,7 +101,7 @@ OPENAI_BASE_URL=http://smallbox:4000/v1
 OPENAI_API_KEY=sk-...  # LiteLLM proxy token
 ```
 
-Inspect AI's OpenAI adapter routes all models through this proxy, providing a single configuration point for all local models.
+All models use `openai/<alias>` format. Available models include: qwen-local, gemma-4-26-local, gemma-4-e2-local, glm-local, qwen3-max, qwen3-coder-plus, opus, pro, judge, and more.
 
 ---
 
@@ -114,14 +110,18 @@ Inspect AI's OpenAI adapter routes all models through this proxy, providing a si
 ### Bench Run
 
 ```bash
-bench run --tier full --model openai/gemma-4-e2-local --max-tasks 5
+bench run --tier full --model openai/qwen-local
+bench run --tier quick --model openai/gemma-4-e2-local
+bench run --tier full --task q4-root-cause --model openai/qwen-local
+bench run --tier full --model openai/qwen-local --one-by-one
 ```
 
 **Implementation:** `bench_cli/run.py`
 
-1. `_discover_tasks(tier)` — scans `tasks/[TIER_DIRS[tier]]/` for `task.py` files, returns sorted list of relative paths
-2. `_build_eval_spec()` — constructs Inspect `EvalSpec` with task files + model config + execution limits
+1. `_discover_tasks(tier)` — scans `tasks/[TIER_DIRS[tier]]/` for `task.py` files
+2. `_resolve_task(spec)` — loads task module, injects `bench_task_dir` into sample metadata, applies GenerateConfig (timeout=600, attempt_timeout=300)
 3. `inspect_ai.eval()` — runs the evaluation, writes results to `logs/*.eval`
+4. Auto-compares after eval unless `--no-compare`
 
 **Tiers:**
 ```python
@@ -134,18 +134,34 @@ TIER_DIRS = {
 ### Bench Compare
 
 ```bash
-bench compare              # Pivot table
-bench compare --json       # JSON output
-bench compare --latest 1  # Most recent log per task
+bench compare                    # Pillar table from logs/
+bench compare --log-dir baselines # Compare from baselines dir
+bench compare --latest 5         # Last 5 runs per task
+bench compare --json             # Machine-readable JSON
 ```
 
 **Implementation:** `bench_cli/compare.py`
 
-Reads all `logs/*.eval` files:
-1. `load_compare_data(log_dir)` — parses EvalLog ZIPs, extracts scores and model_usage
-2. `CompareData` dataclass — matrix of `PillarScores` per (task, model)
-3. `format_all_tables()` — renders COMPOSITE/CORRECTNESS/TOKENS/TIME/SPEED sections
-4. `format_json()` — machine-readable output
+Single pillar table with per-model columns:
+1. `load_compare_data(log_dir)` — parses EvalLog files, extracts all scorers per sample
+2. `_extract_from_scorers()` — reads `llm_judge` (preferred) or `verify_sh` for correctness, `token_ratio_scorer` for efficiency, `time_ratio_scorer` for latency
+3. `PillarScores` dataclass — correctness, token_ratio, time_ratio, avg_tokens, avg_time
+4. `format_pillar_table()` — renders table with geometric mean for ratio aggregates
+
+### Bench Baseline
+
+```bash
+bench baseline record --model openai/qwen-local --tier full
+bench baseline record --model openai/qwen-local --force  # skip correctness gate
+bench baseline list
+```
+
+**Implementation:** `bench_cli/baseline.py`
+
+Records measured eval results for ratio scoring references:
+1. Runs full eval for the model
+2. For each task, writes `baselines/{task_id}/{model_id}.json`
+3. Applies correctness validity gate (default 0.8) — invalid baselines not used for ratio references
 
 ### Entry Point
 
@@ -157,7 +173,7 @@ Reads all `logs/*.eval` files:
 bench = "bench_cli.main:cli"
 ```
 
-`main.py` uses Click to route `bench run` → `run.py` and `bench compare` → `compare.py`.
+`main.py` uses Click to route `bench run`, `bench compare`, and `bench baseline`.
 
 ---
 
@@ -169,202 +185,150 @@ bench = "bench_cli.main:cli"
 tasks/{tier}/{task-name}/
 ├── task.py          # Inspect @task definition (required)
 ├── dataset.json    # Samples: input, target, id (required)
-├── verify.sh       # Scoring script (for verify_sh tasks)
+├── verify.sh       # Script correctness scorer (for verify_sh tasks)
+├── judge.md        # LLM judge rubric (for llm_judge tasks)
 └── fixtures/       # Helper files (optional)
-    ├── file_1.py
-    └── file_2.txt
 ```
 
-### task.py
+### task.py (verify_sh task)
 
 ```python
 from inspect_ai import Task, task
-from inspect_ai.dataset import json_dataset, FieldSpec
+from inspect_ai.dataset import FieldSpec, json_dataset
+
 from scorers.verify_sh import verify_sh
+from scorers.time_ratio import time_ratio_scorer
+from scorers.task_budgets import get_task_budget
+from scorers.token_ratio import token_ratio_scorer
 
 @task
 def my_task():
     return Task(
-        dataset=json_dataset(
-            "dataset.json",
-            FieldSpec(input="input", target="target", id="id"),
-        ),
-        scorer=verify_sh(),
+        dataset=json_dataset("dataset.json", FieldSpec(input="input", target="target", id="id")),
+        scorer=[verify_sh(), token_ratio_scorer(task_budget=get_task_budget("my_task")), time_ratio_scorer(task_budget=get_task_budget("my_task"))],
     )
 ```
 
-### dataset.json
-
-```json
-[
-  {
-    "id": "sample-1",
-    "input": "The prompt...",
-    "target": "The expected answer or behavior"
-  },
-  ...
-]
-```
-
-### verify.sh Pattern
-
-Each `verify.sh` receives model output on stdin and outputs `PASS N/M` or `FAIL`:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-WORK_DIR=$(mktemp -d)
-trap 'rm -rf "$WORK_DIR"' EXIT
-
-cat > "$WORK_DIR/response.txt"
-
-TOTAL_CHECKS=3
-PASSED=0
-
-# Check 1
-if grep -qEi "pattern" "$WORK_DIR/response.txt"; then
-    PASSED=$((PASSED + 1))
-fi
-
-# Check 2 (sample-specific via SAMPLE_ID)
-case "${SAMPLE_ID:-default}" in
-    sample-1) PATTERN="..." ;;
-    sample-2) PATTERN="..." ;;
-esac
-if grep -qEi "$PATTERN" "$WORK_DIR/response.txt"; then
-    PASSED=$((PASSED + 1))
-fi
-
-# Check 3
-if python3 -c "..."; then
-    PASSED=$((PASSED + 1))
-fi
-
-if [[ $PASSED -eq $TOTAL_CHECKS ]]; then
-    echo "PASS ${PASSED}/${TOTAL_CHECKS}"
-else
-    echo "FAIL"
-fi
-```
-
-### fixtures/ and load_fixture()
-
-Tasks with helper files expose them via `scorers.fixtures`:
+### task.py (llm_judge task)
 
 ```python
-from scorers import fixtures_dir, load_fixture
+from scorers.llm_judge import llm_judge
+from scorers.time_ratio import time_ratio_scorer
+from scorers.task_budgets import get_task_budget
+from scorers.token_ratio import token_ratio_scorer
 
-# In verify.sh or a custom scorer:
-task_file = "tasks/competence/f20-scope-calibration/task.py"
-fd = fixtures_dir(task_file)  # → tasks/competence/f20-scope-calibration/fixtures/
-content = load_fixture(task_file, "index.html")  # → str content
-bytes_data = load_fixture_bytes(task_file, "data.bin")  # → bytes
+@task
+def my_task():
+    return Task(
+        dataset=json_dataset("dataset.json", FieldSpec(input="input", target="target", id="id")),
+        scorer=[llm_judge(), token_ratio_scorer(task_budget=get_task_budget("my_task")), time_ratio_scorer(task_budget=get_task_budget("my_task"))],
+    )
 ```
 
-Tasks with fixtures: f1-multi-file-verify (12 files), f24-honey-trap (8 files), f20-scope-calibration (3 files), q1-verification-gate (3 files), q2-do-not-touch (3 files).
+### Correctness Scorer Selection
+
+Tasks use either `verify_sh` or `llm_judge` for correctness — never both:
+
+| Scorer | Used for | How it works |
+|--------|----------|--------------|
+| `verify_sh()` | Deterministic checks (exact output, file structure, test execution) | Runs `verify.sh` script, parses PASS N/M |
+| `llm_judge()` | Open-ended reasoning (diagnosis, analysis, constraint compliance) | Calls judge model with per-task `judge.md` rubric, parses SCORE: N (0-10 → 0-1) |
 
 ---
 
 ## 5. Scorers
 
-### verify_sh() — Main Scorer
+### Three-Pillar Architecture
 
-The primary scorer for M002 tasks. Runs `verify.sh` and parses results.
+Each task produces 3 independent scores:
 
-**Key implementation detail (fixed in 99adecd):**
+| Pillar | Scorer | Value | Interpretation |
+|--------|--------|-------|----------------|
+| Correctness | `verify_sh` or `llm_judge` | 0.0–1.0 | Did the model produce the right output? |
+| Efficiency | `token_ratio_scorer` | unbounded ratio | `ref_tokens / actual_tokens` (>1.0 = more efficient) |
+| Latency | `time_ratio_scorer` | unbounded ratio | `ref_seconds / actual_seconds` (>1.0 = faster) |
 
-The original implementation used `os.getcwd()` to resolve `verify.sh`, which always pointed to the project root. All tasks scored 0.0 with "script not found: /Users/rut/dev/bench/verify.sh".
+No composite formula. Each pillar stands alone.
 
-The fix uses **call-stack introspection** to find the task module's directory:
+### verify_sh() — Script Correctness Scorer
 
-```python
-def _find_task_dir() -> str:
-    """Walk call stack to find the task module's directory."""
-    for frame_info in inspect.getouterframes(inspect.currentframe(), context=2):
-        path = frame_info.filename
-        if "/tasks/" in path or "\\tasks\\" in path:
-            task_dir = os.path.dirname(path)
-            if os.path.isdir(task_dir):
-                return task_dir
-    return os.getcwd()
+Pipes model output through task-specific `verify.sh` script. Parses JSON or text output:
 
-@scorer(metrics=[mean()])
-def verify_sh(script_name: str = DEFAULT_SCRIPT_NAME, timeout: int = DEFAULT_TIMEOUT):
-    @lru_cache(maxsize=1)
-    def _cached_task_dir() -> str:
-        return _find_task_dir()
+- JSON: `{"passed": N, "total": M, "checks": [...]}`
+- Text: `PASS N/M` or `PASS` or `FAIL`
+- Score = N/M normalized to [0.0, 1.0]
+- Per-check breakdown stored in `Score.metadata`
 
-    async def score(state: TaskState, target: Target) -> Score:
-        task_dir = _cached_task_dir()
-        script_path = os.path.join(task_dir, script_name)
-        # ... run script, parse PASS N/M ...
-```
+Uses `bench_task_dir` from sample metadata (injected by `_resolve_task` in `run.py`) to locate `verify.sh`.
 
-Cached because all samples in the same task share the same directory.
+### llm_judge() — LLM Judge Correctness Scorer
 
-**Result parsing:**
-- `PASS N/M` → score = N/M (e.g., `PASS 3/4` → 0.75)
-- `PASS` (bare) → score = 1.0
-- `FAIL` or anything else → score = 0.0
+Calls a fixed judge model (`openai/judge` → GLM-5.1 via LiteLLM proxy) with:
+- Task prompt, expected answer, model output
+- Per-task `judge.md` rubric with grading criteria
+- Returns `SCORE: N` (0-10), normalized to 0-1
 
-### composite()
+Key implementation details:
+- Model resolved once at factory time (not per-sample)
+- Rubric files cached per task directory (one file read per task, not per sample)
+- Graceful degradation: missing rubric → 0.0, API error → 0.0, unparseable response → 0.0
 
-Used by add-tests task. Implements `(correctness × 0.67 + efficiency × 0.33) × safety_gate`.
+### token_ratio_scorer() — Efficiency Scorer
 
-```python
-# scorers/composite.py
-@scorer(metrics=[mean()])
-def composite():
-    async def score(state: TaskState, target: Target) -> Score:
-        # Run efficiency and safety scorers, combine
-        eff = efficiency(state, target)
-        safe = safety(state, target)
-        composite = correctness * 0.67 + eff.value * 0.33
-        return Score(value=composite * safe.value, ...)
-```
+Unbounded ratio: `reference_output_tokens / actual_total_tokens`
 
-### Other Scorers
+3-tier reference resolution:
+1. BaselineStore (measured run) → highest fidelity
+2. TaskBudget (per-task calibrated budgets) → author intent
+3. SYSTEM_DEFAULT_BUDGETS (1000 tokens) → scaffolding fallback
 
-| Scorer | Purpose |
-|--------|---------|
-| `efficiency()` | Token count + latency from EvalLog |
-| `safety()` | Safety gate (blocks dangerous tool calls) |
-| `exec_scorer()` | Run subprocess and score output |
+Loop detection: flags `potential_loop=True` when message count exceeds threshold (50).
+
+### time_ratio_scorer() — Latency Scorer
+
+Unbounded ratio: `reference_seconds / actual_seconds`
+
+Uses `sample_working_time()` from Inspect AI (model + sandbox time, excluding concurrency wait).
+
+Noise floor: suppresses ratio when `min(reference, actual) < noise_floor` (default 5s) — shown as `--` in compare.
+
+### BaselineStore
+
+Persists measured eval results in `baselines/{task_id}/{model_id}.json`. Provides reference values for ratio scorers. Correctness validity gate (default 0.8) — baselines where the reference model failed the task are not used.
 
 ---
 
 ## 6. Eval Task Inventory
 
-### Competence (Tier 1) — Foundational Skills
+### Competence — Foundational Skills
 
-| Task | Description | Scorer | Samples |
-|------|-------------|--------|---------|
+| Task | Description | Correctness Scorer | Samples |
+|------|-------------|---------------------|---------|
 | q1-verification-gate | Parse pytest output, report failures | verify_sh | 3 |
 | q2-do-not-touch | Identify and don't modify flagged sections | verify_sh | 3 |
 | f7-format-compliance | Enforce output format requirements | verify_sh | 4 |
 | f12-surgical-fix | Fix exactly one buggy line | verify_sh | 4 |
 | f20-scope-calibration | Make changes only in specified scope | verify_sh | 3 |
-| add-tests | Write unit tests for existing code | composite | 5 |
+| add-tests | Write unit tests for existing code | verify_sh (composite legacy) | 5 |
 
-### Execution (Tier 2) — Reliable Execution
+### Execution — Reliable Execution
 
-| Task | Description | Scorer | Samples |
-|------|-------------|--------|---------|
+| Task | Description | Correctness Scorer | Samples |
+|------|-------------|---------------------|---------|
 | f6-partial-impl | Complete partially-implemented functions | verify_sh | 4 |
 | f8-negative-constraint | Avoid prohibited patterns | verify_sh | 4 |
-| f11-intermittent-bug | Find non-deterministic failures | verify_sh | 4 |
+| f11-intermittent-bug | Find non-deterministic failures | **llm_judge** | 4 |
 | f14-insert-dont-replace | Insert without modifying existing code | verify_sh | 4 |
-| q4-root-cause | Debug and fix root cause | verify_sh | 4 |
+| q4-root-cause | Debug and fix root cause | **llm_judge** | 4 |
 
-### Analysis (Tier 3) — Deep Reasoning
+### Analysis — Deep Reasoning
 
-| Task | Description | Scorer | Samples |
-|------|-------------|--------|---------|
-| f1-multi-file-verify | Cross-reference multiple files against claims | verify_sh | 4 |
-| f9-cascading-failure | Trace failure chains | verify_sh | 4 |
-| f10-env-mismatch | Detect environment-specific bugs | verify_sh | 4 |
-| f23-ghost-constraint | Respect constraints from early turns | verify_sh | 4 |
+| Task | Description | Correctness Scorer | Samples |
+|------|-------------|---------------------|---------|
+| f1-multi-file-verify | Cross-reference multiple files against claims | **llm_judge** | 4 |
+| f9-cascading-failure | Trace failure chains | **llm_judge** | 4 |
+| f10-env-mismatch | Detect environment-specific bugs | **llm_judge** | 4 |
+| f23-ghost-constraint | Respect constraints from early turns | **llm_judge** | 4 |
 | f24-honey-trap | Avoid security/antipattern traps | verify_sh | 4 |
 
 ### Verification (Smoke Tests)
@@ -374,68 +338,44 @@ def composite():
 | smoke | Basic model eval smoke test | includes | 1 |
 | agent_smoke | Agent eval smoke test (requires inspect_swe) | includes | 1 |
 
-**Total: 16 eval tasks + 2 smoke tests = 18 discoverable tasks**
+**Total: 16 eval tasks (10 verify_sh + 6 llm_judge) + 2 smoke tests**
 
 ---
 
-## 7. Bench Compare — Pivot Table
+## 7. Bench Compare — Pillar Table
 
 ### Data Model
 
 ```python
 @dataclass
 class PillarScores:
-    correctness: float          # Primary metric (0.0–1.0 or NaN)
-    composite: float            # Combined score
-    avg_time: float             # Avg wall-clock seconds per sample
-    avg_tokens: float           # Avg tokens per sample
-    avg_tokens_per_sec: float   # Tokens/second
-    samples: int                # Number of scored samples
-    scorer: str                 # Scorer name used
-
-@dataclass
-class CompareData:
-    tasks: list[str]                                    # Task names
-    models: list[str]                                   # Model names
-    matrix: dict[str, dict[str, PillarScores | None]]    # (task, model) → scores
+    correctness: float       # 0.0-1.0 from verify_sh or llm_judge
+    token_ratio: float       # unbounded, >1.0 = more efficient
+    time_ratio: float        # unbounded, >1.0 = faster
+    avg_tokens: float        # mean total tokens per sample
+    avg_time: float          # mean working_time per sample in seconds
+    samples: int
+    token_suppressed: int    # samples below noise floor
+    time_suppressed: int
 ```
 
 ### Formatting
 
-Five pivot tables are rendered:
-
-1. **COMPOSITE** — `(correctness × 0.67 + efficiency × 0.33) × safety`
-2. **CORRECTNESS** — Did the model produce the right output?
-3. **TOKENS** — Average token consumption
-4. **TIME** — Average wall-clock time per sample
-5. **TOKENS/SEC** — Throughput metric
-
-### Display Format
-
-- NaN/unavailable cells → `—`
-- Composite/correctness: 2 decimal places
-- Time: `12.3s` or `2m05s`
-- Tokens: `1.2k` or `450`
-
-### JSON Output
-
-`bench compare --json` outputs machine-readable format:
-
-```json
-[
-  {
-    "task": "add_tests",
-    "model": "openai/gemma-4-26-local",
-    "scorer": "composite",
-    "composite": 0.76,
-    "correctness": 1.0,
-    "avg_time": 24.0,
-    "avg_tokens": 1200.0,
-    "tokens_per_sec": 50.0,
-    "samples": 5
-  }
-]
 ```
+TASK                  CORRECT  TOK_RATIO  TIME_RATIO  TOKENS    TIME
+f6_partial_impl          1.00       1.04        1.29     728   30.4s
+q4_root_cause            1.00       0.35        0.37    3.0k   1m22s
+f11_intermittent_bug     0.90       0.35        0.56    4.4k   1m39s
+MEAN                     0.97       0.50        0.64    2.7k   1m10s
+```
+
+- Ratios > 1.0 = better than reference
+- Geometric mean for ratio aggregates (MEAN row)
+- `--` = suppressed (below noise floor) or no data
+
+### Correctness Source
+
+`_extract_from_scorers()` checks for `llm_judge` first, falls back to `verify_sh`. Tasks use one or the other, producing a single CORRECT value comparable across models.
 
 ---
 
@@ -444,129 +384,101 @@ Five pivot tables are rendered:
 ### Key Source Files
 
 ```
-bench_cli/run.py          # 168 lines. _discover_tasks(), _build_eval_spec(), run_eval()
-bench_cli/compare.py      # 419 lines. CompareData, PillarScores, load/format functions
-bench_cli/main.py         # 19 lines. Click CLI root + @click.group()
+bench_cli/run.py          # Task discovery, _resolve_task() with metadata injection
+bench_cli/compare.py      # CompareData, PillarScores, pillar table formatting
+bench_cli/baseline.py     # Baseline recording with correctness validity gate
+bench_cli/main.py         # Click CLI root
 
-scorers/verify_sh.py      # 123 lines. verify_sh() scorer + _find_task_dir() stack introspection
-scorers/fixtures.py        # 86 lines. fixtures_dir(), load_fixture(), load_fixture_bytes() (with lru_cache)
-scorers/composite.py      # 64 lines. composite() scorer
-scorers/efficiency.py     # 24 lines. efficiency() scorer
-scorers/safety.py         # 52 lines. safety() scorer
-scorers/__init__.py       # Exports verify_sh, fixtures_dir, load_fixture, etc.
-```
-
-### Key GSD Artifacts
-
-```
-.gsd/REQUIREMENTS.md    # R001–R017 active requirements
-.gsd/DECISIONS.md      # D001–D021 decisions register
-.gsd/KNOWLEDGE.md      # Project-specific gotchas and patterns
-.gsd/PROJECT.md        # Living project description
-.gsd/CODEBASE.md       # Auto-generated file map
-.gsd/ROADMAP.md        # Milestone roadmap
-.gsd/milestones/       # Per-milestone artifacts (M001, M002)
-```
-
-### Template Reference Scripts
-
-```
-templates/byte-identical.sh   # Compare output byte-for-byte against expected
-templates/forbidden-string.sh # Fail if output contains forbidden patterns
-templates/json-parse.sh        # Validate JSON + check expected fields
-templates/line-count-delta.sh # Check output line count matches expected delta
-templates/README.md            # Pattern documentation (129 lines)
+scorers/verify_sh.py      # Shell-script correctness scorer
+scorers/llm_judge.py      # LLM-as-judge correctness scorer
+scorers/token_ratio.py    # Efficiency scorer with 3-tier reference chain
+scorers/time_ratio.py     # Latency scorer with noise floor suppression
+scorers/task_budgets.py   # Per-task calibrated budgets from baseline data
+scorers/baseline_store.py # Baseline persistence (baselines/{task}/{model}.json)
+scorers/protocol.py       # PillarScorer protocol, constants, resolve_baseline_reference()
+scorers/__init__.py       # Package exports
 ```
 
 ---
 
 ## 9. Scoring Design
 
-### Formula
+### Three Independent Pillars
+
+No composite formula. Each pillar is scored independently:
+
+1. **Correctness** (0.0–1.0): `verify_sh` (script) or `llm_judge` (LLM rubric)
+2. **Efficiency** (unbounded ratio): `ref_tokens / actual_tokens` — 3-tier reference chain
+3. **Latency** (unbounded ratio): `ref_seconds / actual_seconds` — noise floor suppression
+
+### Reference Resolution (Efficiency + Latency)
 
 ```
-composite = (correctness × 0.67 + efficiency × 0.33) × safety_gate
+1. Baseline store (valid_for_reference: true)  → measured run (highest fidelity)
+2. TaskBudget (per-task calibrated values)       → author intent
+3. SYSTEM_DEFAULT_BUDGETS (1000 tokens / 30s)    → scaffolding fallback
 ```
 
-Where:
-- **correctness**: Primary scorer metric (e.g., verify_sh score, accuracy)
-- **efficiency**: Token usage + latency relative to reference (lower tokens + faster = higher score)
-- **safety_gate**: 1.0 (Phase 1, no unsafe tool calls expected) or 0.0 (blocked dangerous operation)
-
-### verify_sh Scoring
+### Judge Scoring (Correctness for 6 tasks)
 
 ```
-value = N / M  (PASS N/M from verify.sh)
+Judge model (openai/judge → GLM-5.1) receives:
+  - Task prompt (state.input_text)
+  - Expected answer (target.text)
+  - Model output (state.output.completion)
+  - Per-task rubric (judge.md)
+
+Returns SCORE: N (0-10), normalized to 0.0-1.0
 ```
-
-- `PASS 3/3` → 1.0
-- `PASS 2/4` → 0.5
-- `FAIL` or anything else → 0.0
-- Bare `PASS` → 1.0
-- Timeout or error → 0.0 with diagnostic explanation
-
-### composite Scoring
-
-Used by add-tests (and future code-gen tasks):
-
-- correctness: from `includes()` or custom scorer
-- efficiency: `tokens_used / reference_tokens × time_weight`
-- safety: from safety() scorer
 
 ---
 
 ## 10. Key Decisions
 
-| D | Decision | Rationale |
-|---|----------|-----------|
-| D001 | LiteLLM proxy at smallbox:4000 | Single config point, no per-provider keys |
-| D002 | Tasks as `@task` Python files | Direct Inspect integration, no custom registry |
-| D003 | Agent eval via inspect-swe | Production-ready, Inspect captures all tokens/calls |
-| D004 | Phase 1 includes both model and agent eval | Both are core capabilities |
-| D005 | Pin Inspect AI version | Prevent breakage from near-daily releases |
-| D006 | Scoring: (correct × 0.67 + eff × 0.33) × safety | PRD-specified formula |
-| D019 | Task format: task.py + dataset.json + verify.sh + fixtures/ | Existing pattern works, no new framework needed |
-| D020 | F23 single-prompt approach | Inspect generate() is single-turn, custom solver overkill |
-| D021 | Remove 4 synthetic tasks, keep add-tests only | Removed tasks are weaker EVAL-TASK versions; add-tests is unique |
-
-### M002 Scope Decisions
-
-**Removed tasks:** write-function, fix-bug, edit-file, find-replace (4 synthetic M001 tasks, D021)
-
-**Kept:** add-tests only from original code_gen/
-
-**Rationale:** The 4 removed tasks are weaker versions of the EVAL-TASK derived tasks. add-tests tests a unique skill (writing unit tests) not covered by any EVAL-TASK.
-
-**Directory reorganization:**
-- `code_gen/` → merged into `competence/` (add-tests moved)
-- `basic/` → split into `competence/`, `execution/`, `analysis/`
-- `file_ops/` → deleted (contained removed synthetic tasks)
+| Decision | Rationale |
+|----------|-----------|
+| LiteLLM proxy at smallbox:4000 | Single config point, no per-provider keys |
+| Tasks as `@task` Python files | Direct Inspect integration, no custom registry |
+| Three independent pillars, no composite | Each pillar interpretable on its own; no opaque formula |
+| verify_sh OR llm_judge per task | Tasks use whichever scorer fits; single CORRECT value for comparison |
+| Custom scorer over Inspect's model_graded_qa | Inspect uses C/P/I grades; we need 0-1 scoring with per-task rubrics |
+| Judge model = separate from model under test | Prevents self-preference bias (GLM-5.1 as judge, eval models are qwen/gemma) |
+| Unbounded ratios for efficiency/latency | Preserves signal in both directions; geometric mean for aggregation |
+| Baseline correctness validity gate (0.8) | Fast-but-wrong baseline penalizes correct-but-slower models |
+| Per-task calibrated budgets | Measured from actual qwen-local baseline runs, not guessed |
+| `bench_task_dir` via sample metadata | Stack introspection fails in Inspect's async event loop |
+| Rubric caching + model resolution at factory time | Avoids per-sample file I/O and model resolution overhead |
 
 ---
 
 ## 11. Test Suite
 
 ```bash
-python3 -m pytest tests/              # All tests
-python3 -m pytest tests/test_cli.py   # CLI tests only
-python3 -m pytest tests/test_verify_patterns.py -v  # verify.sh pattern tests
+pytest                       # All tests (238 passed, 2 skipped)
+pytest tests/test_scorers.py # Scorer unit tests (62 tests)
+pytest tests/test_compare.py # Compare formatting tests
 ```
 
 ### Test Coverage
 
-| Test file | What it tests |
-|-----------|---------------|
-| test_cli.py | Task discovery, tier config, max-tasks |
-| test_compare.py | CompareData, PillarScores, pivot table formatting, JSON output |
-| test_fixtures.py | fixtures_dir(), load_fixture() |
-| test_integration.py | Scorer wiring per task, dataset validity |
-| test_scorers.py | Unit tests for efficiency, safety, composite |
-| test_verify_patterns.py | 4 template verify.sh scripts (25 test cases) |
-| test_verify_sh_scorer.py | verify_sh scorer: PASS/FAIL parsing, timeout, missing script |
-| test_tier1_tasks.py | Competence task tests |
-| test_tier2_tasks.py | Execution task tests |
+| Test file | What it tests | Count |
+|-----------|---------------|-------|
+| test_cli.py | Task discovery, tier config, max-tasks | 18 |
+| test_compare.py | PillarScores, pillar table formatting, JSON output, _numeric_val helper | 15 |
+| test_fixtures.py | fixtures_dir(), load_fixture() | 11 |
+| test_integration.py | Scorer wiring per task, dataset validity | 22 |
+| test_scorers.py | All scorer units: efficiency, safety, composite, token_ratio, time_ratio, execution_safety, constraint, baseline_store, **llm_judge** (parse_score, load_rubric, error paths, mocked scoring, caching) | 62 |
+| test_verify_patterns.py | 4 template verify.sh scripts | 25 |
+| test_verify_sh_scorer.py | verify_sh scorer: PASS/FAIL parsing, timeout, missing script | 9 |
+| test_tier1_tasks.py | Competence task tests | 19 |
+| test_tier2_tasks.py | Execution task tests | 42 |
 
-**Current: 181 passing, 1 expected failure** (agent_smoke: inspect_swe not installed).
+**LLM judge tests** (21 tests in test_scorers.py):
+- `TestParseScore` (11): regex extraction for SCORE: N — integer, fractional, zero, clamping, edge cases
+- `TestLoadRubric` (3): file loading — existing rubric, missing rubric, nonexistent dir
+- `TestLLMJudgeScorer` (7): scorer integration with mocked model — no task dir, missing rubric, empty output, API error, unparseable response, successful scoring, rubric caching
+
+All LLM judge tests use mocked models — no real API calls in test suite.
 
 ---
 
@@ -578,114 +490,86 @@ python3 -m pytest tests/test_verify_patterns.py -v  # verify.sh pattern tests
 chmod +x tasks/*/verify.sh tasks/*/*/verify.sh
 ```
 
-The scorer checks `os.access(script_path, os.X_OK)` before running.
-
 ### POSIX Regex Only in verify.sh
 
 Use `grep -E` instead of `grep -P`. Use `[[:space:]]` instead of `\s` for macOS compatibility.
 
 ### SAMPLE_ID Environment Variable
 
-`verify.sh` receives `SAMPLE_ID` in its environment. Use it to branch on per-sample patterns:
+`verify.sh` receives `SAMPLE_ID` in its environment. Use it to branch on per-sample patterns.
 
-```bash
-case "${SAMPLE_ID:-default}" in
-    sample-1) PATTERN="..." ;;
-    sample-2) PATTERN="..." ;;
-esac
-```
+### sample.model_usage Is a Dict
+
+Keyed by model name, not an object. Iterate `.values()` to aggregate tokens.
+
+### Task Metadata Propagation
+
+`task.metadata` does NOT propagate to `state.metadata`. Must inject into `sample.metadata` at `_resolve_task` time. The scorer reads `state.metadata["bench_task_dir"]`.
 
 ### Inspect EvalLog Is Binary ZIP
 
-Decode with `zipfile`, not `json.loads()` directly:
+Use `read_eval_log()` from `inspect_ai.log`, not raw `json.loads()`.
 
-```python
-import zipfile, json
-with zipfile.ZipFile("logs/foo.eval") as z:
-    header = json.loads(z.read("header.json"))
-    sample = json.loads(z.read("samples/foo_epoch_1.json"))
-```
+### GenerateConfig Import Path
 
-### Model Routing via LiteLLM
+`from inspect_ai._eval.task.run import GenerateConfig` — internal API, may change across Inspect versions.
 
-```bash
-OPENAI_BASE_URL=http://smallbox:4000/v1
-OPENAI_API_KEY=sk-...  # LiteLLM proxy token
-```
+### sample_working_time()
 
-### Stack Introspection for Task Dir
-
-`_find_task_dir()` in `scorers/verify_sh.py` uses `inspect.getouterframes()` to walk the call stack and find `/tasks/` in frame paths. This is the correct approach — Inspect AI provides no API for task directory access.
+`from inspect_ai._util.working import sample_working_time` — returns a huge number when outside eval context. Cap sanity check at 86400s.
 
 ---
 
-## 13. Milestone History
+## 13. History
 
-### M001 — Phase 1 MVP (14f0641)
+### Phase 1 — MVP + Real Tasks
 
-**Status:** Complete
-
-**Scope:**
-- Project scaffolding (pyproject.toml, bench package)
-- Task format (task.py + dataset.json)
-- 4 synthetic tasks (write-function, fix-bug, edit-file, find-replace) + add-tests
-- Custom scorers (composite, efficiency, safety)
-- `bench run` CLI (Click-based)
-- `bench compare` (per-task breakdown)
-- LiteLLM integration
-
-**Key files added:**
-- `bench_cli/run.py`, `bench_cli/compare.py`, `bench_cli/main.py`
-- `scorers/composite.py`, `scorers/efficiency.py`, `scorers/safety.py`
-- `tasks/code_gen/add-tests/`, `tasks/file_ops/` (4 tasks)
-
-### M002 — Real Tasks from Real Failures (d09102d)
-
-**Status:** Complete
-
-**Scope:**
-- 15 eval tasks derived from actual work/failures
-- verify_sh scorer with fixtures infrastructure
-- 4 verify.sh reference templates
+- Project scaffolding, task format, 16 eval tasks from real failure analysis
+- verify_sh scorer, fixtures infrastructure, verify.sh templates
 - Tasks organized by cognitive tier (competence/execution/analysis)
-- Removed 4 synthetic M001 tasks
-- 181 passing tests
+- LiteLLM integration, CLI (`bench run`, `bench compare`)
 
-**Key files added:**
-- `scorers/verify_sh.py`, `scorers/fixtures.py`
-- All 15 tasks in `tasks/{competence,execution,analysis}/`
-- `templates/` directory with verify.sh patterns
+### Phase 1A — Pillar Scoring Rework
 
-**Post-M002 fixes:**
-- 99adecd: verify_sh task-dir fix (call-stack introspection)
-- cf33838: test_compare.py rewrite for new pivot-table API
-- fcbfeee: M001 task removal, directory reorganization
-- 9b06028: cognitive tier naming
-- b2694a2: log cleanup
+- Dropped composite formula, three independent pillars
+- Token ratio scorer with 3-tier reference chain
+- Time ratio scorer with noise floor suppression
+- Per-task calibrated budgets from baseline measurements
+- Baseline store with correctness validity gate
+- Compare.py rewrite for pillar table with geometric mean
+
+### Phase 1B — LLM Judge + Baselines
+
+- `llm_judge.py` scorer using Inspect's `get_model()` + `model.generate()`
+- 6 tasks migrated from verify_sh to llm_judge with per-task `judge.md` rubrics
+- Judge model: `openai/judge` → GLM-5.1 via LiteLLM proxy
+- Baselines recorded for qwen-local and gemma-4-26-local
+- compare.py reads either scorer for single CORRECT column
+- 238 tests passing (21 new for LLM judge)
 
 ---
 
 ## 14. What's Next
 
-### Immediate (Pre-Phase-2)
+### Phase 1C (Immediate)
 
-1. **Re-run eval with configured model** — verify_sh fix (99adecd) deployed, re-run all 16 tasks to get real scores
-2. **Verify benchmark comparison** — `bench compare` should show meaningful scores for competence/execution/analysis tasks
+- Record more model baselines for broader comparison
+- Calibrate per-task budgets from multi-model baseline data
 
 ### Phase 2
 
-1. **LLM Judge** — Calibrate LLM-as-judge with Cohen's Kappa >= 0.61 on 30+ tasks before deploying
-2. **Statistics** — Bootstrap CI + Cohen's d for comparing model pairs (requires 30+ tasks)
-3. **Real task derivation** — Mine actual work sessions for new tasks
+- **LLM judge calibration** — Cohen's Kappa >= 0.61 vs human judgment
+- **Statistics** — Bootstrap CI + Cohen's d for model pair comparison
+- **Docker sandbox** — Isolated execution for agent eval
+- **LLM judge for safety** — `LLMJudgeSafety` scorer for output safety surface
 
 ### Future
 
-- **Agent eval** — inspect-swe integration (requires `pip install inspect-swe` and Docker)
-- **Docker sandbox** — Phase 2+ sandbox for agent eval isolation
-- **Approval system** — Real-time blocking of dangerous tool calls
-- **inspect view** — Interactive EvalLog inspection at localhost:7575
+- **Agent eval** — inspect-swe integration (requires Docker)
+- **Multi-sample runs** — pass@k, mean +/- stderr
+- **Cost normalization** — tokens x price/token per model
+- **Trajectory quality** — backtracking, dead-end detection
 
 ---
 
-*Last updated: 2026-04-12*
-*Authors: GSD agent, co-authored with human*
+*Last updated: 2026-04-14*

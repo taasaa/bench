@@ -34,7 +34,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **Default model:** `openai/default` (maps to whatever LiteLLM configures as default)
 
 ## Current Focus
-Phase 1 complete (scorers, compare, baselines). Baselines recorded for qwen-local and gemma-4-26-local. Compare fixed for multi-scorer aggregation.
+Phase 1B complete. 16 tasks scored, dual correctness scoring (10 verify_sh + 6 llm_judge), baselines recorded for qwen-local and gemma-4-26-local. 238 tests passing.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
@@ -46,8 +46,9 @@ Phase 1 complete (scorers, compare, baselines). Baselines recorded for qwen-loca
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
 - **Tiers:** quick (verification tasks) + full (competence/execution/analysis — 16 tasks)
-- **Scoring:** 3 independent scorers per task — verify_sh (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency)
-- **Task format:** Directory with task.py + dataset.json + verify.sh + fixtures/
+- **Scoring:** 3 independent scorers per task — verify_sh or llm_judge (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency)
+- **Correctness:** verify_sh for 10 deterministic tasks, llm_judge for 6 open-ended tasks (judge model: `openai/judge` → GLM-5.1)
+- **Task format:** Directory with task.py + dataset.json + verify.sh or judge.md + fixtures/
 - **Viewer:** `inspect view` (localhost:7575) for interactive log inspection
 - **Comparison:** `bench compare` — single pillar table with CORRECT/TOK_RATIO/TIME_RATIO/TOKENS/TIME columns, multi-model side-by-side, geometric mean for ratio aggregates
 
@@ -60,5 +61,5 @@ Phase 1 complete (scorers, compare, baselines). Baselines recorded for qwen-loca
 - Use `.eval` binary format by default, caching enabled, execution limits configured
 
 ## Next Steps
-- Phase 1B: more model baselines, calibrate per-task budgets from multi-model data
-- Phase 2: LLM judge, statistics, Docker sandboxing
+- Phase 1C: more model baselines, calibrate per-task budgets from multi-model data
+- Phase 2: LLM judge calibration (Cohen's Kappa), statistics, Docker sandboxing

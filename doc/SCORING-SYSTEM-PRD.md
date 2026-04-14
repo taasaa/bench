@@ -1,6 +1,6 @@
 # Scoring System Rework PRD
 
-**Status:** Draft v1.2 + First Principles Review
+**Status:** Phase 1 implemented. Phase 2 deferred.
 **Scope:** Phase 1 — Pillars-First Architecture
 **Out of Scope:** Composite unification, multi-sample pass@k (Phase 2)
 

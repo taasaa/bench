@@ -1,35 +1,17 @@
 # Scorer Explanation Schema
 
-All scorers in `bench/scorers/` must write `key=value` pairs in their `Score.explanation` strings. The `bench compare` command reads these via regex to populate the CORRECTNESS, COMPOSITE, and safety columns in pivot tables.
+All scorers in `scorers/` write `key=value` pairs in their `Score.explanation` strings. The `bench compare` command reads these via regex to populate the CORRECT column in the pillar table.
 
 ---
 
-## Required Fields
+## Correctness Scorers
 
-Every scorer **must** include these three fields in its explanation:
+Tasks use one of two correctness scorers:
 
-| Field | Format | Description |
-|-------|--------|-------------|
-| `correctness` | `correctness=<float 0.0–1.0>` | Primary scorer output |
-| `efficiency` | `efficiency=<float 0.0–1.0>` | Token/latency efficiency |
-| `safety` | `safety=<float 0.0–1.0>` | Safety gate value (1.0 if no check) |
+### verify_sh
 
----
+Outputs `PASS N/M` format. Explanation contains:
 
-## Optional Fields
-
-| Field | Format | Description |
-|-------|--------|-------------|
-| `scorer` | `scorer=<string>` | Scorer name for logging |
-| `raw` | `raw=<float>` | Raw (pre-safety) composite |
-| `final` | `final=<float>` | Final composite after safety |
-| `unsafe_pattern` | `unsafe_pattern=<regex>` | Pattern that triggered safety gate |
-
----
-
-## Example Outputs
-
-### verify_sh returning PASS 2/3
 ```
 correctness=0.67, efficiency=1.00, safety=1.00
 PASS 2/3
@@ -38,53 +20,60 @@ check_2: pass
 check_3: fail (type mismatch)
 ```
 
-### composite scorer
+### llm_judge
+
+LLM judge returns `SCORE: N` (0-10, normalized to 0-1). Explanation contains:
+
 ```
-correctness=1.00, efficiency=0.85, safety_gate=1.00, raw=0.952, final=0.952
+correctness=0.80
+Judge reasoning text here...
+SCORE: 8
 ```
 
-### efficiency scorer
+---
+
+## Ratio Scorers
+
+### token_ratio_scorer
+
 ```
-correctness=0.00, efficiency=0.75, safety=1.00
-Used 250 tokens (max 1000)
+efficiency_ratio=1.230, actual_total_tokens=406, reference_tokens=500, reference_source=system_default
 ```
 
-### safety scorer (clean output)
+### time_ratio_scorer
+
 ```
-No unsafe patterns detected
+latency_ratio=0.720, actual_seconds=41.2, reference_seconds=29.6, reference_source=baseline, reference_model=qwen-local
 ```
 
-### safety scorer (unsafe output)
+When suppressed (below noise floor):
+
 ```
-Unsafe pattern detected: \bDROP\s+TABLE\b
+latency_ratio=suppressed, actual_seconds=3.1, reference_seconds=2.8, noise_floor=5.0s, note=ratio unreliable (below noise floor)
 ```
 
 ---
 
 ## Parsing
 
-`bench_cli/compare.py` extracts pillar values via these regexes:
+`bench_cli/compare.py` extracts pillar values:
 
-```python
-_RE_CORRECTNESS = re.compile(r"correctness=([\d.]+)")
-_RE_EFFICIENCY  = re.compile(r"efficiency=([\d.]+)")
-_RE_SAFETY      = re.compile(r"safety(?:_gate)?=([\d.]+)")
-```
+- **Correctness**: `_numeric_val()` reads `llm_judge` (preferred) or `verify_sh` score value
+- **Efficiency**: `token_ratio_scorer` score value
+- **Latency**: `time_ratio_scorer` score value (NaN = suppressed)
 
-Missing fields cause NaN in the CORRECTNESS and COMPOSITE tables.
+No regex parsing of explanation strings for pillar values — values are read directly from `Score.value`.
 
 ---
 
 ## Adding a New Scorer
 
-1. Include `correctness=`, `efficiency=`, `safety=` in your explanation string
-2. Add a test in `test_scorers.py::TestScorerSchema` verifying the fields are present
-3. Update this document if adding new optional fields
+1. Create `scorers/<name>.py` with `@scorer(metrics=[mean()])` decorator
+2. Return `Score(value, explanation, metadata)` with `"pillar": "<pillar_name>"` in metadata
+3. Export from `scorers/__init__.py`
+4. Update `compare.py` `_extract_from_scorers()` if adding a new correctness source
+5. Add tests in `tests/test_scorers.py`
 
 ---
 
-## Review Cadence
-
-Safety patterns are reviewed quarterly. Next review: **2026-07-12**.
-
-Update the `last_review` date in `test_scorers.py::test_safety_patterns_reviewed_this_quarter` and the comment in `scorers/safety.py` after each review.
+*Last updated: 2026-04-14*
