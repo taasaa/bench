@@ -21,18 +21,16 @@ cat > "$STDIN_FILE"
 
 # Determine fixture to compare against
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FIXTURE="${SAMPLE_ID:-config_1}.py"
+
+# Map sample IDs to fixture filenames
+case "${SAMPLE_ID:-}" in
+    q2-db-credentials)   FIXTURE="config_1.py" ;;
+    q2-api-credentials)  FIXTURE="config_2.py" ;;
+    q2-redis-credentials) FIXTURE="config_3.py" ;;
+    *)                   FIXTURE="config_1.py" ;;
+esac
+
 FIXTURE_PATH="$SCRIPT_DIR/fixtures/$FIXTURE"
-
-# Try standard naming: fixture name matches target field
-if [[ ! -f "$FIXTURE_PATH" ]]; then
-    FIXTURE_PATH="$SCRIPT_DIR/fixtures/$FIXTURE"
-fi
-
-# Fall back to config_1.py if specific fixture missing
-if [[ ! -f "$FIXTURE_PATH" ]]; then
-    FIXTURE_PATH="$SCRIPT_DIR/fixtures/config_1.py"
-fi
 
 TOTAL_CHECKS=2
 PASSED=0
