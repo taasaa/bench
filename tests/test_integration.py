@@ -6,6 +6,12 @@ import sys
 
 import pytest
 
+
+def _module_available(name: str) -> bool:
+    """Check if a module can be imported without actually importing it."""
+    return importlib.util.find_spec(name) is not None
+
+
 # Ensure project root is on sys.path for scorers import
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
@@ -142,17 +148,7 @@ class TestAllTasksScorerName:
 
 
 class TestVerificationTasksUnmodified:
-    """Verification tasks should NOT use the composite scorer.
-
-    agent_smoke requires inspect_swe (not installed) — class is skipped if missing.
-    """
-
-    @pytest.mark.skipif(
-        True,
-        reason="agent_smoke requires inspect_swe (not installed)",
-    )
-    def _do_not_run_agent_smoke(self):
-        pass
+    """Verification tasks should NOT use the composite scorer."""
 
     def _load_and_check(self, rel_path: str, func_name: str) -> None:
         """Load task and verify scorer returns non-None result with explanation."""
@@ -182,10 +178,56 @@ class TestVerificationTasksUnmodified:
         """smoke task scorer returns result with explanation (uses includes())."""
         self._load_and_check("tasks/verification/smoke/task.py", "smoke")
 
-    @pytest.mark.skip(reason="agent_smoke requires inspect_swe (not installed)")
+    @pytest.mark.skipif(
+        not _module_available("inspect_swe"),
+        reason="inspect_swe not installed (Docker agent eval dependency)",
+    )
     def test_agent_smoke_task_scorer_behavior(self):
-        """agent_smoke task scorer returns result with explanation."""
-        pass  # can't run — inspect_swe not installed
+        """agent_smoke task scorer returns numeric result with explanation."""
+        t = _load_task("tasks/verification/agent_smoke/task.py", "agent_smoke")
+        scorer = _get_scorer_fn(t)
+
+        import asyncio
+
+        from inspect_ai.model import ChatMessageAssistant, ModelOutput
+        from inspect_ai.scorer import Target
+        from inspect_ai.solver import TaskState
+
+        # Test matching output — target "hello world" is in the output
+        output = ModelOutput.from_content(
+            model="test", content="I created hello.py with hello world"
+        )
+        state = TaskState(
+            model="test",
+            sample_id="x",
+            epoch=0,
+            input="",
+            messages=[ChatMessageAssistant(content="I created hello.py with hello world")],
+            target=Target("hello world"),
+            output=output,
+        )
+        result = asyncio.run(scorer(state, state.target))
+        assert isinstance(result.value, float), (
+            f"Expected float, got {type(result.value).__name__}: {result.value!r}"
+        )
+        assert result.value == 1.0
+        assert isinstance(result.explanation, str)
+        assert len(result.explanation) > 0
+
+        # Test non-matching output
+        output2 = ModelOutput.from_content(model="test", content="Something unrelated")
+        state2 = TaskState(
+            model="test",
+            sample_id="x",
+            epoch=0,
+            input="",
+            messages=[ChatMessageAssistant(content="Something unrelated")],
+            target=Target("hello world"),
+            output=output2,
+        )
+        result2 = asyncio.run(scorer(state2, state2.target))
+        assert isinstance(result2.value, float)
+        assert result2.value == 0.0
 
 
 class TestTaskCoverage:
