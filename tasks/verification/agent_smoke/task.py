@@ -1,9 +1,31 @@
-"""Agent eval smoke test: verify claude_code() solver works in Docker sandbox."""
+"""Agent eval smoke test: verify agent solver works in Docker sandbox."""
 
 from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
-from inspect_ai.scorer import includes
-from inspect_swe import claude_code
+from inspect_ai.scorer import Score, Target, mean, scorer
+from inspect_ai.solver import TaskState
+
+
+@scorer(metrics=[mean()])
+def includes_numeric() -> None:
+    """Like includes() but returns 1.0/0.0 instead of 'C'/'I'.
+
+    The standard includes() scorer returns string values incompatible
+    with compare.py's _numeric_val(). This scorer preserves the same
+    check semantics (target text present in output) but returns numeric
+    values.
+    """
+
+    async def score(state: TaskState, target: Target) -> Score:
+        output_text = state.output.completion if state.output else ""
+        value = 1.0 if target.text.lower() in output_text.lower() else 0.0
+        return Score(
+            value=value,
+            explanation=f"Target '{target.text}' {'found' if value else 'not found'} in output",
+            metadata={"pillar": "correctness"},
+        )
+
+    return score
 
 
 @task
@@ -21,15 +43,15 @@ def agent_smoke():
       - anthropic package must be installed (pip install anthropic)
 
     Run example:
-      OPENAI_BASE_URL=http://smallbox:4000/v1 OPENAI_API_KEY=sk-1234 \\
-        inspect eval tasks/verification/agent_smoke/task.py \\
-        --model openai/rut-small --max-tasks 1 --time-limit 300
+      bench run --tier quick --task agent_smoke --agent claude
     """
+    from inspect_swe import claude_code  # type: ignore[import-untyped]
+
     return Task(
         dataset=json_dataset(
             "dataset.json", FieldSpec(input="input", target="target", id="id")
         ),
         solver=claude_code(),
-        scorer=includes(),
+        scorer=includes_numeric(),
         sandbox="docker",
     )

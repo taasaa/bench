@@ -19,6 +19,28 @@ TIER_DIRS: dict[str, list[str]] = {
 }
 
 
+def _docker_available() -> bool:
+    """Check if Docker is running and available."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["docker", "info"], capture_output=True, timeout=5
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _requires_docker(task_py: Path) -> bool:
+    """Heuristic: does task.py declare sandbox='docker'?."""
+    try:
+        content = task_py.read_text()
+    except OSError:
+        return False
+    return 'sandbox="docker"' in content or "sandbox='docker'" in content
+
+
 def _discover_tasks(
     tier: str,
     max_tasks: int | None = None,
@@ -29,6 +51,9 @@ def _discover_tasks(
     Scans the configured subdirectories under ``tasks/`` for ``task.py``
     files and returns them as relative paths that Inspect's ``eval()``
     can resolve (e.g. ``tasks/verification/smoke/task.py``).
+
+    Tasks that require Docker (``sandbox="docker"``) are automatically
+    skipped with a warning when Docker is not available.
 
     Parameters
     ----------
@@ -46,6 +71,8 @@ def _discover_tasks(
     if dirs is None:
         raise click.BadParameter(f"Unknown tier {tier!r}", param_hint="--tier")
 
+    docker_ok = _docker_available()
+
     specs: list[str] = []
     for subdir in sorted(dirs):
         # Each subdir contains task directories (e.g. tasks/verification/smoke/).
@@ -56,8 +83,15 @@ def _discover_tasks(
             if task_filter and task_dir.name != task_filter:
                 continue
             task_py = task_dir / "task.py"
-            if task_py.is_file():
-                specs.append(str(task_py))
+            if not task_py.is_file():
+                continue
+            if _requires_docker(task_py) and not docker_ok:
+                click.echo(
+                    f"  Skipping {task_py} (requires Docker, not available)",
+                    err=True,
+                )
+                continue
+            specs.append(str(task_py))
 
     if max_tasks is not None and max_tasks >= 0:
         specs = specs[:max_tasks]
@@ -91,6 +125,17 @@ DEFAULT_MODEL = "openai/default"
     type=click.Choice(["claude", "codex", "gemini"]),
     default=None,
     help="Agent solver. Omit for model-only eval (generate()).",
+)
+@click.option(
+    "--agent-mode",
+    type=click.Choice(["local", "bare", "docker", "harness"]),
+    default="local",
+    show_default=True,
+    help=(
+        "How to run the agent: "
+        "local (full harness), bare (no hooks/CLAUDE.md), "
+        "docker (pristine in container), harness (Docker + injected instructions)."
+    ),
 )
 @click.option(
     "--task",
@@ -142,6 +187,7 @@ def run(
     model: str,
     tier: str,
     agent: str | None,
+    agent_mode: str,
     task_filter: str | None,
     list_tasks: bool,
     max_tasks: int | None,
@@ -177,7 +223,7 @@ def run(
     # 2. Resolve solver.
     solver = None
     if agent is not None:
-        solver = _resolve_agent_solver(agent)
+        solver = _resolve_agent_solver(agent, agent_mode)
 
     # 0. Convert spec strings to Task objects with bench_task_dir injected.
     # inspect_eval runs scorers inside an async event loop where stack introspection
@@ -362,22 +408,19 @@ def _resolve_task(spec: str) -> task:
     )
 
 
-def _resolve_agent_solver(agent: str) -> None:
-    """Map agent name to an inspect-swe solver instance."""
-    try:
-        from inspect_swe import claude_code, codex_cli, gemini_cli  # type: ignore[import-untyped]
-    except ImportError as exc:
-        raise click.ClickException(
-            "Agent eval requires the 'inspect-swe' package. "
-            "Install with: pip install 'bench[agent]'"
-        ) from exc
+def _resolve_agent_solver(agent: str, agent_mode: str) -> object:
+    """Route (agent, mode) to the correct Inspect solver.
 
-    solvers = {
-        "claude": claude_code,
-        "codex": codex_cli,
-        "gemini": gemini_cli,
-    }
-    factory = solvers.get(agent)
-    if factory is None:
-        raise click.BadParameter(f"Unknown agent {agent!r}", param_hint="--agent")
-    return factory()
+    Modes:
+      local / bare → local_agent solver (subprocess on host)
+      docker / harness → docker_agent solver (inspect-swe in Docker)
+    """
+    if agent_mode in ("local", "bare"):
+        from bench_cli.solvers.local_agent import local_agent
+
+        return local_agent(agent, bare=(agent_mode == "bare"))
+
+    # docker / harness
+    from bench_cli.solvers.docker_agent import docker_agent
+
+    return docker_agent(agent, harness=(agent_mode == "harness"))
