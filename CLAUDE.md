@@ -17,6 +17,12 @@ python -m bench_cli baseline record --model openai/qwen-local --tier full
 python -m bench_cli baseline list
 python -m bench_cli compare
 pytest                    # run test suite
+
+# Agent eval (requires agent CLI installed: claude, codex, or gemini):
+python -m bench_cli run --agent claude --agent-mode local --tier quick --task smoke
+python -m bench_cli run --agent claude --agent-mode bare --tier full
+python -m bench_cli run --agent codex --agent-mode local --tier full
+python -m bench_cli run --agent gemini --agent-mode docker --tier full
 ```
 
 ## Model Routing
@@ -34,12 +40,14 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **Default model:** `openai/default` (maps to whatever LiteLLM configures as default)
 
 ## Current Focus
-Phase 1B complete. 16 tasks scored, dual correctness scoring (10 verify_sh + 6 llm_judge), baselines recorded for qwen-local and gemma-4-26-local. 238 tests passing.
+Phase 1B complete. 16 tasks scored, dual correctness scoring (10 verify_sh + 6 llm_judge), baselines recorded for qwen-local and gemma-4-26-local. Agent eval infrastructure complete: 3 agents x 4 modes. 254 tests passing.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
 - **Model eval:** Inspect `generate()` solver — prompt in, answer out
-- **Agent eval:** `inspect-swe` solvers — `claude_code()`, `codex_cli()`, `gemini_cli()`
+- **Agent eval:** Agent-agnostic `--agent <name> --agent-mode <mode>` CLI. 3 agents (claude, codex, gemini) x 4 modes (local, bare, docker, harness)
+- **Agent config registry:** `bench_cli/agents.py` — per-agent CLI settings, output parsers, Docker solver mapping
+- **Agent solvers:** `bench_cli/solvers/local_agent.py` (subprocess) and `docker_agent.py` (inspect-swe wrapper)
 - **Agent bridge:** `sandbox_agent_bridge()` proxies CLI agent API calls, captures every token/tool call
 - **Sandboxing:** Inspect native — Docker, K8s, local. Phase 1: local. Phase 2+: Docker.
 - **CLI:** `bench run`, `bench compare`, `bench baseline record/list`
@@ -54,12 +62,14 @@ Phase 1B complete. 16 tasks scored, dual correctness scoring (10 verify_sh + 6 l
 
 ## Key Decisions
 - Standalone project — no connection to PAI
-- inspect-swe handles agent eval — no custom subprocess management
+- Agent is a parameter, not the architecture — `AgentConfig` registry makes all agents interchangeable
+- inspect-swe handles Docker agent eval — local agents run as subprocesses via `local_agent` solver
 - Inspect captures tokens, latency, tool calls, event transcripts natively for both modes
 - Same EvalLog format for model eval and agent eval
 - Phase 1: local sandbox (no Docker), deterministic scoring, raw score comparison
 - Use `.eval` binary format by default, caching enabled, execution limits configured
 
 ## Next Steps
+- Run agent evals across all combinations (agent x mode) and compare results via `bench compare`
 - Phase 1C: more model baselines, calibrate per-task budgets from multi-model data
 - Phase 2: LLM judge calibration (Cohen's Kappa), statistics, Docker sandboxing
