@@ -9,8 +9,8 @@ from inspect_ai.scorer import includes
 def smoke():
     """Minimal verification that inspect eval runs end-to-end.
 
-    One trivial sample, includes() scorer. Proves model connectivity,
-    EvalLog creation, and scoring pipeline all work.
+    One trivial sample, includes() scorer. compare.py's _numeric_val()
+    handles the 'C'/'I' string return values correctly.
     """
     return Task(
         dataset=json_dataset("dataset.json", FieldSpec(input="input", target="target", id="id")),

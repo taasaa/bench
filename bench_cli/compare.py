@@ -61,12 +61,30 @@ _RE_LOOP = re.compile(r"potential_loop=(true|false)")
 
 
 def _numeric_val(score: object) -> float | None:
-    """Extract a non-NaN numeric value from a score object, or None."""
+    """Extract a non-NaN numeric value from a score object, or None.
+
+    Handles:
+      - float/int: returned as-is (1.0, 0.0, inf, NaN)
+      - string 'C'/'I': convert to 1.0/0.0 (includes/exact scorers)
+      - string numeric: attempt float() conversion
+      - None: return None
+    """
     if score is None:
         return None
     val = getattr(score, "value", None)
     if isinstance(val, (int, float)) and val == val:  # not NaN
         return float(val)
+    if isinstance(val, str):
+        # Handle CORRECT/INCORRECT from includes/exact scorers
+        if val in ("C", "CORRECT", "correct"):
+            return 1.0
+        if val in ("I", "INCORRECT", "incorrect"):
+            return 0.0
+        # Try numeric string
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
     return None
 
 
@@ -87,10 +105,16 @@ def _extract_from_scorers(
 
     Returns actual_cost_usd from price_ratio_scorer metadata, or None.
     """
-    # Correctness: prefer llm_judge, fall back to verify_sh
+    # Correctness: llm_judge > verify_sh > exact > includes
+    # (exact/includes return 'C'/'I' strings, mean() converts to 1.0/0.0 inside Inspect,
+    # but compare reads raw scorer keys for pillar extraction)
     correctness = _numeric_val(sample_scores.get("llm_judge"))
     if correctness is None:
         correctness = _numeric_val(sample_scores.get("verify_sh"))
+    if correctness is None:
+        correctness = _numeric_val(sample_scores.get("exact"))
+    if correctness is None:
+        correctness = _numeric_val(sample_scores.get("includes"))
 
     token_ratio = _numeric_val(sample_scores.get("token_ratio_scorer"))
     time_ratio = _numeric_val(sample_scores.get("time_ratio_scorer"))
