@@ -4,6 +4,7 @@ from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.llm_judge import llm_judge
+from scorers.price_ratio import price_ratio_scorer
 from scorers.time_ratio import time_ratio_scorer
 from scorers.task_budgets import get_task_budget
 from scorers.token_ratio import token_ratio_scorer
@@ -25,5 +26,5 @@ def f9_cascading_failure():
             "dataset.json",
             FieldSpec(input="input", target="target", id="id"),
         ),
-        scorer=[llm_judge(), token_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure")), time_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure"))],
+        scorer=[llm_judge(), token_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure")), time_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure")), price_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure"))],
     )

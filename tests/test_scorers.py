@@ -823,3 +823,152 @@ class TestLLMJudgeScorer:
 
         # Both succeeded (rubric was cached, no file-not-found on second call)
         assert mock_model.generate.call_count == 2
+
+
+class TestPriceRatioScorer:
+    """Tests for price_ratio_scorer with mocked cache."""
+
+    def _price_info(self, inp: float = 1.0, out: float = 2.0, ctx: int | None = 4096):
+        """Return a PriceInfo with the given prices."""
+        from bench_cli.pricing.model_aliases import PriceInfo
+
+        return PriceInfo("test/model", inp, out, ctx)
+
+    def _make_scored_state(self, completion: str, model: str, input_tokens: int, output_tokens: int):
+        """TaskState with usage metadata matching price_ratio_scorer expectations."""
+        state = make_task_state(completion=completion)
+        state._model = model  # type: ignore[attr-defined]
+        # Patch output.usage
+        state.output.usage = {"prompt_tokens": input_tokens, "completion_tokens": output_tokens}
+        return state
+
+    def test_unknown_alias_returns_nan_with_anomaly(self):
+        """Unknown bench alias → anomaly=True, value=NaN."""
+        from unittest.mock import patch
+
+        from scorers.price_ratio import price_ratio_scorer
+
+        s = price_ratio_scorer()
+        state = self._make_scored_state("output", "openai/nonexistent", 100, 50)
+        result = run_async(s(state, state.target))
+        import math
+
+        assert math.isnan(result.value)
+        assert result.metadata.get("anomaly") is True
+        assert result.metadata.get("pillar") == "cost"
+
+    def test_cache_miss_returns_nan_with_anomaly(self):
+        """Cache miss → anomaly=True, value=NaN."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+        from bench_cli.pricing.price_cache import CacheMiss
+
+        from scorers.price_ratio import price_ratio_scorer
+
+        s = price_ratio_scorer()
+        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
+
+        with patch("scorers.price_ratio._price_info", side_effect=CacheMiss("test")):
+            result = run_async(s(state, state.target))
+
+        import math
+
+        assert math.isnan(result.value)
+        assert result.metadata.get("anomaly") is True
+
+    def test_free_model_returns_inf(self):
+        """Free model (price=0) → value=inf, is_free=True."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+
+        from scorers.price_ratio import price_ratio_scorer
+
+        s = price_ratio_scorer()
+        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
+        free_info = PriceInfo("qwen/qwen-local", 0.0, 0.0, None)
+
+        with patch("scorers.price_ratio._price_info", return_value=free_info):
+            result = run_async(s(state, state.target))
+
+        import math
+
+        assert math.isinf(result.value)
+        assert result.metadata.get("is_free") is True
+        assert result.metadata.get("actual_cost_usd") == 0.0
+
+    def test_no_reference_cost_returns_nan(self):
+        """TaskBudget with no reference_cost_usd → NaN, records actual_cost only."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+        from scorers.protocol import TaskBudget
+
+        from scorers.price_ratio import price_ratio_scorer
+
+        s = price_ratio_scorer(task_budget=TaskBudget())
+        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
+        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+
+        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+            result = run_async(s(state, state.target))
+
+        import math
+
+        assert math.isnan(result.value)
+        assert result.metadata.get("actual_cost_usd") is not None
+        assert result.metadata.get("cost_ratio") is None
+
+    def test_with_reference_cost_returns_ratio(self):
+        """reference_cost_usd set → cost_ratio = ref/actual."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+        from scorers.protocol import TaskBudget
+
+        from scorers.price_ratio import price_ratio_scorer
+
+        # reference_cost = $0.001, actual = 100 in + 50 out at $1/$2 per M
+        # actual = 100*1/1M + 50*2/1M = $0.0002
+        # ratio = 0.001 / 0.0002 = 5.0
+        s = price_ratio_scorer(task_budget=TaskBudget(reference_cost_usd=0.001))
+        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
+        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+
+        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+            result = run_async(s(state, state.target))
+
+        assert result.value == pytest.approx(5.0)
+        assert result.metadata.get("actual_cost_usd") == pytest.approx(0.0002)
+        assert result.metadata.get("reference_cost_usd") == pytest.approx(0.001)
+        assert result.metadata.get("cost_ratio") == pytest.approx(5.0)
+        assert result.metadata.get("pillar") == "cost"
+        assert result.metadata.get("anomaly") is False
+
+    def test_zero_actual_cost_returns_nan(self):
+        """Actual cost $0 (edge case) → NaN."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+        from scorers.protocol import TaskBudget
+
+        from scorers.price_ratio import price_ratio_scorer
+
+        s = price_ratio_scorer(task_budget=TaskBudget(reference_cost_usd=0.001))
+        state = self._make_scored_state("output", "openai/qwen-local", 0, 0)
+        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+
+        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+            result = run_async(s(state, state.target))
+
+        import math
+
+        assert math.isnan(result.value)
+
+    def test_cost_per_sample_math(self):
+        """Verify PriceInfo.cost_per_sample math."""
+        info = self._price_info(inp=2.5, out=5.0)
+        # 1000 input + 2000 output at $2.5/$5.0 per M
+        cost = info.cost_per_sample(1000, 2000)
+        assert cost == pytest.approx(0.0125)

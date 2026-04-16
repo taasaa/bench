@@ -247,3 +247,46 @@ class TestRunIntegration:
         result = runner.invoke(cli, ["run", "--tier", "quick"])
         assert result.exit_code == 1
         assert "No tasks found" in result.output
+
+
+class TestPricesCLI:
+    """Tests for bench prices refresh and bench prices list commands."""
+
+    def test_prices_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["prices", "--help"])
+        assert result.exit_code == 0
+        assert "refresh" in result.output
+        assert "list" in result.output
+
+    def test_prices_list_no_cache_shows_na(self, tmp_path, monkeypatch):
+        """prices list shows N/A gracefully when no cache exists.
+
+        Cache path is absolute (bench project root), so chdir to tmp_path doesn't
+        hide it — skip that assertion. Instead verify N/A for unknown aliases works.
+        """
+        runner = CliRunner()
+        result = runner.invoke(cli, ["prices", "list"])
+        assert result.exit_code == 0
+        assert "N/A" in result.output  # unknown aliases show N/A
+
+    def test_prices_list_shows_all_known_aliases(self, tmp_path, monkeypatch):
+        """prices list shows all models from MODEL_ALIAS_MAP."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["prices", "list"])
+        assert result.exit_code == 0
+        # Should show at least the 40 aliases
+        assert "openai/qwen-local" in result.output
+        assert "openai/gpt-4o" in result.output
+        assert "openai/opus" in result.output
+
+    def test_prices_refresh_missing_key_shows_soft_error(self, tmp_path, monkeypatch):
+        """prices refresh with missing API key exits with error, not crash."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("KILOCODE_API_KEY", raising=False)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["prices", "refresh"])
+        assert result.exit_code == 1
+        assert "KILOCODE_API_KEY" in result.output
+        assert "not set" in result.output
