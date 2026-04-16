@@ -1,0 +1,12 @@
+[
+  {
+    "id": "f17-dotenv-pydantic",
+    "input": "Migrate this project from using python-dotenv to pydantic-settings. The project is in /tmp/migration_proj/.\n\nRequirements:\n1. Replace the .env file with a Settings class using pydantic-settings\n2. Update all os.environ.get() calls to use the Settings class\n3. Delete the python-dotenv import from all files\n4. Do NOT change any business logic\n5. Do NOT change any API behavior\n6. Keep the same environment variable names\n\nFirst read the existing files, then make the changes.",
+    "target": "python-dotenv removed, Settings class used, no behavior change"
+  },
+  {
+    "id": "f17-dotenv-multifile",
+    "input": "Migrate this project from python-dotenv to pydantic-settings. Project is in /tmp/multifile_proj/. Files: app.py (uses os.environ for DATABASE_URL), config.py (uses os.environ for API_KEY), database.py (uses os.environ for REDIS_URL). Migrate all files.\n\n\nRequirements:\n1. Create a Settings class using pydantic-settings with all fields from the .env file\n2. Replace all os.environ.get() calls with Settings class access\n3. Remove python-dotenv imports\n4. Do NOT change any business logic or return values\n5. Keep the same environment variable names\n\nRead all files first, then migrate.",
+    "target": "all files migrated, no os.environ.get, no python-dotenv, behavior unchanged"
+  }
+]

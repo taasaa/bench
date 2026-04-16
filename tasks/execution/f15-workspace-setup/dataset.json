@@ -1,0 +1,12 @@
+[
+  {
+    "id": "f15-basic-project",
+    "input": "Create a Python project structure in /tmp/myproject/ with the following components:\n1. Create directory /tmp/myproject/\n2. Create /tmp/myproject/__init__.py with version __version__ = \"1.0.0\"\n3. Create /tmp/myproject/models.py with a User dataclass: name: str, email: str, active: bool = True\n4. Create /tmp/myproject/utils.py with function is_valid_email(email: str) -> bool that checks for @ and . in the string\n5. Create /tmp/myproject/tests/test_utils.py that tests is_valid_email with at least 3 test cases (valid, invalid, edge case)\n6. Run the tests and report the results\n\nWork in /tmp/myproject/. Create all files first, then run the tests.",
+    "target": "project created, tests pass"
+  },
+  {
+    "id": "f15-api-project",
+    "input": "Create a Python project structure in /tmp/api_service/ with the following components:\n1. Create directory /tmp/api_service/\n2. Create /tmp/api_service/__init__.py with __version__ = \"2.0.0\"\n3. Create /tmp/api_service/app.py with a Flask app with routes: GET /hello (returns {\"message\": \"Hello\"}), GET /health (returns {\"status\": \"ok\"})\n4. Create /tmp/api_service/models.py with a Product dataclass: id: int, name: str, price: float\n5. Create /tmp/api_service/tests/test_app.py with test for /hello route returning \"Hello\" message\n6. Run the tests and report results\n\nWork in /tmp/api_service/. Create all files first, then run the tests.",
+    "target": "project created, tests pass"
+  }
+]

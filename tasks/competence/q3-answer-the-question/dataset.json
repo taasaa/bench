@@ -1,0 +1,22 @@
+[
+  {
+    "id": "q3-uv-venv",
+    "input": "How do you create a Python virtual environment using `uv`? Answer in exactly 2 steps. Do not explain what virtual environments are, do not explain why you should use them, do not mention alternatives. Just the 2 steps.",
+    "target": "uv venv"
+  },
+  {
+    "id": "q3-pip-venv",
+    "input": "How do you create a Python virtual environment using `python -m venv`? Answer in exactly 2 steps. Do not explain what virtual environments are, do not explain why you should use them, do not mention alternatives. Just the 2 steps.",
+    "target": "python -m venv"
+  },
+  {
+    "id": "q3-npm-init",
+    "input": "How do you initialize a new Node.js project with `npm init`? Answer in exactly 2 steps. Do not explain what package.json is, do not explain why you should use npm, do not mention alternatives. Just the 2 steps.",
+    "target": "npm init"
+  },
+  {
+    "id": "q3-cargo-init",
+    "input": "How do you create a new Rust project using `cargo`? Answer in exactly 2 steps. Do not explain what Cargo is, do not explain why you should use it, do not mention alternatives. Just the 2 steps.",
+    "target": "cargo init"
+  }
+]

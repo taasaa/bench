@@ -262,6 +262,17 @@ class TestTaskCoverage:
         "tasks/execution/q4-root-cause",              # test_tier2_tasks.py
         # NOTE: verification/smoke has coverage (test_smoke_task_scorer_behavior)
         # NOTE: verification/agent_smoke has skip + no verify.sh (uses includes() scorer)
+        # Session 11 new tasks (2026-04-16)
+        "tasks/competence/q3-answer-the-question",    # quick tier
+        "tasks/competence/q5-safe-git-operations",    # quick tier
+        "tasks/competence/f18-direct-answer-first",   # quick tier
+        "tasks/execution/f5-multi-constraint-edit",  # test_tier2_tasks.py
+        "tasks/execution/f15-workspace-setup",       # agent-mode task
+        "tasks/execution/f16-bug-investigation",     # agent-mode task
+        "tasks/execution/f17-config-migration",      # agent-mode task
+        # NOTE: f4-dependency-version-audit is llm_judge, no verify.sh
+        # NOTE: f19-admit-uncertainty is llm_judge, no verify.sh
+        # NOTE: f21-liars-codebase is llm_judge, no verify.sh
     }
 
     def test_all_verify_tasks_have_coverage(self):
