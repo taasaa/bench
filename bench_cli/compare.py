@@ -426,7 +426,7 @@ import click
 @click.command()
 @click.option(
     "--log-dir",
-    default="baselines",
+    default="logs",
     show_default=True,
     type=click.Path(),
     help="Directory containing EvalLog files.",

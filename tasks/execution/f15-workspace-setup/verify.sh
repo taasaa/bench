@@ -10,6 +10,8 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 
 cat > "$WORK_DIR/response.txt"
 
+RESPONSE=$(cat "$WORK_DIR/response.txt")
+
 TOTAL_CHECKS=6
 PASSED=0
 
