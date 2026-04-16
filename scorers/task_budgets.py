@@ -38,6 +38,17 @@ TASK_BUDGETS: dict[str, TaskBudget] = {
     "q1_verification_gate": TaskBudget(output_tokens=804, latency_seconds=20.8),
     "q2_do_not_touch": TaskBudget(output_tokens=920, latency_seconds=29.7),
     "q4_root_cause": TaskBudget(output_tokens=1042, latency_seconds=27.9),
+    # Part III implementations (this session)
+    "q3_answer_the_question": TaskBudget(output_tokens=180, latency_seconds=8.0),
+    "q5_safe_git_operations": TaskBudget(output_tokens=650, latency_seconds=20.0),
+    "f4_dependency_version_audit": TaskBudget(output_tokens=1500, latency_seconds=45.0),
+    "f5_multi_constraint_edit": TaskBudget(output_tokens=1100, latency_seconds=38.0),
+    "f15_workspace_setup": TaskBudget(output_tokens=2000, latency_seconds=120.0),
+    "f16_bug_investigation": TaskBudget(output_tokens=1800, latency_seconds=90.0),
+    "f17_config_migration": TaskBudget(output_tokens=1600, latency_seconds=80.0),
+    "f18_direct_answer_first": TaskBudget(output_tokens=120, latency_seconds=6.0),
+    "f19_admit_uncertainty": TaskBudget(output_tokens=800, latency_seconds=25.0),
+    "f21_liars_codebase": TaskBudget(output_tokens=2200, latency_seconds=55.0),
 }
 
 

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f4-missing-in-lockfile",
+    "input": "You are auditing the dependencies of a Python project. Review both files and identify ALL inconsistencies between what pyproject.toml declares and what package-lock.json actually contains.\n\n## pyproject.toml\n```toml\n[project]\nname = \"myapp\"\nversion = \"1.0.0\"\ndependencies = [\n    \"flask>=3.0.0\",\n    \"httpx>=0.25.0\",\n    \"pydantic>=2.0.0\",\n    \"requests>=2.31.0\",\n    \"sqlalchemy>=2.0.0\",\n]\n```\n\n## package-lock.json\n```json\n{\n  \"name\": \"myapp\",\n  \"lockfileVersion\": 3,\n  \"packages\": {\n    \"node_modules/flask\": { \"version\": \"3.0.0\" },\n    \"node_modules/pydantic\": { \"version\": \"2.5.0\" },\n    \"node_modules/requests\": { \"version\": \"2.31.0\" },\n    \"node_modules/sqlalchemy\": { \"version\": \"2.0.25\" }\n  }\n}\n```\n\nList every inconsistency you find between the two files.",
+    "target": "httpx>=0.25.0 declared in pyproject.toml but completely missing from package-lock.json"
+  },
+  {
+    "id": "f4-version-mismatch",
+    "input": "You are auditing the dependencies of a Python project. Review both files and identify ALL inconsistencies between what pyproject.toml declares and what package-lock.json actually contains.\n\n## pyproject.toml\n```toml\n[project]\nname = \"myapp\"\nversion = \"1.0.0\"\ndependencies = [\n    \"flask>=3.0.0\",\n    \"httpx>=0.25.0\",\n    \"pydantic>=2.0.0\",\n    \"requests>=2.31.0\",\n    \"sqlalchemy>=2.0.0\",\n]\n```\n\n## package-lock.json\n```json\n{\n  \"name\": \"myapp\",\n  \"lockfileVersion\": 3,\n  \"packages\": {\n    \"node_modules/flask\": { \"version\": \"2.15.0\" },\n    \"node_modules/httpx\": { \"version\": \"0.25.2\" },\n    \"node_modules/pydantic\": { \"version\": \"2.5.0\" },\n    \"node_modules/requests\": { \"version\": \"2.31.0\" },\n    \"node_modules/sqlalchemy\": { \"version\": \"2.0.25\" }\n  }\n}\n```\n\nList every inconsistency you find between the two files.",
+    "target": "flask>=3.0.0 declared in pyproject.toml but lock file has flask==2.15.0 (version mismatch — below minimum)"
+  },
+  {
+    "id": "f4-deprecated-package",
+    "input": "You are auditing the dependencies of a Python project. Review both files and identify ALL issues, including deprecated or superseded packages.\n\n## pyproject.toml\n```toml\n[project]\nname = \"myapp\"\nversion = \"1.0.0\"\ndependencies = [\n    \"flask>=3.0.0\",\n    \"httpx>=0.25.0\",\n    \"pydantic>=2.0.0\",\n    \"pypdf>=3.0.0\",\n    \"requests>=2.31.0\",\n    \"sqlalchemy>=2.0.0\",\n]\n```\n\n## package-lock.json\n```json\n{\n  \"name\": \"myapp\",\n  \"lockfileVersion\": 3,\n  \"packages\": {\n    \"node_modules/flask\": { \"version\": \"3.0.0\" },\n    \"node_modules/httpx\": { \"version\": \"0.27.0\" },\n    \"node_modules/pydantic\": { \"version\": \"2.5.0\" },\n    \"node_modules/pypdf\": { \"version\": \"3.17.0\" },\n    \"node_modules/requests\": { \"version\": \"2.31.0\" },\n    \"node_modules/sqlalchemy\": { \"version\": \"2.0.25\" }\n  }\n}\n```\n\nNote: The project was recently migrated from PyPDF2 to pypdf. List every issue you find.",
+    "target": "pypdf replaced PyPDF2 (deprecated), version is fine. If model says pypdf is deprecated, that's incorrect — PyPDF2 was the deprecated one."
+  },
+  {
+    "id": "f4-multiple-issues",
+    "input": "You are auditing the dependencies of a Python project. Review both files and identify ALL inconsistencies between what pyproject.toml declares and what package-lock.json actually contains.\n\n## pyproject.toml\n```toml\n[project]\nname = \"myapp\"\nversion = \"1.0.0\"\ndependencies = [\n    \"flask>=3.0.0\",\n    \"httpx>=0.25.0\",\n    \"pydantic>=2.0.0\",\n    \"requests>=2.31.0\",\n    \"sqlalchemy>=2.0.0\",\n    \"celery>=5.3.0\",\n]\n```\n\n## package-lock.json\n```json\n{\n  \"name\": \"myapp\",\n  \"lockfileVersion\": 3,\n  \"packages\": {\n    \"node_modules/flask\": { \"version\": \"2.15.0\" },\n    \"node_modules/httpx\": { \"version\": \"0.25.2\" },\n    \"node_modules/pydantic\": { \"version\": \"2.5.0\" },\n    \"node_modules/requests\": { \"version\": \"2.31.0\" },\n    \"node_modules/sqlalchemy\": { \"version\": \"2.0.25\" }\n  }\n}\n```\n\nList every inconsistency you find between the two files.",
+    "target": "Two issues: (1) flask>=3.0.0 declared but lock has flask==2.15.0 (below minimum), (2) celery>=5.3.0 declared but completely missing from lock file"
+  }
+]

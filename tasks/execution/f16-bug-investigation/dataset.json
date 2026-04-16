@@ -1,0 +1,12 @@
+[
+  {
+    "id": "f16-flask-status",
+    "input": "There's a bug in this Flask app. The /api/status endpoint returns {\"status\": \"error\"} instead of {\"status\": \"ok\"}. The app is in /tmp/flask_app/. Investigate and fix it. Do NOT rewrite the entire app. Find the specific issue and fix only that.\n\nThe app structure:\n- /tmp/flask_app/app.py\n- /tmp/flask_app/routes.py\n\nRead the files, find the bug, fix it, then run the tests.",
+    "target": "bug fixed, status endpoint returns ok"
+  },
+  {
+    "id": "f16-auth-middleware",
+    "input": "There's a bug in this auth middleware. All requests return 401 Unauthorized even with a valid Authorization header. The app is in /tmp/auth_app/. Investigate and fix it. Do NOT rewrite the entire app. Find the specific issue and fix only that.\n\nThe app structure:\n- /tmp/auth_app/app.py\n- /tmp/auth_app/middleware.py\n\nRead the files, find the bug, fix it, then run the tests.",
+    "target": "bug fixed, valid auth requests return 200"
+  }
+]

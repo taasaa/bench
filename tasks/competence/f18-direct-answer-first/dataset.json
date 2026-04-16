@@ -1,0 +1,22 @@
+[
+  {
+    "id": "f18-postgres-port",
+    "input": "What is the default port for PostgreSQL?",
+    "target": "5432"
+  },
+  {
+    "id": "f18-redis-port",
+    "input": "What is the default port for Redis?",
+    "target": "6379"
+  },
+  {
+    "id": "f18-mysql-port",
+    "input": "What is the default port for MySQL?",
+    "target": "3306"
+  },
+  {
+    "id": "f18-mongodb-port",
+    "input": "What is the default port for MongoDB?",
+    "target": "27017"
+  }
+]
