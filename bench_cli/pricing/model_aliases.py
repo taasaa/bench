@@ -67,6 +67,11 @@ MODEL_ALIAS_MAP: dict[str, str] = {
     "openai/sonar-pro": "perplexity/sonar-pro",
     "openai/sonar-reasoning": "perplexity/sonar-reasoning",
     "openai/sonar-reasoning-pro": "perplexity/sonar-reasoning-pro",
+    # Minimax models
+    "openai/minimax": "minimax/minimax-m2.7",
+    "openai/minimax-m2.7": "minimax/minimax-m2.7",
+    # LiteLLM proxy default (minimax m2.7)
+    "openai/default": "minimax/minimax-m2.7",
 }
 
 
