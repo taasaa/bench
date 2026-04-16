@@ -59,9 +59,9 @@ esac
 if grep -qE "def[[:space:]]+${NEW_FUNC}\(" "$STDIN_FILE"; then
     # Verify it has type hints (colon in function signature for params or return)
     FUNC_LINE=$(grep -E "def[[:space:]]+${NEW_FUNC}\(" "$STDIN_FILE" | head -1)
-    if echo "$FUNC_LINE" | grep -qE ":\s*(str|int|float|bool|list|dict|Callable|Any|callable)\|->"; then
+    if echo "$FUNC_LINE" | grep -qE -- ":\s*(str|int|float|bool|list|dict|Callable|Any|callable)\|->"; then
         PASSED=$((PASSED + 1))
-    elif echo "$FUNC_LINE" | grep -qE "->\s*(bool|str|int|float|list|dict|None|Any)"; then
+    elif echo "$FUNC_LINE" | grep -qE -- "->\s*(bool|str|int|float|list|dict|None|Any)"; then
         PASSED=$((PASSED + 1))
     else
         # Check if type hints appear anywhere in the function def line

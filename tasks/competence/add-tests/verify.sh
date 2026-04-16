@@ -79,7 +79,7 @@ print('PASSED=' + str(passed) + ' TOTAL=' + str(total))
 CORRECT_EOF
 
 SAMPLE=${SAMPLE_ID:-add-tests-fizzbuzz}
-FIXTURE_FILE=tasks/competence/add-tests/fixtures/$SAMPLE.py
+FIXTURE_FILE=fixtures/$SAMPLE.py
 if [[ ! -f $FIXTURE_FILE ]]; then
     echo FAIL >&2
     echo '  Unknown sample: '"$SAMPLE" >&2

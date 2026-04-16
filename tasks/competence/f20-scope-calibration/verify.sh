@@ -22,10 +22,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Determine which fixture to compare against based on SAMPLE_ID.
 # Map sample IDs (e.g. f20-index-title) to fixture filenames.
 case "${SAMPLE_ID:-}" in
-    f20-index-title)   FIXTURE="index.html" ;;
-    f20-footer-copyright) FIXTURE="footer.html" ;;
-    f20-settings-debug) FIXTURE="settings.py" ;;
-    *)                 # Fallback: detect from response content
+    f20-index-title)       FIXTURE="index.html" ;;
+    f20-footer-copyright)  FIXTURE="footer.html" ;;
+    f20-settings-debug)    FIXTURE="settings.py" ;;
+    *)                      # Fallback: detect from response content
         if grep -q '<html' "$STDIN_FILE" 2>/dev/null; then
             FIXTURE="index.html"
         elif grep -q 'site-footer' "$STDIN_FILE" 2>/dev/null; then
@@ -73,33 +73,41 @@ esac
 if ! grep -qF "$OLD_TEXT" "$STDIN_FILE"; then
     PASSED=$((PASSED + 1))
 else
-    echo "  Old text still present: '$OLD_TEXT'" >&2
+    echo "  check_1: old text still present: '$OLD_TEXT'" >&2
 fi
 
 # Check 2: The new text IS present
 if grep -qF "$NEW_TEXT" "$STDIN_FILE"; then
     PASSED=$((PASSED + 1))
 else
-    echo "  New text not found: '$NEW_TEXT'" >&2
+    echo "  check_2: new text not found: '$NEW_TEXT'" >&2
 fi
 
 # Check 3: Only the specific change was made — diff against fixture
-# Normalize both files (strip trailing whitespace and ensure trailing newline) then diff
+# Normalize both files:
+#   1. Strip markdown code fences (```lang and ```)
+#   2. Strip leading/trailing whitespace and indentation (fixture is compact HTML)
+#   3. Remove blank lines from both sides (symmetric so diff is fair)
 FIXTURE_NORM="$WORK_DIR/fixture_norm.txt"
 RESPONSE_NORM="$WORK_DIR/response_norm.txt"
 
-# Strip trailing whitespace per-line, then ensure both end with exactly one newline
-sed 's/[[:space:]]*$//' "$FIXTURE_PATH" | perl -pe 'chomp if eof' > "$FIXTURE_NORM"
-sed 's/[[:space:]]*$//' "$STDIN_FILE" | perl -pe 'chomp if eof' > "$RESPONSE_NORM"
+# Normalize fixture: strip fences, indentation, trailing whitespace, blank lines
+sed -e '/^[[:space:]]*```.*$/d' \
+    -e 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    "$FIXTURE_PATH" | grep -v '^$' > "$FIXTURE_NORM"
 
-# Count diff lines — should be exactly 1 (the one changed line)
+# Normalize response: same transformations as fixture (symmetric diff)
+sed -e '/^[[:space:]]*```.*$/d' \
+    -e 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+    "$STDIN_FILE" | grep -v '^$' > "$RESPONSE_NORM"
+
+# Count diff lines — up to 2 = exactly 1 change (old removed + new added)
 DIFF_COUNT=$(diff "$FIXTURE_NORM" "$RESPONSE_NORM" | grep -c '^[<>]' || true)
 
 if [[ "$DIFF_COUNT" -le 2 ]]; then
-    # Up to 2 diff lines (one < old, one > new) = exactly 1 change
     PASSED=$((PASSED + 1))
 else
-    echo "  Too many changes: $DIFF_COUNT diff lines (expected 2)" >&2
+    echo "  check_3: too many changes: $DIFF_COUNT diff lines (expected ≤2)" >&2
     diff "$FIXTURE_NORM" "$RESPONSE_NORM" >&2 || true
 fi
 
