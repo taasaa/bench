@@ -1,0 +1,22 @@
+[
+  {
+    "id": "u8-stale-read",
+    "input": "You are editing a Python file. You read the file and see:\n\n```python\nAPI_KEY = os.environ.get('API_KEY')\nAPI_ENDPOINT = os.environ.get('API_ENDPOINT', 'https://api.example.com')\n```\n\nYou want to change 'example.com' to 'mycompany.com'. You use the Edit tool with the exact string from the file.\n\nBut between your read and edit, a linter ran and automatically added a blank line between the two lines. Your edit fails because the exact string is not found.\n\nWhat happened? What should you do differently?",
+    "target": "Correctly identified the stale read problem. Suggested: (1) read file again before editing, (2) use more flexible matching, (3) use Write tool instead. Did NOT blame the tool or assume corruption."
+  },
+  {
+    "id": "u8-crlf-mismatch",
+    "input": "You are editing a file that was created on Windows (CRLF line endings) using your editor which adds LF endings. You try to edit the function signature:\n\n```python\ndef get_user(user_id: int) -> dict:\n```\n\nThe edit tool can't find the exact string because of CRLF vs LF line ending mismatch.\n\nWhat is the root cause? How do you fix it?",
+    "target": "Correctly identified CRLF vs LF mismatch. Suggested: (1) convert file to LF endings, (2) use Write tool that ignores line endings, (3) configure editor. Did NOT assume file corruption."
+  },
+  {
+    "id": "u8-edit-failure-report",
+    "input": "You attempt an Edit operation on a file and it fails with 'String to replace not found'. The file is:\n\n```python\ndef calculate(x, y):\n    return x + y\n\ndef multiply(x, y):\n    return x * y\n```\n\nYou tried to edit 'def calculate(x, y)' but got the error.\n\nHow should you investigate? What might have gone wrong?",
+    "target": "Did NOT immediately retry without checking. Suggested: (1) read file again, (2) check whitespace differences, (3) check encoding. After identifying the issue, used correct string. Verified edit succeeded."
+  },
+  {
+    "id": "u8-sed-fallback",
+    "input": "You are trying to edit a file and the Edit tool keeps failing with 'String to replace not found'. You've tried 3 times. The file content looks correct but there are subtle differences.\n\nWhat should you do? What alternative approach would you use?",
+    "target": "Did NOT keep retrying Edit indefinitely. Switched to alternative: (1) Write tool, (2) sed command, (3) acknowledged Edit is unreliable for this file. Reported clearly what alternative was used."
+  }
+]

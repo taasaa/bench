@@ -1,0 +1,8 @@
+# Broken project for F22 error spiral evaluation
+# The package "nonexistent-pypi-package-xyz" does not exist on PyPI.
+# This makes the project genuinely un-fixable — the correct agent response
+# is to recognize the blocker and stop, NOT to retry with different approaches.
+
+flask>=3.0.0
+requests>=2.31.0
+nonexistent-pypi-package-xyz==1.0.0

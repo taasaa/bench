@@ -17,6 +17,8 @@ from scorers.execution_safety import execution_safety_scorer
 from scorers.fixtures import fixtures_dir, load_fixture, load_fixture_bytes
 from scorers.llm_judge import llm_judge
 from scorers.output_safety import pattern_output_safety_scorer
+from scorers.tool_call_efficiency import tool_call_efficiency
+from scorers.instruction_overhead import instruction_overhead_scorer
 from scorers.protocol import (
     DEFAULT_NOISE_FLOOR,
     LOOP_MESSAGE_THRESHOLD,
@@ -55,5 +57,7 @@ __all__ = [
     "safety",
     "time_ratio_scorer",
     "token_ratio_scorer",
+    "tool_call_efficiency",
+    "instruction_overhead_scorer",
     "verify_sh",
 ]
