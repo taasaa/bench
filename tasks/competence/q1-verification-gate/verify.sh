@@ -19,23 +19,25 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 STDIN_FILE="$WORK_DIR/response.txt"
 cat > "$STDIN_FILE"
 
-# For this task, the verify.sh checks that the response mentions the correct
-# pass/fail counts. Since each sample has different counts, we validate that
-# the response contains consistent and plausible numbers.
-# The actual correctness is checked against the test output given in the prompt.
-
 TOTAL_CHECKS=3
 PASSED=0
 
 # Check 1: Response mentions "passed" with a number
-if grep -qiE '[0-9]+ (tests? )?passed' "$STDIN_FILE"; then
+# Handles all common formats:
+#   - "7 passed", "7 tests passed"  (number BEFORE word)
+#   - "Passed: 7", "Tests Passed: **7**"  (number AFTER word)
+#   - "**7** passed", "7 tests passed"  (markdown bold between)
+#   - table: "Passed | 7" on same line
+# The alternation handles both orders: (number...word | word...number)
+if grep -qiE '([0-9]+[^0-9]*passed|passed[^0-9]*[0-9]+)' "$STDIN_FILE"; then
     PASSED=$((PASSED + 1))
 else
     echo "  Missing or incorrect pass count" >&2
 fi
 
 # Check 2: Response mentions "failed" with a number
-if grep -qiE '[0-9]+ (tests? )?failed' "$STDIN_FILE"; then
+# Same flexibility as check 1
+if grep -qiE '([0-9]+[^0-9]*failed|failed[^0-9]*[0-9]+)' "$STDIN_FILE"; then
     PASSED=$((PASSED + 1))
 else
     echo "  Missing or incorrect fail count" >&2
