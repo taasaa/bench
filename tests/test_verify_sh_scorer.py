@@ -110,7 +110,7 @@ class TestVerifyShScriptNotFound:
         finally:
             os.chdir(orig)
         assert result.value == 0.0
-        assert "not found" in result.explanation.lower()
+        assert "no such file" in result.explanation.lower()
 
 
 class TestVerifyShEdgeCases:

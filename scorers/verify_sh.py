@@ -12,12 +12,10 @@ See: doc/SCORING-SYSTEM-PRD.md §verify.sh structural change
 
 from __future__ import annotations
 
-import inspect
 import json
 import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 
 from inspect_ai.scorer import Score, Target, mean, scorer
@@ -215,48 +213,6 @@ def _parse_text_result(stdout: str, stderr: str) -> VerifyResult:
     )
 
 
-def _find_task_dir() -> str:
-    """Find the task module directory.
-
-    Strategy: manually walk the frame chain (via f_back) checking f_globals["__file__"]
-    for a path under tasks/.  This works because the scorer's closure is created
-    inside task.py (which calls verify_sh()), so task.py's globals are on the chain.
-
-    inspect.getfile(code_object) does NOT work in async contexts because it uses
-    co_filename, not f_globals["__file__"].  Manual f_back walking always works.
-    """
-    frame = inspect.currentframe()
-    try:
-        depth = 0
-        while frame is not None and depth < 30:
-            depth += 1
-            try:
-                file = frame.f_globals.get("__file__", "")
-                if file and ("/tasks/" in file or "\\tasks\\" in file):
-                    task_dir = os.path.dirname(os.path.abspath(file))
-                    if os.path.isdir(task_dir):
-                        return task_dir
-            except Exception:
-                pass
-            frame = frame.f_back
-    finally:
-        del frame  # avoid cycle
-
-    # Fallback: scan sys.modules for any module under tasks/
-    for module in sys.modules.values():
-        if module is None:
-            continue
-        try:
-            file = getattr(module, "__file__", None)
-            if file and ("/tasks/" in file or "\\tasks\\" in file):
-                task_dir = os.path.dirname(file)
-                if os.path.isdir(task_dir):
-                    return task_dir
-        except Exception:
-            continue
-    return os.getcwd()
-
-
 @scorer(metrics=[mean()])
 def verify_sh(
     script_name: str = DEFAULT_SCRIPT_NAME,
@@ -280,26 +236,7 @@ def verify_sh(
             Resolved relative to the task module's directory.
         timeout: Maximum seconds to wait for the script (default: 30).
     """
-    # Resolve task_dir once per scorer instance (not per sample).
-    _task_dir: str | None = None
-
-    def _cached_task_dir() -> str:
-        nonlocal _task_dir
-        if _task_dir is None:
-            _task_dir = _find_task_dir()
-        return _task_dir
-
     async def score(state: TaskState, target: Target) -> Score:
-        # Resolve script path.
-        bench_task_dir = state.metadata.get("bench_task_dir") if state.metadata else None
-        if bench_task_dir:
-            script_path = os.path.join(bench_task_dir, script_name)
-            return _score_with_sh(state, script_path, bench_task_dir)
-
-        script_path = os.path.join(_cached_task_dir(), script_name)
-        return _score_with_sh(state, script_path, _cached_task_dir())
-
-    def _score_with_sh(state: TaskState, script_path: str, task_dir: str) -> Score:
         output_text = state.output.completion if state.output else ""
         if not output_text:
             return Score(
@@ -307,21 +244,19 @@ def verify_sh(
                 explanation="verify_sh: empty model output",
                 metadata={"pillar": "correctness", "passed": 0, "total": 0, "checks": []},
             )
-
-        if not os.path.isfile(script_path):
+        # bench_task_dir is injected by run.py into every task's metadata.
+        bench_task_dir = state.metadata.get("bench_task_dir") if state.metadata else None
+        if not bench_task_dir:
             return Score(
                 value=0.0,
-                explanation=f"verify_sh: script not found: {script_path}",
+                explanation="verify_sh: no bench_task_dir in metadata",
                 metadata={"pillar": "correctness", "passed": 0, "total": 0, "checks": []},
             )
+        script_path = os.path.join(bench_task_dir, script_name)
+        return _score_with_sh(state, script_path, bench_task_dir)
 
-        if not os.access(script_path, os.X_OK):
-            return Score(
-                value=0.0,
-                explanation=f"verify_sh: script not executable: {script_path}",
-                metadata={"pillar": "correctness", "passed": 0, "total": 0, "checks": []},
-            )
-
+    def _score_with_sh(state: TaskState, script_path: str, task_dir: str) -> Score:
+        output_text = state.output.completion if state.output else ""
         env = os.environ.copy()
         env["SAMPLE_ID"] = str(state.sample_id) if state.sample_id is not None else ""
 
