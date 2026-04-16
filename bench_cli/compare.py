@@ -15,6 +15,7 @@ scores[0] (which was the old broken approach).
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -235,14 +236,14 @@ def _short_model(name: str) -> str:
 
 
 def _fmt(val: float) -> str:
-    if val != val:  # NaN check
+    if math.isnan(val):
         return "  --"
     return f"{val:.2f}"
 
 
 def _fmt_ratio(val: float) -> str:
     """Format a ratio value."""
-    if val != val:  # NaN
+    if math.isnan(val):
         return "  --"
     if val <= 0.0:
         return " <0.1"
@@ -252,7 +253,7 @@ def _fmt_ratio(val: float) -> str:
 
 
 def _fmt_time(seconds: float) -> str:
-    if seconds != seconds:  # NaN
+    if math.isnan(seconds):
         return "  --"
     if seconds < 60:
         return f"{seconds:.1f}s"
@@ -262,7 +263,7 @@ def _fmt_time(seconds: float) -> str:
 
 
 def _fmt_tokens(tokens: float) -> str:
-    if tokens != tokens:  # NaN
+    if math.isnan(tokens):
         return "  --"
     if tokens >= 1000:
         return f"{tokens/1000:.1f}k"
@@ -270,15 +271,13 @@ def _fmt_tokens(tokens: float) -> str:
 
 
 def _geometric_mean(vals: list[float]) -> float:
-    import math
     if not vals:
         return float("nan")
-    product = 1.0
     for v in vals:
         if v <= 0:
             return float("nan")
-        product *= v
-    return math.exp(math.log(product) / len(vals))
+    log_sum = math.fsum(math.log(v) for v in vals)
+    return math.exp(log_sum / len(vals))
 
 
 # ---------------------------------------------------------------------------

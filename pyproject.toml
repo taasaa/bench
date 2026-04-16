@@ -101,6 +101,7 @@ exclude = ["tasks/**/fixtures/*.py"]
 "tests/*" = [
     "ANN",    # test files often skip type annotations
     "D",      # docstrings optional in tests
+    "E402",   # sys.path.insert before imports — intentional
     "E501",   # long lines common in test data strings and assertions
     "RUF059", # unpacked `rc`/`stderr` from shell calls in tests are intentionally unused
     "RUF012", # mutable default in pytest parametrize — harmless, mark as ClassVar if needed

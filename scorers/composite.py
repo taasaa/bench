@@ -3,7 +3,7 @@
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
-from scorers.safety import _check_unsafe
+from scorers.patterns import check_unsafe
 
 CORRECTNESS_WEIGHT = 0.67
 EFFICIENCY_WEIGHT = 0.33
@@ -33,7 +33,7 @@ def composite(max_tokens: int = DEFAULT_MAX_TOKENS) -> scorer:
         unsafe_pattern = None
         for msg in state.messages:
             if hasattr(msg, "content") and isinstance(msg.content, str):
-                hit = _check_unsafe(msg.content)
+                hit = check_unsafe(msg.content)
                 if hit:
                     safety_gate = 0.0
                     unsafe_pattern = hit

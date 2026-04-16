@@ -1,4 +1,4 @@
-import sys, re
+import sys
 
 fixture_path = sys.argv[1]
 asserts_path = sys.argv[2]
@@ -6,7 +6,7 @@ asserts_path = sys.argv[2]
 with open(fixture_path) as f:
     fixture = f.read()
 with open(asserts_path) as f:
-    asserts = [l.strip() for l in f if l.strip()]
+    asserts = [line.strip() for line in f if line.strip()]
 
 total = len(asserts)
 passed = 0

@@ -26,7 +26,6 @@ Example output in Score.metadata:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
