@@ -15,7 +15,7 @@ from inspect_ai import Task, task
 # "quick" runs verification/smoke tests only; "full" runs all eval tasks.
 TIER_DIRS: dict[str, list[str]] = {
     "quick": ["verification"],
-    "full": ["competence", "execution", "analysis"],
+    "full": ["competence", "execution", "analysis", "universal"],
 }
 
 
