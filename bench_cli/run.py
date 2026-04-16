@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from functools import lru_cache
 from pathlib import Path
 
 import click
@@ -32,13 +34,14 @@ def _docker_available() -> bool:
         return False
 
 
+@lru_cache(maxsize=128)
 def _requires_docker(task_py: Path) -> bool:
-    """Heuristic: does task.py declare sandbox='docker'?."""
+    """Heuristic: does task.py declare sandbox='docker'?"""
     try:
         content = task_py.read_text()
     except OSError:
         return False
-    return 'sandbox="docker"' in content or "sandbox='docker'" in content
+    return bool(re.search(r'sandbox\s*=\s*["\']docker["\']', content))
 
 
 def _discover_tasks(
@@ -236,8 +239,6 @@ def run(
     # one-by-one mode: eval one task at a time so each result + log can be
     # inspected before moving on.  compare runs after each task.
     # batch mode (default): eval all tasks in one call, compare once at end.
-    from bench_cli.compare import format_pillar_table, load_compare_data
-
     if one_by_one:
         click.echo("Running tasks one-by-one (--one-by-one mode)")
         click.echo()
@@ -260,6 +261,8 @@ def run(
                 if mv is not None:
                     click.echo(f"    score={mv.value:.3f}")
             if not no_compare:
+                from bench_cli.compare import format_pillar_table, load_compare_data
+
                 data = load_compare_data(log_dir, latest=1)
                 if data.tasks:
                     click.echo(format_pillar_table(data))

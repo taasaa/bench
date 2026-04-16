@@ -1,4 +1,5 @@
-import re, sys
+import re
+import sys
 
 filepath = sys.argv[1]
 with open(filepath) as f:

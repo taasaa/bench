@@ -54,7 +54,9 @@ def load_fixture(task_file: str | Path, name: str) -> str:
         FileNotFoundError: If the fixture file does not exist.
     """
     path = fixtures_dir(task_file) / name
-    if not path.is_file():
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
         available = (
             sorted(p.name for p in path.parent.iterdir())
             if path.parent.is_dir()
@@ -63,8 +65,7 @@ def load_fixture(task_file: str | Path, name: str) -> str:
         raise FileNotFoundError(
             f"Fixture file not found: {path}\n"
             f"Available fixtures in {path.parent}: {available}"
-        )
-    return path.read_text(encoding="utf-8")
+        ) from None
 
 
 def load_fixture_bytes(task_file: str | Path, name: str) -> bytes:
@@ -81,7 +82,9 @@ def load_fixture_bytes(task_file: str | Path, name: str) -> bytes:
         FileNotFoundError: If the fixture file does not exist.
     """
     path = fixtures_dir(task_file) / name
-    if not path.is_file():
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
         available = (
             sorted(p.name for p in path.parent.iterdir())
             if path.parent.is_dir()
@@ -90,5 +93,4 @@ def load_fixture_bytes(task_file: str | Path, name: str) -> bytes:
         raise FileNotFoundError(
             f"Fixture file not found: {path}\n"
             f"Available fixtures in {path.parent}: {available}"
-        )
-    return path.read_bytes()
+        ) from None

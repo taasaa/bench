@@ -11,7 +11,7 @@ from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
 from scorers.composite import CORRECTNESS_WEIGHT, DEFAULT_MAX_TOKENS, EFFICIENCY_WEIGHT
-from scorers.safety import _check_unsafe
+from scorers.patterns import check_unsafe
 from scorers.subproc import build_script, run_checks
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ TEST_CASES: dict[str, list[str]] = {
 def _get_safety(state: TaskState) -> float:
     for msg in state.messages:
         if hasattr(msg, "content") and isinstance(msg.content, str):
-            if _check_unsafe(msg.content):
+            if check_unsafe(msg.content):
                 return 0.0
     return 1.0
 

@@ -89,7 +89,8 @@ def _extract_token_metrics(state: TaskState) -> InstructionOverheadMetrics:
         overhead_ratio = input_tokens / ref_instruction_tokens
 
     if ref_completion_tokens and ref_completion_tokens > 0:
-        completion_density = ref_completion_tokens / input_tokens
+        # completion_density: actual completion tokens relative to reference
+        completion_density = output_tokens / ref_completion_tokens
 
     # Compute efficiency if we have enough data
     if (
