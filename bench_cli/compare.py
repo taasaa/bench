@@ -34,6 +34,8 @@ class PillarScores:
     avg_tokens: float      # mean total tokens per sample
     avg_time: float        # mean working_time per sample in seconds
     samples: int
+    price_ratio: float = float("nan")  # geometric mean of cost ratios, NaN if unavailable
+    avg_cost_usd: float = float("nan")  # mean cost per sample in USD, NaN if unavailable
 
     # Per-sample counts for suppression/bookkeeping
     token_suppressed: int = 0
@@ -70,17 +72,20 @@ def _numeric_val(score: object) -> float | None:
 
 def _extract_from_scorers(
     sample_scores: dict,
-) -> tuple[float | None, float | None, float | None]:
-    """Extract (correctness, token_ratio, time_ratio) from a sample's score dict.
+) -> tuple[float | None, float | None, float | None, float | None, float | None]:
+    """Extract (correctness, token_ratio, time_ratio, price_ratio, actual_cost_usd) from a sample's score dict.
 
     Each scorer has its own entry keyed by scorer name:
-      - "llm_judge"          → .value = correctness (0..1), takes precedence
-      - "verify_sh"          → .value = correctness (0..1), fallback
-      - "token_ratio_scorer" → .value = ratio (may be NaN if suppressed)
-      - "time_ratio_scorer"  → .value = ratio (may be NaN if suppressed)
+      - "llm_judge"           → .value = correctness (0..1), takes precedence
+      - "verify_sh"           → .value = correctness (0..1), fallback
+      - "token_ratio_scorer"  → .value = ratio (may be NaN if suppressed)
+      - "time_ratio_scorer"   → .value = ratio (may be NaN if suppressed)
+      - "price_ratio_scorer"  → .value = cost ratio (may be NaN if cache miss)
 
     Correctness: llm_judge is checked first, then verify_sh. Tasks use
     one or the other, not both.
+
+    Returns actual_cost_usd from price_ratio_scorer metadata, or None.
     """
     # Correctness: prefer llm_judge, fall back to verify_sh
     correctness = _numeric_val(sample_scores.get("llm_judge"))
@@ -89,8 +94,17 @@ def _extract_from_scorers(
 
     token_ratio = _numeric_val(sample_scores.get("token_ratio_scorer"))
     time_ratio = _numeric_val(sample_scores.get("time_ratio_scorer"))
+    price_ratio = _numeric_val(sample_scores.get("price_ratio_scorer"))
 
-    return correctness, token_ratio, time_ratio
+    # Extract actual_cost_usd from price_ratio_scorer metadata
+    actual_cost_usd: float | None = None
+    pr_score = sample_scores.get("price_ratio_scorer")
+    if pr_score is not None and hasattr(pr_score, "metadata") and isinstance(pr_score.metadata, dict):
+        cost_val = pr_score.metadata.get("actual_cost_usd")
+        if isinstance(cost_val, (int, float)):
+            actual_cost_usd = float(cost_val)
+
+    return correctness, token_ratio, time_ratio, price_ratio, actual_cost_usd
 
 
 def _is_suppressed(score: object) -> bool:
@@ -121,10 +135,10 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         infos = infos[:latest]
 
     # Accumulate per-sample data per (task, model, run_name)
-    # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens, working_time, token_suppressed, time_suppressed)
+    # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens, working_time, token_suppressed, time_suppressed, price_ratio, actual_cost_usd)
     run_samples: dict[
         tuple[str, str, str],
-        list[tuple[float | None, float | None, float | None, int, float, bool, bool]],
+        list[tuple[float | None, float | None, float | None, int, float, bool, bool, float | None, float | None]],
     ] = {}
 
     for info in infos:
@@ -141,14 +155,14 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         run_key = (task, model, info.name)
 
         samples_list: list[
-            tuple[float | None, float | None, float | None, int, float, bool, bool]
+            tuple[float | None, float | None, float | None, int, float, bool, bool, float | None, float | None]
         ] = []
 
         for sample in el.samples:
             if not isinstance(sample.scores, dict):
                 continue
 
-            correctness, token_ratio, time_ratio = _extract_from_scorers(sample.scores)
+            correctness, token_ratio, time_ratio, price_ratio, actual_cost_usd = _extract_from_scorers(sample.scores)
 
             total_tokens = (
                 sum(u.total_tokens for u in sample.model_usage.values())
@@ -164,6 +178,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
                 correctness, token_ratio, time_ratio,
                 total_tokens, working_time,
                 tok_supp, time_supp,
+                price_ratio, actual_cost_usd,
             ))
 
         if samples_list:
@@ -201,6 +216,16 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         token_suppressed = sum(1 for s in samples_list if s[5])
         time_suppressed = sum(1 for s in samples_list if s[6])
 
+        # Price ratio (skip None/NaN)
+        valid_pr = [s[7] for s in samples_list if s[7] is not None]
+        avg_price_ratio = float("nan")
+        if valid_pr:
+            avg_price_ratio = _geometric_mean(valid_pr)
+
+        # Average cost USD (arithmetic mean of actual costs)
+        valid_cost = [s[8] for s in samples_list if s[8] is not None]
+        avg_cost_usd = sum(valid_cost) / len(valid_cost) if valid_cost else float("nan")
+
         best[key] = PillarScores(
             correctness=avg_correctness,
             token_ratio=avg_token_ratio,
@@ -208,6 +233,8 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             avg_tokens=avg_tokens,
             avg_time=avg_time,
             samples=n,
+            price_ratio=avg_price_ratio,
+            avg_cost_usd=avg_cost_usd,
             token_suppressed=token_suppressed,
             time_suppressed=time_suppressed,
         )
@@ -270,6 +297,28 @@ def _fmt_tokens(tokens: float) -> str:
     return f"{tokens:.0f}"
 
 
+def _fmt_cost_ratio(val: float) -> str:
+    """Format a cost ratio value (higher = cheaper)."""
+    if math.isinf(val):
+        return "FREE"
+    return _fmt_ratio(val) + "×"
+
+
+def _fmt_avg_cost(cost: float) -> str:
+    """Format average cost per sample in USD."""
+    if math.isnan(cost):
+        return "  --"
+    if math.isinf(cost):
+        return "$0.00"
+    if cost < 0.0001:
+        return "$0.00"
+    if cost < 0.01:
+        return f"${cost:.4f}"
+    if cost < 1.0:
+        return f"${cost:.3f}"
+    return f"${cost:.2f}"
+
+
 def _geometric_mean(vals: list[float]) -> float:
     if not vals:
         return float("nan")
@@ -284,10 +333,10 @@ def _geometric_mean(vals: list[float]) -> float:
 # Table formatting
 # ---------------------------------------------------------------------------
 
-# Columns: TASK | CORRECT | TOK_RATIO | TIME_RATIO | TOKENS | TIME
-_COL_HEADERS = ["CORRECT", "TOK_RATIO", "TIME_RATIO", "TOKENS", "TIME"]
-_COL_KEYS = ["correctness", "token_ratio", "time_ratio", "avg_tokens", "avg_time"]
-_COL_WIDTHS = [7, 9, 10, 7, 7]
+# Columns: TASK | CORRECT | TOK_RATIO | TIME_RATIO | TOKENS | TIME | COST_RATIO | AVG COST
+_COL_HEADERS = ["CORRECT", "TOK_RATIO", "TIME_RATIO", "TOKENS", "TIME", "COST_RATIO", "AVG COST"]
+_COL_KEYS = ["correctness", "token_ratio", "time_ratio", "avg_tokens", "avg_time", "price_ratio", "avg_cost_usd"]
+_COL_WIDTHS = [7, 9, 10, 7, 7, 9, 9]
 
 
 def format_pillar_table(
@@ -317,6 +366,29 @@ def format_pillar_table(
     if title:
         lines.append(f"{'━' * 3} {title} {'━' * 3}")
         lines.append("")
+
+    # Cache freshness header — use KiloCodeCache.get_freshness() (reads cache once)
+    try:
+        from bench_cli.pricing.price_cache import KiloCodeCache
+        import datetime
+        cache = KiloCodeCache()
+        freshness = cache.get_freshness()
+        if freshness:
+            # freshness is ISO string, compute age from cache file mtime
+            cp = cache.cache_path
+            if cp.exists():
+                mtime = datetime.datetime.fromtimestamp(cp.stat().st_mtime)
+                age_days = (datetime.datetime.now() - mtime).days
+                age_str = f"{age_days}d ago" if age_days > 0 else "today"
+                date_str = mtime.strftime("%Y-%m-%d")
+                lines.append(f"COST: cached {date_str} ({age_str})")
+            else:
+                lines.append("COST: no cache")
+        else:
+            lines.append("COST: no cache")
+    except Exception:
+        pass
+    lines.append("")
 
     # Row 1: model names
     row1 = " " * task_col_w
@@ -350,6 +422,8 @@ def format_pillar_table(
                     _fmt_ratio(ps.time_ratio),
                     _fmt_tokens(ps.avg_tokens),
                     _fmt_time(ps.avg_time),
+                    _fmt_cost_ratio(ps.price_ratio),
+                    _fmt_avg_cost(ps.avg_cost_usd),
                 ]
                 for cell, col_w in zip(cells, _COL_WIDTHS):
                     row += " " + cell.rjust(col_w)
@@ -366,6 +440,7 @@ def format_pillar_table(
         # Collect per-task values
         c_vals, tr_vals, lr_vals = [], [], []
         tok_vals, time_vals = [], []
+        cr_vals, cost_vals = [], []
         for task in data.tasks:
             ps = data.matrix.get(task, {}).get(model)
             if ps:
@@ -376,6 +451,10 @@ def format_pillar_table(
                     lr_vals.append(ps.time_ratio)
                 tok_vals.append(ps.avg_tokens)
                 time_vals.append(ps.avg_time)
+                if not math.isnan(ps.price_ratio) and ps.price_ratio > 0:
+                    cr_vals.append(ps.price_ratio)
+                if not math.isnan(ps.avg_cost_usd):
+                    cost_vals.append(ps.avg_cost_usd)
 
         cells = [
             _fmt(sum(c_vals) / len(c_vals)) if c_vals else "  --",
@@ -383,6 +462,8 @@ def format_pillar_table(
             _fmt_ratio(_geometric_mean(lr_vals)) if lr_vals else "  --",
             _fmt_tokens(sum(tok_vals) / len(tok_vals)) if tok_vals else "  --",
             _fmt_time(sum(time_vals) / len(time_vals)) if time_vals else "  --",
+            _fmt_cost_ratio(_geometric_mean(cr_vals)) if cr_vals else "  --",
+            _fmt_avg_cost(sum(cost_vals) / len(cost_vals)) if cost_vals else "  --",
         ]
         for cell, col_w in zip(cells, _COL_WIDTHS):
             mean_row += " " + cell.rjust(col_w)
@@ -412,6 +493,8 @@ def format_json(data: CompareData) -> str:
                     "samples": ps.samples,
                     "token_suppressed": ps.token_suppressed,
                     "time_suppressed": ps.time_suppressed,
+                    "price_ratio": round(ps.price_ratio, 4) if not math.isnan(ps.price_ratio) else None,
+                    "avg_cost_usd": round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None,
                 })
     return json.dumps(rows, indent=2)
 

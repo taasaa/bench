@@ -30,6 +30,7 @@ from scorers.protocol import (
 )
 from scorers.safety import safety
 from scorers.time_ratio import time_ratio_scorer
+from scorers.price_ratio import price_ratio_scorer
 from scorers.token_ratio import token_ratio_scorer
 from scorers.verify_sh import verify_sh
 
@@ -54,6 +55,7 @@ __all__ = [
     "load_fixture",
     "load_fixture_bytes",
     "pattern_output_safety_scorer",
+    "price_ratio_scorer",
     "safety",
     "time_ratio_scorer",
     "token_ratio_scorer",

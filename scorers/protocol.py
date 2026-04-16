@@ -119,6 +119,9 @@ class TaskBudget:
     noise_floor_seconds: float | None = None
     """Override for DEFAULT_NOISE_FLOOR (5.0). Lower = more sensitive."""
 
+    reference_cost_usd: float | None = None
+    """Expected cost in USD for this task. Used by price_ratio_scorer as the reference cost."""
+
 
 SYSTEM_DEFAULT_BUDGETS: dict[str, float] = {
     "output_tokens": 1000.0,

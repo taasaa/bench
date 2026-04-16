@@ -3,6 +3,7 @@
 from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
+from scorers.price_ratio import price_ratio_scorer
 from scorers.time_ratio import time_ratio_scorer
 from scorers.task_budgets import get_task_budget
 from scorers.token_ratio import token_ratio_scorer
@@ -26,5 +27,5 @@ def f5_multi_constraint_edit():
             "dataset.json",
             FieldSpec(input="input", target="target", id="id"),
         ),
-        scorer=[verify_sh(), token_ratio_scorer(task_budget=get_task_budget("f5_multi_constraint_edit")), time_ratio_scorer(task_budget=get_task_budget("f5_multi_constraint_edit"))],
+        scorer=[verify_sh(), token_ratio_scorer(task_budget=get_task_budget("f5_multi_constraint_edit")), time_ratio_scorer(task_budget=get_task_budget("f5_multi_constraint_edit")), price_ratio_scorer(task_budget=get_task_budget("f5_multi_constraint_edit"))],
     )

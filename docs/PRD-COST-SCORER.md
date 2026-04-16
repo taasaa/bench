@@ -21,7 +21,7 @@ Token count and cost are decoupled. A model that uses 10× fewer tokens at 10× 
 ## Implementation Approach
 
 ### Price cache + alias map
-- `bench/pricing/` directory for cached price JSON
+- `logs/pricing/` directory for cached price JSON (bench/bench is a CLI script file, not a directory, so cache uses logs/pricing/ instead)
 - `bench_cli/model_aliases.py` — static alias map: bench Litellm alias → KiloCode model ID
   - Covers the models bench actually uses (audit Litellm model list against KiloCode catalog)
   - Examples: `openai/qwen-local` → `qwen/qwen-local`, `openai/gemma-4-e2-local` → `google/gemma-4-26b-a4b-it`
@@ -94,16 +94,16 @@ Token count and cost are decoupled. A model that uses 10× fewer tokens at 10× 
 
 ## Acceptance Checklist
 
-- [ ] `bench prices refresh` fetches fresh prices, writes `bench/pricing/kilocode-models.json`
-- [ ] 3-day TTL respected — no re-fetch within window
-- [ ] `bench prices list` shows cached model prices
-- [ ] `bench compare` shows COST column with COST_RATIO + AVG COST per model
-- [ ] `N/A` shown for models with no price data (soft stop, not crash)
-- [ ] Anomaly flag emitted when price unavailable
-- [ ] Free models show `$0.00 (FREE)`
-- [ ] Cache freshness timestamp in compare output header
-- [ ] 269 existing tests still pass
-- [ ] Geometric mean matches TOK_RATIO/TIME_RATIO format in summary row
+- [x] `bench prices refresh` fetches fresh prices, writes `bench/pricing/kilocode-models.json`
+- [x] 3-day TTL respected — no re-fetch within window
+- [x] `bench prices list` shows cached model prices
+- [x] `bench compare` shows COST column with COST_RATIO + AVG COST per model
+- [x] `N/A` shown for models with no price data (soft stop, not crash)
+- [x] Anomaly flag emitted when price unavailable
+- [x] Free models show `$0.00 (FREE)`
+- [x] Cache freshness timestamp in compare output header
+- [x] 269 existing tests still pass
+- [x] Geometric mean matches TOK_RATIO/TIME_RATIO format in summary row
 
 ## Out of Scope
 

@@ -12,6 +12,7 @@ from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.llm_judge import llm_judge
+from scorers.price_ratio import price_ratio_scorer
 from scorers.time_ratio import time_ratio_scorer
 from scorers.task_budgets import get_task_budget
 from scorers.token_ratio import token_ratio_scorer
@@ -45,5 +46,6 @@ def u7_git_safety():
             llm_judge(),
             token_ratio_scorer(task_budget=get_task_budget("u7_git_safety")),
             time_ratio_scorer(task_budget=get_task_budget("u7_git_safety")),
+            price_ratio_scorer(task_budget=get_task_budget("u7_git_safety")),
         ],
     )
