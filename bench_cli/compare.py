@@ -77,10 +77,11 @@ def _numeric_val(score: object) -> float | None:
     if isinstance(val, (int, float)) and val == val:  # not NaN
         return float(val)
     if isinstance(val, str):
-        # Handle CORRECT/INCORRECT from includes/exact scorers
-        if val in ("C", "CORRECT", "correct"):
+        # Handle CORRECT/INCORRECT from includes/exact scorers (returns 'C'/'I')
+        upper = val.upper()
+        if upper in ("C", "CORRECT"):
             return 1.0
-        if val in ("I", "INCORRECT", "incorrect"):
+        if upper in ("I", "INCORRECT"):
             return 0.0
         # Try numeric string
         try:
@@ -92,18 +93,11 @@ def _numeric_val(score: object) -> float | None:
 
 def _extract_from_scorers(
     sample_scores: dict,
-) -> tuple[float | None, float | None, float | None, float | None, float | None]:
-    """Extract (correctness, token_ratio, time_ratio, price_ratio, actual_cost_usd) from a sample's score dict.
+) -> tuple[float | None, float | None, float | None, float | None]:
+    """Extract (correctness, token_ratio, time_ratio, actual_cost_usd) from a sample's score dict.
 
-    Each scorer has its own entry keyed by scorer name:
-      - "llm_judge"           → .value = correctness (0..1), takes precedence
-      - "verify_sh"           → .value = correctness (0..1), fallback
-      - "token_ratio_scorer"  → .value = ratio (may be NaN if suppressed)
-      - "time_ratio_scorer"   → .value = ratio (may be NaN if suppressed)
-      - "price_ratio_scorer"  → .value = cost ratio (may be NaN if cache miss)
-
-    Correctness: llm_judge is checked first, then verify_sh. Tasks use
-    one or the other, not both.
+    Correctness: llm_judge > verify_sh > exact > includes (strings 'C'/'I'
+    are converted to 1.0/0.0 by _numeric_val).
 
     Returns actual_cost_usd from price_ratio_scorer metadata, or None.
     """
@@ -120,7 +114,6 @@ def _extract_from_scorers(
 
     token_ratio = _numeric_val(sample_scores.get("token_ratio_scorer"))
     time_ratio = _numeric_val(sample_scores.get("time_ratio_scorer"))
-    price_ratio = _numeric_val(sample_scores.get("price_ratio_scorer"))
 
     # Extract actual_cost_usd from price_ratio_scorer metadata
     actual_cost_usd: float | None = None
@@ -130,7 +123,7 @@ def _extract_from_scorers(
         if isinstance(cost_val, (int, float)):
             actual_cost_usd = float(cost_val)
 
-    return correctness, token_ratio, time_ratio, price_ratio, actual_cost_usd
+    return correctness, token_ratio, time_ratio, actual_cost_usd
 
 
 def _is_suppressed(score: object) -> bool:
@@ -161,10 +154,10 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         infos = infos[:latest]
 
     # Accumulate per-sample data per (task, model, run_name)
-    # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens, working_time, token_suppressed, time_suppressed, price_ratio, actual_cost_usd)
+    # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens, working_time, token_suppressed, time_suppressed, actual_cost_usd)
     run_samples: dict[
         tuple[str, str, str],
-        list[tuple[float | None, float | None, float | None, int, float, bool, bool, float | None, float | None]],
+        list[tuple[float | None, float | None, float | None, int, float, bool, bool, float | None]],
     ] = {}
 
     for info in infos:
@@ -188,7 +181,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             if not isinstance(sample.scores, dict):
                 continue
 
-            correctness, token_ratio, time_ratio, price_ratio, actual_cost_usd = _extract_from_scorers(sample.scores)
+            correctness, token_ratio, time_ratio, actual_cost_usd = _extract_from_scorers(sample.scores)
 
             total_tokens = (
                 sum(u.total_tokens for u in sample.model_usage.values())
@@ -204,7 +197,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
                 correctness, token_ratio, time_ratio,
                 total_tokens, working_time,
                 tok_supp, time_supp,
-                price_ratio, actual_cost_usd,
+                actual_cost_usd,
             ))
 
         if samples_list:
@@ -243,7 +236,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         time_suppressed = sum(1 for s in samples_list if s[6])
 
         # Average cost USD (arithmetic mean of actual costs)
-        valid_cost = [s[8] for s in samples_list if s[8] is not None]
+        valid_cost = [s[7] for s in samples_list if s[7] is not None]
         avg_cost_usd = sum(valid_cost) / len(valid_cost) if valid_cost else float("nan")
 
         # Price ratio: recompute using current reference costs from task_budgets.py
