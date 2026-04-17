@@ -13,6 +13,8 @@ Standalone local LLM and AI agent evaluation system. No PAI dependencies.
 python -m bench_cli run --tier full --model openai/qwen-local
 python -m bench_cli run --tier quick --model openai/gemma-4-e2-local
 python -m bench_cli run --list-tasks --tier full
+python -m bench_cli run --concurrency 4 --tier full           # limit parallel tasks
+python -m bench_cli run --sequential --tier full               # one task at a time
 python -m bench_cli baseline record --model openai/qwen-local --tier full
 python -m bench_cli baseline list
 python -m bench_cli compare
@@ -38,6 +40,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
   ```
 - **Available models** (check with `curl -s http://smallbox:4000/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`): qwen-local, gemma-4-e2-local, gemma-4-26-local, glm-local, qwen3-coder-plus, qwen3-max, opus, pro, and more
 - **Default model:** `openai/default` (maps to whatever LiteLLM configures as default)
+- **LiteLLM proxy config:** `~/dev/litellm/config.yaml` — edit this to add/remove models, set RPM limits (`rpm:` per deployment), or change `enforce_model_rate_limits`. This path is required constantly.
 
 ## Current Focus
 Phase 1C complete. 32 tasks scored across 4 tiers (competence, execution, analysis, universal). 4-pillar scoring: correctness + token efficiency + latency + cost. minimax m2.7 is the cost benchmark reference. Agent eval: 3 agents x 4 modes. 309 tests passing.
