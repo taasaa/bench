@@ -40,7 +40,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **Default model:** `openai/default` (maps to whatever LiteLLM configures as default)
 
 ## Current Focus
-Phase 1B complete. 16 tasks scored, dual correctness scoring (10 verify_sh + 6 llm_judge), baselines recorded for qwen-local and gemma-4-26-local. Agent eval infrastructure complete: 3 agents x 4 modes. 254 tests passing.
+Phase 1C complete. 32 tasks scored across 4 tiers (competence, execution, analysis, universal). 4-pillar scoring: correctness + token efficiency + latency + cost. minimax m2.7 is the cost benchmark reference. Agent eval: 3 agents x 4 modes. 309 tests passing.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
@@ -50,15 +50,41 @@ Phase 1B complete. 16 tasks scored, dual correctness scoring (10 verify_sh + 6 l
 - **Agent solvers:** `bench_cli/solvers/local_agent.py` (subprocess) and `docker_agent.py` (inspect-swe wrapper)
 - **Agent bridge:** `sandbox_agent_bridge()` proxies CLI agent API calls, captures every token/tool call
 - **Sandboxing:** Inspect native — Docker, K8s, local. Phase 1: local. Phase 2+: Docker.
-- **CLI:** `bench run`, `bench compare`, `bench baseline record/list`
+- **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh`
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
-- **Tiers:** quick (verification tasks) + full (competence/execution/analysis — 16 tasks)
-- **Scoring:** 3 independent scorers per task — verify_sh or llm_judge (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency)
-- **Correctness:** verify_sh for 10 deterministic tasks, llm_judge for 6 open-ended tasks (judge model: `openai/judge` → GLM-5.1)
+- **Tiers:** quick (verification: smoke + agent_smoke) + full (32 tasks: competence/execution/analysis/universal)
+- **Scoring:** 4 independent scorers per task — verify_sh or llm_judge (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency) + price_ratio_scorer (cost)
+- **Correctness:** verify_sh for deterministic tasks, llm_judge for open-ended tasks (judge model: `openai/judge` → GLM-5.1); `includes()`/`exact()` return 'C'/'I' strings handled by compare.py
 - **Task format:** Directory with task.py + dataset.json + verify.sh or judge.md + fixtures/
 - **Viewer:** `inspect view` (localhost:7575) for interactive log inspection
-- **Comparison:** `bench compare` — single pillar table with CORRECT/TOK_RATIO/TIME_RATIO/TOKENS/TIME columns, multi-model side-by-side, geometric mean for ratio aggregates
+- **Comparison:** `bench compare` — single pillar table with CORRECT/TOK_RATIO/TIME_RATIO/TOKENS/TIME/COST_RATIO/AVG COST columns, multi-model side-by-side, geometric mean for ratio aggregates
+
+## Cost Scoring (4th Pillar)
+
+**Benchmark reference:** minimax m2.7 (2026-04-17 eval). All 32 tasks have `reference_cost_usd` set to the actual measured average cost per sample in `scorers/task_budgets.py`.
+
+**How it works:**
+- `price_ratio_scorer` reads actual usage from `state.output.usage` (input_tokens, output_tokens)
+- Resolves model alias → KiloCode price via `MODEL_ALIAS_MAP` in `bench_cli/pricing/model_aliases.py`
+- Computes `actual_cost = input_tokens × price_in + output_tokens × price_out`
+- Computes `price_ratio = reference_cost_usd / actual_cost_usd`
+- Free models (`is_free=True`) return `inf`; KiloCode cache misses return `NaN`
+
+**Price sources:**
+- **KiloCode API** (`https://api.kilo.ai/api/openrouter/models`) for OpenRouter model prices — cached at `logs/pricing/kilocode-models.json` (3-day TTL). Refresh with `python -m bench_cli prices refresh`
+- **Built-in table** in `bench_cli/pricing/__init__.py` for known local/proxy models (qwen-local, gemma, etc.)
+- **`MODEL_ALIAS_MAP`** in `bench_cli/pricing/model_aliases.py`: maps bench LiteLLM alias (`openai/<name>`) → KiloCode model ID (`provider/model-slug`)
+
+**compare.py display:**
+- `AVG COST`: arithmetic mean of actual cost per sample, 9 decimal places — no rounding
+- `COST_RATIO`: `reference_cost / actual_cost` — ratio >1 means model is cheaper than benchmark, <1 means more expensive. "FREE" for `inf`, "--" for NaN
+- When `reference_cost_usd` is `None` (smoke task, no budget): both columns show "--"
+
+**Adding a new model:**
+1. Add KiloCode price to `logs/pricing/kilocode-models.json` or built-in table
+2. Add alias mapping to `MODEL_ALIAS_MAP` if needed
+3. Add `reference_cost_usd` to `scorers/task_budgets.py` for all 32 tasks (copy from minimax column after running new model)
 
 ## Key Decisions
 - Standalone project — no connection to PAI
@@ -70,6 +96,6 @@ Phase 1B complete. 16 tasks scored, dual correctness scoring (10 verify_sh + 6 l
 - Use `.eval` binary format by default, caching enabled, execution limits configured
 
 ## Next Steps
+- Re-run eval to bake new minimax m2.7 cost references into eval logs (4 agents running 32 tasks in background — check back in ~15 min)
 - Run agent evals across all combinations (agent x mode) and compare results via `bench compare`
-- Phase 1C: more model baselines, calibrate per-task budgets from multi-model data
 - Phase 2: LLM judge calibration (Cohen's Kappa), statistics, Docker sandboxing
