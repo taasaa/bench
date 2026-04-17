@@ -70,6 +70,7 @@ MODEL_ALIAS_MAP: dict[str, str] = {
     # Minimax models
     "openai/minimax": "minimax/minimax-m2.7",
     "openai/minimax-m2.7": "minimax/minimax-m2.7",
+    "openai/nvidia-mistral-small4": "mistralai/mistral-small-4-119b-2603",
     # LiteLLM proxy default (minimax m2.7)
     "openai/default": "minimax/minimax-m2.7",
 }
