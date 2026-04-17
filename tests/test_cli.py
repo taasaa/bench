@@ -290,3 +290,172 @@ class TestPricesCLI:
         assert result.exit_code == 1
         assert "KILOCODE_API_KEY" in result.output
         assert "not set" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Concurrency flags
+# ---------------------------------------------------------------------------
+
+
+class TestConcurrencyFlags:
+    """Tests for --concurrency/-j and --sequential CLI flags."""
+
+    def test_help_shows_concurrency_flag(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--concurrency" in result.output
+        assert "-j" in result.output
+
+    def test_help_shows_sequential_flag(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--sequential" in result.output
+
+    def test_concurrency_zero_exits_with_error(self, tasks_root):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--tier", "quick", "--concurrency", "0"])
+        assert result.exit_code == 2
+        assert "positive integer" in result.output.lower()
+
+    def test_concurrency_negative_exits_with_error(self, tasks_root):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--tier", "quick", "--concurrency", "-3"])
+        assert result.exit_code == 2
+        assert "positive integer" in result.output.lower()
+
+    def test_concurrency_passes_max_tasks_to_eval(self, tasks_root):
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
+        runner = CliRunner()
+        with patch("inspect_ai.eval") as mock_eval:
+            from types import SimpleNamespace
+
+            fake_log = SimpleNamespace(
+                status="success",
+                eval=SimpleNamespace(task="fixture_task"),
+                results=SimpleNamespace(
+                    scores=[SimpleNamespace(metrics={"mean": SimpleNamespace(value=1.0)})]
+                ),
+            )
+            mock_eval.return_value = [fake_log]
+            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                result = runner.invoke(
+                    cli, ["run", "--tier", "quick", "--concurrency", "4"]
+                )
+        assert result.exit_code == 0, result.output
+        mock_eval.assert_called_once()
+        call_kwargs = mock_eval.call_args[1]
+        assert call_kwargs.get("max_tasks") == 4
+
+    def test_sequential_passes_max_tasks_1_to_eval(self, tasks_root):
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
+        runner = CliRunner()
+        with patch("inspect_ai.eval") as mock_eval:
+            from types import SimpleNamespace
+
+            fake_log = SimpleNamespace(
+                status="success",
+                eval=SimpleNamespace(task="fixture_task"),
+                results=SimpleNamespace(
+                    scores=[SimpleNamespace(metrics={"mean": SimpleNamespace(value=1.0)})]
+                ),
+            )
+            mock_eval.return_value = [fake_log]
+            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                result = runner.invoke(
+                    cli, ["run", "--tier", "quick", "--sequential"]
+                )
+        assert result.exit_code == 0, result.output
+        mock_eval.assert_called_once()
+        call_kwargs = mock_eval.call_args[1]
+        assert call_kwargs.get("max_tasks") == 1
+
+    def test_sequential_wins_over_concurrency(self, tasks_root):
+        """--sequential should override --concurrency when both are passed."""
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
+        runner = CliRunner()
+        with patch("inspect_ai.eval") as mock_eval:
+            from types import SimpleNamespace
+
+            fake_log = SimpleNamespace(
+                status="success",
+                eval=SimpleNamespace(task="fixture_task"),
+                results=SimpleNamespace(
+                    scores=[SimpleNamespace(metrics={"mean": SimpleNamespace(value=1.0)})]
+                ),
+            )
+            mock_eval.return_value = [fake_log]
+            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                result = runner.invoke(
+                    cli,
+                    [
+                        "run",
+                        "--tier",
+                        "quick",
+                        "--concurrency",
+                        "4",
+                        "--sequential",
+                    ],
+                )
+        assert result.exit_code == 0, result.output
+        mock_eval.assert_called_once()
+        call_kwargs = mock_eval.call_args[1]
+        assert call_kwargs.get("max_tasks") == 1
+
+    def test_no_concurrency_passes_none_to_eval(self, tasks_root):
+        """When neither --concurrency nor --sequential is passed, max_tasks is None."""
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
+        runner = CliRunner()
+        with patch("inspect_ai.eval") as mock_eval:
+            from types import SimpleNamespace
+
+            fake_log = SimpleNamespace(
+                status="success",
+                eval=SimpleNamespace(task="fixture_task"),
+                results=SimpleNamespace(
+                    scores=[SimpleNamespace(metrics={"mean": SimpleNamespace(value=1.0)})]
+                ),
+            )
+            mock_eval.return_value = [fake_log]
+            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                result = runner.invoke(
+                    cli, ["run", "--tier", "quick"]
+                )
+        assert result.exit_code == 0, result.output
+        mock_eval.assert_called_once()
+        call_kwargs = mock_eval.call_args[1]
+        assert call_kwargs.get("max_tasks") is None
+
+    def test_concurrency_1_sequential_one_by_one(self, tasks_root):
+        """--concurrency 1 should produce the same max_tasks=1 as --sequential."""
+        from inspect_ai import Task
+
+        fake_task = Task(dataset=None)
+        runner = CliRunner()
+        with patch("inspect_ai.eval") as mock_eval:
+            from types import SimpleNamespace
+
+            fake_log = SimpleNamespace(
+                status="success",
+                eval=SimpleNamespace(task="fixture_task"),
+                results=SimpleNamespace(
+                    scores=[SimpleNamespace(metrics={"mean": SimpleNamespace(value=1.0)})]
+                ),
+            )
+            mock_eval.return_value = [fake_log]
+            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+                result = runner.invoke(
+                    cli, ["run", "--tier", "quick", "--concurrency", "1"]
+                )
+        assert result.exit_code == 0, result.output
+        call_kwargs = mock_eval.call_args[1]
+        assert call_kwargs.get("max_tasks") == 1
