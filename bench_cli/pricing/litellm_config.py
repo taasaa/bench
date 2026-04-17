@@ -10,12 +10,9 @@ configured. MODEL_ALIAS_MAP is used as a fallback for models not in config.
 
 from __future__ import annotations
 
-import os
-import sys
 import warnings
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 import yaml
 
