@@ -424,11 +424,11 @@ def format_pillar_table(
         lines.append(f"{'━' * 3} {title} {'━' * 3}")
         lines.append("")
 
-    # Cache freshness header — use KiloCodeCache.get_freshness() (reads cache once)
+    # Cache freshness header — use OpenRouterCache.get_freshness()
     try:
-        from bench_cli.pricing.price_cache import KiloCodeCache
+        from bench_cli.pricing.price_cache import OpenRouterCache
         import datetime
-        cache = KiloCodeCache()
+        cache = OpenRouterCache()
         freshness = cache.get_freshness()
         if freshness:
             # freshness is ISO string, compute age from cache file mtime

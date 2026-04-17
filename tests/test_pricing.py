@@ -19,7 +19,12 @@ from bench_cli.pricing.model_aliases import (
     is_free_model,
     resolve_alias,
 )
-from bench_cli.pricing.price_cache import CacheMiss, KiloCodeCache
+from bench_cli.pricing.price_cache import CacheMiss, OpenRouterCache
+from bench_cli.pricing.litellm_config import (
+    _load_litellm_alias_map,
+    is_managed_model,
+    resolve_openrouter_id,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -115,13 +120,13 @@ class TestPriceInfo:
 # price_cache
 # ---------------------------------------------------------------------------
 
-class TestKiloCodeCache:
+class TestOpenRouterCache:
     def test_cache_path_default(self, tmp_path):
-        cache = KiloCodeCache(cache_path=tmp_path / "prices.json")
+        cache = OpenRouterCache(cache_path=tmp_path / "prices.json")
         assert cache.cache_path == tmp_path / "prices.json"
 
     def test_get_price_no_cache(self, tmp_path):
-        cache = KiloCodeCache(cache_path=tmp_path / "nonexistent.json")
+        cache = OpenRouterCache(cache_path=tmp_path / "nonexistent.json")
         with pytest.raises(CacheMiss):
             cache.get_price("qwen/qwen-local")
 
@@ -133,7 +138,7 @@ class TestKiloCodeCache:
             "models": {"qwen/qwen-local": {"input": 0.5, "output": 1.0, "context": 4096}},
         }
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         with pytest.raises(CacheMiss, match="stale"):
             cache.get_price("qwen/qwen-local")
 
@@ -144,7 +149,7 @@ class TestKiloCodeCache:
             "models": {"qwen/qwen-local": {"input": 0.5, "output": 1.0, "context": 4096}},
         }
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         with pytest.raises(CacheMiss, match="not found"):
             cache.get_price("unknown/model")
 
@@ -155,7 +160,7 @@ class TestKiloCodeCache:
             "models": {"qwen/qwen-local": {"input": 0.5, "output": 1.0, "context": 8192}},
         }
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         info = cache.get_price("qwen/qwen-local")
         assert info.kilo_model_id == "qwen/qwen-local"
         assert info.input_price == 0.5
@@ -169,13 +174,13 @@ class TestKiloCodeCache:
             "models": {"test/model": {"input": 0.1, "output": 0.2, "context": None}},
         }
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         info = cache.get_price("test/model")
         assert info.is_free is False
         assert info.context_window is None
 
     def test_get_freshness_none_when_missing(self, tmp_path):
-        cache = KiloCodeCache(cache_path=tmp_path / "nonexistent.json")
+        cache = OpenRouterCache(cache_path=tmp_path / "nonexistent.json")
         assert cache.get_freshness() is None
 
     def test_get_freshness_returns_timestamp(self, tmp_path):
@@ -183,11 +188,11 @@ class TestKiloCodeCache:
         now = datetime.now(timezone.utc)
         cache_data = {"fetched_at": now.isoformat(), "models": {}}
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         assert cache.get_freshness() == now.isoformat()
 
     def test_get_all_prices_empty_when_missing(self, tmp_path):
-        cache = KiloCodeCache(cache_path=tmp_path / "nonexistent.json")
+        cache = OpenRouterCache(cache_path=tmp_path / "nonexistent.json")
         assert cache.get_all_prices() == {}
 
     def test_get_all_prices_returns_all_models(self, tmp_path):
@@ -200,7 +205,7 @@ class TestKiloCodeCache:
             },
         }
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         all_prices = cache.get_all_prices()
         assert len(all_prices) == 2
         assert "model/a" in all_prices
@@ -215,13 +220,13 @@ class TestKiloCodeCache:
             "models": {"model/a": {"input": 0.1, "output": 0.2, "context": None}},
         }
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         assert cache.get_all_prices() == {}
 
     def test_fetch_and_cache_prices_missing_api_key(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("KILOCODE_API_KEY", raising=False)
-        cache = KiloCodeCache(cache_path=tmp_path / "prices.json")
-        with pytest.raises(RuntimeError, match="KILOCODE_API_KEY not set"):
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        cache = OpenRouterCache(cache_path=tmp_path / "prices.json")
+        with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY not set"):
             cache.fetch_and_cache_prices()
 
     def test_is_stale_true_when_old(self, tmp_path):
@@ -229,7 +234,7 @@ class TestKiloCodeCache:
         old_time = datetime.now(timezone.utc) - timedelta(days=5)
         cache_data = {"fetched_at": old_time.isoformat(), "models": {}}
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         with pytest.raises(CacheMiss, match="stale"):
             cache.get_price("any/model")
 
@@ -238,7 +243,110 @@ class TestKiloCodeCache:
         now = datetime.now(timezone.utc)
         cache_data = {"fetched_at": now.isoformat(), "models": {}}
         cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
-        cache = KiloCodeCache(cache_path=cache_file)
+        cache = OpenRouterCache(cache_path=cache_file)
         # Should not raise CacheMiss for staleness (raises for model not found instead)
         with pytest.raises(CacheMiss, match="not found"):
             cache.get_price("any/model")
+
+    def test_add_price_new_entry(self, tmp_path):
+        cache_file = tmp_path / "prices.json"
+        cache_file.write_text(
+            json.dumps({"fetched_at": datetime.now(timezone.utc).isoformat(), "models": {}}),
+            encoding="utf-8",
+        )
+        cache = OpenRouterCache(cache_path=cache_file)
+        cache.add_price("mistralai/mistral-small-4-119b-2603", 0.15, 0.60)
+
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+        assert "mistralai/mistral-small-4-119b-2603" in data["models"]
+        assert data["models"]["mistralai/mistral-small-4-119b-2603"]["input"] == 0.15
+        assert data["models"]["mistralai/mistral-small-4-119b-2603"]["output"] == 0.60
+
+    def test_add_price_updates_existing(self, tmp_path):
+        cache_file = tmp_path / "prices.json"
+        cache_file.write_text(
+            json.dumps({
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "models": {"model/x": {"input": 0.1, "output": 0.2, "context": 4096}},
+            }),
+            encoding="utf-8",
+        )
+        cache = OpenRouterCache(cache_path=cache_file)
+        cache.add_price("model/x", 0.99, 1.99)
+
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
+        assert data["models"]["model/x"]["input"] == 0.99
+        assert data["models"]["model/x"]["output"] == 1.99
+        assert data["models"]["model/x"]["context"] is None  # not overwritten
+        assert "model/x" in data["models"]  # original still present
+
+    def test_add_price_creates_cache_if_missing(self, tmp_path):
+        cache = OpenRouterCache(cache_path=tmp_path / "nonexistent.json")
+        cache.add_price("some/model", 0.5, 1.0)
+        data = json.loads((tmp_path / "nonexistent.json").read_text(encoding="utf-8"))
+        assert "some/model" in data["models"]
+        assert data["models"]["some/model"]["input"] == 0.5
+
+
+# ---------------------------------------------------------------------------
+# litellm_config
+# ---------------------------------------------------------------------------
+
+class TestLiteLLMConfig:
+    """Tests for LiteLLM config parser and resolution."""
+
+    def test_resolve_openrouter_id_from_alias_map(self):
+        """Alias not in LiteLLM config falls back to MODEL_ALIAS_MAP."""
+        # opus is in MODEL_ALIAS_MAP but not in LiteLLM config
+        result = resolve_openrouter_id("openai/opus")
+        assert result is not None
+
+    def test_resolve_openrouter_id_unknown_alias(self):
+        result = resolve_openrouter_id("openai/this-does-not-exist-xyz789")
+        assert result is None
+
+    def test_resolve_openrouter_id_litellm_name_without_prefix(self):
+        """LiteLLM model names (without openai/ prefix) resolve via LiteLLM config."""
+        # "rut" is a LiteLLM model_name → openai/MiniMax-M2.7
+        result = resolve_openrouter_id("rut")
+        assert result == "openai/MiniMax-M2.7"
+
+    def test_load_litellm_alias_map_caches(self):
+        """Calling twice returns same dict (lru_cache)."""
+        first = _load_litellm_alias_map()
+        second = _load_litellm_alias_map()
+        assert first is second  # same object due to @lru_cache
+
+
+class TestIsManagedModel:
+    """Tests for managed/local model exemption logic."""
+
+    @pytest.mark.parametrize("alias", [
+        "openai/qwen-local",
+        "openai/gemma-4-e2-local",
+        "openai/gemma-4-26-local",
+        "openai/glm-local",
+    ])
+    def test_local_suffix_is_managed(self, alias):
+        assert is_managed_model(alias) is True
+
+    @pytest.mark.parametrize("alias", [
+        "openai/qwen3-coder-plus",
+        "openai/qwen3-max",
+    ])
+    def test_named_local_models_managed(self, alias):
+        assert is_managed_model(alias) is True
+
+    @pytest.mark.parametrize("alias", [
+        "openai/opus",
+        "openai/sonnet",
+        "openai/gpt-4o",
+        "openai/nvidia-mistral-small4",
+        "openai/default",
+    ])
+    def test_regular_aliases_not_managed(self, alias):
+        assert is_managed_model(alias) is False
+
+    def test_partial_match_not_managed(self):
+        # "local" appears in the alias but not as -local suffix
+        assert is_managed_model("openai/local-model-test") is False

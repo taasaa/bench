@@ -284,12 +284,85 @@ class TestPricesCLI:
     def test_prices_refresh_missing_key_shows_soft_error(self, tmp_path, monkeypatch):
         """prices refresh with missing API key exits with error, not crash."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("KILOCODE_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         runner = CliRunner()
         result = runner.invoke(cli, ["prices", "refresh"])
         assert result.exit_code == 1
-        assert "KILOCODE_API_KEY" in result.output
+        assert "OPENROUTER_API_KEY" in result.output
         assert "not set" in result.output
+
+
+class TestPricesAdd:
+    """Tests for bench prices add command."""
+
+    def test_prices_add_unknown_alias(self, tmp_path, monkeypatch):
+        """Unknown alias exits with error."""
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        # Mock add_price to avoid writing None key to real cache
+        with patch("bench_cli.prices._cache.add_price") as mock_add:
+            result = runner.invoke(
+                cli, ["prices", "add", "rut-xyz-not-a-real-model", "0.15", "0.60"]
+            )
+            mock_add.assert_not_called()
+        assert result.exit_code == 1
+        assert "Unknown model alias" in result.output
+
+    def test_prices_add_managed_model_rejected(self, tmp_path, monkeypatch):
+        """Managed/local models have no OpenRouter ID — add should reject them."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["prices", "add", "openai/qwen-local", "0.0", "0.0"]
+        )
+        assert result.exit_code == 1
+        assert "managed" in result.output.lower()
+
+    def test_prices_add_success(self, tmp_path, monkeypatch):
+        """Adding a price succeeds and confirms the entry."""
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        with patch("bench_cli.prices._cache.add_price") as mock_add:
+            result = runner.invoke(
+                cli, ["prices", "add", "openai/nvidia-mistral-small4", "0.15", "0.60"]
+            )
+            mock_add.assert_called_once_with("mistralai/mistral-small-4-119b-2603", 0.15, 0.6)
+        assert result.exit_code == 0, result.output
+        assert "Added:" in result.output
+        assert "openai/nvidia-mistral-small4" in result.output
+
+
+class TestPriceGate:
+    """Tests for the pre-flight price gate in bench run."""
+
+    def test_gate_skips_when_no_api_key(self, tasks_root, monkeypatch):
+        """With no OPENROUTER_API_KEY set, gate should not fire."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")  # empty, not set
+        runner = CliRunner()
+        with patch("inspect_ai.eval") as mock_eval:
+            from types import SimpleNamespace
+            mock_eval.return_value = []
+            result = runner.invoke(
+                cli, ["run", "--tier", "quick", "--model", "openai/nvidia-mistral-small4"]
+            )
+            # Should not exit with price error
+            assert "No price found" not in result.output
+            assert "ERROR" not in result.output
+
+    def test_gate_exempts_local_models(self, tasks_root, monkeypatch):
+        """Local models should be exempt from the price gate."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+        runner = CliRunner()
+        with patch("inspect_ai.eval") as mock_eval:
+            mock_eval.return_value = []
+            result = runner.invoke(
+                cli, ["run", "--tier", "quick", "--model", "openai/qwen-local"]
+            )
+            assert "No price found" not in result.output
 
 
 # ---------------------------------------------------------------------------
