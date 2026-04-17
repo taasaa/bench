@@ -329,18 +329,12 @@ def _fmt_cost_ratio(val: float) -> str:
 
 
 def _fmt_avg_cost(cost: float) -> str:
-    """Format average cost per sample in USD."""
+    """Format average cost per sample in USD. Shows raw values — no rounding."""
     if math.isnan(cost):
         return "  --"
     if math.isinf(cost):
-        return "$0.00"
-    if cost < 0.0001:
-        return "$0.00"
-    if cost < 0.01:
-        return f"${cost:.4f}"
-    if cost < 1.0:
-        return f"${cost:.3f}"
-    return f"${cost:.2f}"
+        return "FREE"
+    return f"${cost:.9f}"
 
 
 def _geometric_mean(vals: list[float]) -> float:
