@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scorers.task_budgets import get_task_budget
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -240,15 +242,18 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         token_suppressed = sum(1 for s in samples_list if s[5])
         time_suppressed = sum(1 for s in samples_list if s[6])
 
-        # Price ratio (skip None/NaN)
-        valid_pr = [s[7] for s in samples_list if s[7] is not None]
-        avg_price_ratio = float("nan")
-        if valid_pr:
-            avg_price_ratio = _geometric_mean(valid_pr)
-
         # Average cost USD (arithmetic mean of actual costs)
         valid_cost = [s[8] for s in samples_list if s[8] is not None]
         avg_cost_usd = sum(valid_cost) / len(valid_cost) if valid_cost else float("nan")
+
+        # Price ratio: recompute using current reference costs from task_budgets.py
+        # (the ratio stored in eval logs uses stale references from the time of the run)
+        budget = get_task_budget(task)
+        if budget and budget.reference_cost_usd is not None and valid_cost:
+            ratios = [budget.reference_cost_usd / c for c in valid_cost if c > 0]
+            avg_price_ratio = _geometric_mean(ratios) if ratios else float("nan")
+        else:
+            avg_price_ratio = float("nan")
 
         best[key] = PillarScores(
             correctness=avg_correctness,
