@@ -13,5 +13,20 @@
     "id": "f20-settings-debug",
     "input": "You are given the content of settings.py below. Make exactly this change:\n\nChange 'DEBUG = True' to 'DEBUG = False'\n\nThat's the only change needed. Return the complete modified file.\n\n```\n# Application Settings\nDEBUG = True\nSECRET_KEY = \"change-me-in-production\"\nDATABASE_URL = \"sqlite:///dev.db\"\nALLOWED_HOSTS = [\"localhost\", \"127.0.0.1\"]\n```",
     "target": "settings.py"
+  },
+  {
+    "id": "f20-port-mapping",
+    "input": "You are given the content of server.py below. Make exactly this change:\n\nChange 'PORT = 8080' to 'PORT = 3000'\n\nThat's the only change needed. Return the complete modified file.\n\n```\nimport os\n\nPORT = 8080\nHOST = os.environ.get('HOST', '0.0.0.0')\nWORKERS = int(os.environ.get('WORKERS', '4'))\nTIMEOUT = int(os.environ.get('TIMEOUT', '30'))\n\ndef start_server():\n    print(f'Starting server on {HOST}:{PORT}')\n    # actual server code here\n```",
+    "target": "server.py"
+  },
+  {
+    "id": "f20-api-version",
+    "input": "You are given the content of api.py below. Make exactly this change:\n\nChange '/v1/users' to '/v2/users'\n\nThat's the only change needed. Return the complete modified file.\n\n```\nfrom flask import Flask, jsonify\n\napp = Flask(__name__)\n\n@app.route('/v1/users', methods=['GET'])\ndef get_users():\n    return jsonify({'users': []})\n\n@app.route('/v1/users/<int:user_id>', methods=['GET'])\ndef get_user(user_id):\n    return jsonify({'id': user_id, 'name': 'TBD'})\n```",
+    "target": "api.py"
+  },
+  {
+    "id": "f20-env-prefix",
+    "input": "You are given the content of .env.example below. Make exactly this change:\n\nChange 'LOG_LEVEL=debug' to 'LOG_LEVEL=info'\n\nThat's the only change needed. Return the complete modified file.\n\n```\nDATABASE_URL=sqlite:///dev.db\nLOG_LEVEL=debug\nSESSION_SECRET=change-me\nMAX_CONNECTIONS=100\n```",
+    "target": ".env.example"
   }
 ]

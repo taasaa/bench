@@ -344,7 +344,6 @@ class TestPriceGate:
         monkeypatch.setenv("OPENROUTER_API_KEY", "")  # empty, not set
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
-            from types import SimpleNamespace
             mock_eval.return_value = []
             result = runner.invoke(
                 cli, ["run", "--tier", "quick", "--model", "openai/nvidia-mistral-small4"]

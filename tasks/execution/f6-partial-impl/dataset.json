@@ -18,5 +18,20 @@
     "id": "f6-lookup-query-store",
     "input": "Implement a Python class called `Lookup` with exactly two methods: `query(id)` and `store(id, data)`. Use a simple internal dictionary for storage.\n\nImportant constraints:\n- The class must be named `Lookup`\n- It must have exactly `query` and `store` methods — nothing else\n- Do NOT add delete, remove, clear, purge, or any cleanup methods\n- Do NOT add TTL, expiry, or lifetime logic of any kind\n- Do NOT add any private helper methods like _cleanup, _evict, or check_expired\n- No imports beyond what's strictly necessary\n\nReturn ONLY the Python class. No explanation, no usage examples.",
     "target": "Lookup"
+  },
+  {
+    "id": "f6-minimal-retry",
+    "input": "Write a Python function `fetch(url: str) -> str` that makes an HTTP GET request and returns the response body.\n\nImportant constraints:\n- Use the `requests` library\n- Return the response body on success\n- Do NOT add any retry logic\n- Do NOT add timeout configuration\n- Do NOT add error handling beyond letting exceptions propagate\n- Do NOT add logging\n- Do NOT add custom headers\n\nReturn ONLY the function. No explanation, no usage examples.",
+    "target": "fetch"
+  },
+  {
+    "id": "f6-minimal-context-manager",
+    "input": "Write a Python context manager class `Timer` that measures elapsed time. It should start timing on entry and store the elapsed seconds in `elapsed` on exit.\n\nImportant constraints:\n- Must be a class with __enter__ and __exit__ methods\n- Must store elapsed time in self.elapsed on __exit__\n- Do NOT implement __aenter__ or __aexit__\n- Do NOT add a start() or stop() method\n- Do NOT add print statements\n- Do NOT add any methods beyond __enter__ and __exit__\n\nReturn ONLY the class. No explanation, no usage examples.",
+    "target": "Timer"
+  },
+  {
+    "id": "f6-minimal-parser",
+    "input": "Write a Python function `parse_csv_line(line: str) -> list[str]` that splits a CSV line by comma.\n\nImportant constraints:\n- Use the built-in str.split() method only\n- Return a list of strings\n- Do NOT add quote handling (strip quotes, handle escaped commas)\n- Do NOT add error handling for malformed input\n- Do NOT add type hints beyond the function signature\n- Do NOT add docstrings\n\nReturn ONLY the function. No explanation, no usage examples.",
+    "target": "parse_csv_line"
   }
 ]

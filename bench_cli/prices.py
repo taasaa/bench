@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import click
 
-from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP, PriceInfo, resolve_alias
+from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP, resolve_alias
 from bench_cli.pricing.price_cache import OpenRouterCache
 
 # Single cache instance — reused across all commands.
