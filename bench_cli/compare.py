@@ -23,6 +23,29 @@ from pathlib import Path
 from scorers.task_budgets import get_task_budget
 
 # ---------------------------------------------------------------------------
+# Model pricing (hardcoded / user-provided — not from KiloCode cache)
+# Used to recalculate actual_cost_usd for models whose prices weren't
+# captured correctly in eval log scorer metadata.
+# ---------------------------------------------------------------------------
+_MANUAL_PRICES: dict[str, tuple[float, float]] = {
+    # model_alias → (input_price_per_M, output_price_per_M)
+    "openai/nvidia-mistral-small4": (0.15, 0.60),
+}
+
+
+def _recalc_cost(model_alias: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Recalculate actual cost using manual price table.
+
+    Returns None if model is not in _MANUAL_PRICES.
+    """
+    prices = _MANUAL_PRICES.get(model_alias)
+    if prices is None:
+        return None
+    inp_price, out_price = prices
+    return input_tokens * inp_price / 1_000_000 + output_tokens * out_price / 1_000_000
+
+
+# ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
 
@@ -93,13 +116,16 @@ def _numeric_val(score: object) -> float | None:
 
 def _extract_from_scorers(
     sample_scores: dict,
+    sample_model_usage: dict | None = None,
+    model_alias: str | None = None,
 ) -> tuple[float | None, float | None, float | None, float | None]:
     """Extract (correctness, token_ratio, time_ratio, actual_cost_usd) from a sample's score dict.
 
     Correctness: llm_judge > verify_sh > exact > includes (strings 'C'/'I'
     are converted to 1.0/0.0 by _numeric_val).
 
-    Returns actual_cost_usd from price_ratio_scorer metadata, or None.
+    Returns actual_cost_usd from price_ratio_scorer metadata, or recalculated
+    from _MANUAL_PRICES if sample_model_usage and model_alias are provided.
     """
     # Correctness: llm_judge > verify_sh > exact > includes
     # (exact/includes return 'C'/'I' strings, mean() converts to 1.0/0.0 inside Inspect,
@@ -122,6 +148,19 @@ def _extract_from_scorers(
         cost_val = pr_score.metadata.get("actual_cost_usd")
         if isinstance(cost_val, (int, float)):
             actual_cost_usd = float(cost_val)
+
+    # Fall back to manual price recalculation if scorer didn't capture cost
+    if actual_cost_usd is None and sample_model_usage and model_alias:
+        # Find the primary model usage (exclude 'openai/judge')
+        primary = None
+        if model_alias in sample_model_usage:
+            primary = sample_model_usage[model_alias]
+        elif len(sample_model_usage) == 1:
+            primary = next(iter(sample_model_usage.values()))
+        if primary is not None:
+            inp = getattr(primary, "input_tokens", 0) or 0
+            out = getattr(primary, "output_tokens", 0) or 0
+            actual_cost_usd = _recalc_cost(model_alias, int(inp), int(out))
 
     return correctness, token_ratio, time_ratio, actual_cost_usd
 
@@ -181,7 +220,9 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             if not isinstance(sample.scores, dict):
                 continue
 
-            correctness, token_ratio, time_ratio, actual_cost_usd = _extract_from_scorers(sample.scores)
+            correctness, token_ratio, time_ratio, actual_cost_usd = _extract_from_scorers(
+                sample.scores, sample.model_usage, model
+            )
 
             total_tokens = (
                 sum(u.total_tokens for u in sample.model_usage.values())
