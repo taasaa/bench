@@ -15,6 +15,9 @@ python -m bench_cli run --tier quick --model openai/gemma-4-e2-local
 python -m bench_cli run --list-tasks --tier full
 python -m bench_cli run --concurrency 4 --tier full           # limit parallel tasks
 python -m bench_cli run --sequential --tier full               # one task at a time
+
+Retry: LiteLLM proxy (`~/dev/litellm/config.yaml`) handles 429/5xx retry with
+exponential backoff. rpm limits per model prevent queue saturation.
 python -m bench_cli baseline record --model openai/qwen-local --tier full
 python -m bench_cli baseline list
 python -m bench_cli compare
