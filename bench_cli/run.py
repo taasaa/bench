@@ -186,6 +186,23 @@ DEFAULT_MODEL = "openai/default"
         "Results are compared after each task finishes."
     ),
 )
+@click.option(
+    "--concurrency",
+    "-j",
+    type=int,
+    default=None,
+    help=(
+        "Maximum number of tasks to run concurrently. "
+        "Defaults to Inspect's default (unbounded). "
+        "Use 1 for fully sequential execution."
+    ),
+)
+@click.option(
+    "--sequential",
+    is_flag=True,
+    default=False,
+    help="Run tasks one at a time (shorthand for --concurrency 1).",
+)
 def run(
     model: str,
     tier: str,
@@ -197,10 +214,25 @@ def run(
     log_dir: str,
     no_compare: bool,
     one_by_one: bool,
+    concurrency: int | None,
+    sequential: bool,
 ) -> None:
     """Discover and run evaluation tasks via Inspect AI."""
     # Lazy import so CLI --help stays fast when Inspect is not configured.
     from inspect_ai import eval as inspect_eval
+
+    if concurrency is not None and concurrency <= 0:
+        raise click.BadParameter(
+            "--concurrency must be a positive integer (use --sequential for one-at-a-time)",
+            param_hint="--concurrency",
+        )
+
+    if sequential:
+        max_tasks_val: int | None = 1
+    elif concurrency is not None:
+        max_tasks_val = concurrency
+    else:
+        max_tasks_val = None
 
     # 1. Discover task specs.
     if list_tasks:
@@ -252,6 +284,7 @@ def run(
                 log_dir=log_dir,
                 fail_on_error=0.5,
                 retry_on_error=2,
+                max_tasks=max_tasks_val,
             )
             all_results.extend(result)
             click.echo(f"  → {result[0].eval.task}: {result[0].status}")
@@ -276,6 +309,7 @@ def run(
             log_dir=log_dir,
             fail_on_error=0.5,
             retry_on_error=2,
+            max_tasks=max_tasks_val,
         )
 
     # 4. Print summary.

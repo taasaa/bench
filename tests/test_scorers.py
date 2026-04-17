@@ -844,8 +844,6 @@ class TestPriceRatioScorer:
 
     def test_unknown_alias_returns_nan_with_anomaly(self):
         """Unknown bench alias → anomaly=True, value=NaN."""
-        from unittest.mock import patch
-
         from scorers.price_ratio import price_ratio_scorer
 
         s = price_ratio_scorer()
@@ -859,9 +857,6 @@ class TestPriceRatioScorer:
 
     def test_cache_miss_returns_nan_with_anomaly(self):
         """Cache miss → anomaly=True, value=NaN."""
-        from unittest.mock import patch
-
-        from bench_cli.pricing.model_aliases import PriceInfo
         from bench_cli.pricing.price_cache import CacheMiss
 
         from scorers.price_ratio import price_ratio_scorer
