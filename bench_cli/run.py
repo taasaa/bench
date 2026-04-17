@@ -103,6 +103,54 @@ def _discover_tasks(
 
 
 # ---------------------------------------------------------------------------
+# Pre-flight price gate
+# ---------------------------------------------------------------------------
+
+def _check_price_gate(model_alias: str) -> None:
+    """Block eval if model has no known price — before any API calls.
+
+    Only enforces when OPENROUTER_API_KEY is set (user has opted into price tracking).
+    Managed/local models (qwen-local, gemma-*-local, etc.) are exempt always.
+    """
+    import os
+
+    from bench_cli.pricing.litellm_config import is_managed_model, resolve_openrouter_id
+
+    if is_managed_model(model_alias):
+        return  # exempt
+
+    or_id = resolve_openrouter_id(model_alias)
+    if or_id is None:
+        return  # unknown alias, let it fail downstream
+
+    # Gate only activates when user has set OPENROUTER_API_KEY
+    if not os.environ.get("OPENROUTER_API_KEY", "").strip():
+        return  # no key, skip gate — price tracking not configured
+
+    from bench_cli.pricing import OpenRouterCache
+
+    cache = OpenRouterCache()
+
+    # Try refreshing first — if price was missing, a refresh may fetch it.
+    # Only one file read (after the refresh), not two.
+    try:
+        cache.fetch_and_cache_prices()
+    except RuntimeError:
+        pass  # can't refresh, check cache anyway
+
+    all_prices = cache.get_all_prices()
+    if or_id in all_prices:
+        return  # price found, proceed
+        click.echo(
+            f"ERROR: No price found for {model_alias}\n"
+            f"  Resolved OpenRouter ID: {or_id}\n"
+            f"  Add price with: bench prices add {model_alias} <input_price> <output_price>",
+            err=True,
+        )
+        raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
 # CLI command
 # ---------------------------------------------------------------------------
 
@@ -252,6 +300,9 @@ def run(
         raise SystemExit(1)
 
     click.echo(f"Running {len(specs)} task(s) from tier '{tier}' with model '{model}'.")
+
+    # Pre-flight price gate — block if model has no known price.
+    _check_price_gate(model)
     for s in specs:
         click.echo(f"  • {s}")
 

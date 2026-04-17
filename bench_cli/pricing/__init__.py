@@ -8,9 +8,13 @@ from bench_cli.pricing.model_aliases import (
 )
 from bench_cli.pricing.price_cache import (
     CacheMiss,
-    KiloCodeCache,
+    OpenRouterCache,
     fetch_and_cache_prices,
     get_price,
+)
+from bench_cli.pricing.litellm_config import (
+    resolve_openrouter_id,
+    is_managed_model,
 )
 
 __all__ = [
@@ -18,8 +22,10 @@ __all__ = [
     "PriceInfo",
     "resolve_alias",
     "is_free_model",
-    "KiloCodeCache",
+    "OpenRouterCache",
     "CacheMiss",
     "fetch_and_cache_prices",
     "get_price",
+    "resolve_openrouter_id",
+    "is_managed_model",
 ]

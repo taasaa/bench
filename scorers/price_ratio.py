@@ -23,10 +23,10 @@ from scorers.protocol import TaskBudget as TaskBudgetType
 # Late import — price_cache may not exist yet (Team A builds it).
 # CacheMiss is only needed at runtime, not import time.
 try:
-    from bench_cli.pricing.price_cache import CacheMiss, KiloCodeCache
+    from bench_cli.pricing.price_cache import CacheMiss, OpenRouterCache
 
     # Module-level singleton — read cache once, not per-sample on the hot scoring path.
-    _price_cache = KiloCodeCache()
+    _price_cache = OpenRouterCache()
 
     def _price_info(kilo_model_id: str) -> PriceInfo:
         return _price_cache.get_price(kilo_model_id)
