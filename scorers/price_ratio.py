@@ -16,7 +16,8 @@ from __future__ import annotations
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
-from bench_cli.pricing.model_aliases import PriceInfo, resolve_alias
+from bench_cli.pricing.model_aliases import PriceInfo
+from bench_cli.pricing.litellm_config import resolve_openrouter_id
 
 from scorers.protocol import TaskBudget as TaskBudgetType
 
@@ -76,15 +77,15 @@ def price_ratio_scorer(
         if state.output and state.output.usage:
             input_tokens, output_tokens = _extract_tokens(state.output.usage)
 
-        # Resolve model → KiloCode ID → price
+        # Resolve bench model alias → OpenRouter ID
         model_alias = (
             state.metadata.get("model", str(state.model))
             if state.metadata
             else str(state.model)
         )
-        kilo_model_id = resolve_alias(model_alias)
+        or_model_id = resolve_openrouter_id(model_alias)
 
-        if kilo_model_id is None:
+        if or_model_id is None:
             return Score(
                 value=float("nan"),
                 explanation="cost_ratio=N/A, note=unknown model alias",
@@ -100,7 +101,7 @@ def price_ratio_scorer(
 
         # Fetch price from cache (singleton, no per-sample re-reads)
         try:
-            price_info = _price_info(kilo_model_id)
+            price_info = _price_info(or_model_id)
         except CacheMiss:
             return Score(
                 value=float("nan"),

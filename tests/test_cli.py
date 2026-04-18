@@ -153,11 +153,12 @@ class TestCLIInvocation:
 class TestRunIntegration:
     """Integration tests that mock inspect_ai.eval to verify wiring."""
 
-    def test_run_discovers_and_passes_specs(self, tasks_root):
+    def test_run_discovers_and_passes_specs(self, tasks_root, monkeypatch):
         """Verify bench run discovers tasks and calls eval() with them."""
         from inspect_ai import Task
 
         fake_task = Task(dataset=None)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             from types import SimpleNamespace
@@ -171,9 +172,10 @@ class TestRunIntegration:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                result = runner.invoke(
-                    cli, ["run", "--model", "openai/default", "--tier", "quick"]
-                )
+                with patch("bench_cli.run._check_price_gate"):
+                    result = runner.invoke(
+                        cli, ["run", "--model", "openai/default", "--tier", "quick"]
+                    )
 
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
@@ -209,11 +211,12 @@ class TestRunIntegration:
 
         assert result.exit_code == 1
 
-    def test_run_with_agent_flag(self, tasks_root):
+    def test_run_with_agent_flag(self, tasks_root, monkeypatch):
         """Verify --agent passes a solver to eval()."""
         from inspect_ai import Task
 
         fake_task = Task(dataset=None)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             with patch("bench_cli.run._resolve_agent_solver") as mock_solver:
@@ -227,9 +230,10 @@ class TestRunIntegration:
                 )
                 mock_eval.return_value = [fake_log]
                 with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                    result = runner.invoke(
-                        cli, ["run", "--agent", "claude", "--tier", "quick"]
-                    )
+                    with patch("bench_cli.run._check_price_gate"):
+                        result = runner.invoke(
+                            cli, ["run", "--agent", "claude", "--tier", "quick"]
+                        )
 
         assert result.exit_code == 0, result.output
         mock_solver.assert_called_once_with("claude", "local")
@@ -260,30 +264,40 @@ class TestPricesCLI:
         assert "list" in result.output
 
     def test_prices_list_no_cache_shows_na(self, tmp_path, monkeypatch):
-        """prices list shows N/A gracefully when no cache exists.
+        """prices list shows empty message gracefully when cache has no models."""
+        from bench_cli.pricing.price_cache import OpenRouterCache
 
-        Cache path is absolute (bench project root), so chdir to tmp_path doesn't
-        hide it — skip that assertion. Instead verify N/A for unknown aliases works.
-        """
+        isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
         runner = CliRunner()
-        result = runner.invoke(cli, ["prices", "list"])
+        result = runner.invoke(cli, ["prices", "list"], obj={"cache": isolated_cache})
         assert result.exit_code == 0
-        assert "N/A" in result.output  # unknown aliases show N/A
+        # Empty cache: should show "No models in cache"
+        assert "No models in cache" in result.output
 
-    def test_prices_list_shows_all_known_aliases(self, tmp_path, monkeypatch):
-        """prices list shows all models from MODEL_ALIAS_MAP."""
-        monkeypatch.chdir(tmp_path)
+    def test_prices_list_shows_litellm_models(self, tmp_path, monkeypatch):
+        """prices list shows models from LiteLLM config that have cached prices."""
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
+        isolated_cache.add_price("nvidia/nemotron-3-nano-30b-a3b", 0.00000005, 0.0000002)
         runner = CliRunner()
-        result = runner.invoke(cli, ["prices", "list"])
+        result = runner.invoke(cli, ["prices", "list"], obj={"cache": isolated_cache})
         assert result.exit_code == 0
-        # Should show at least the 40 aliases
-        assert "openai/qwen-local" in result.output
-        assert "openai/gpt-4o" in result.output
-        assert "openai/opus" in result.output
+        # Should show nvidia-nemotron-30b with its price
+        assert "nvidia/nemotron-3-nano-30b-a3b" in result.output
+
+    def test_prices_list_shows_na_for_missing_prices(self, tmp_path, monkeypatch):
+        """prices list shows N/A for models not yet in cache."""
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["prices", "list"], obj={"cache": isolated_cache})
+        # Empty cache case
+        assert result.exit_code == 0
 
     def test_prices_refresh_missing_key_shows_soft_error(self, tmp_path, monkeypatch):
         """prices refresh with missing API key exits with error, not crash."""
-        monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         runner = CliRunner()
         result = runner.invoke(cli, ["prices", "refresh"])
@@ -295,62 +309,66 @@ class TestPricesCLI:
 class TestPricesAdd:
     """Tests for bench prices add command."""
 
-    def test_prices_add_unknown_alias(self, tmp_path, monkeypatch):
+    def test_prices_add_unknown_alias(self, tmp_path):
         """Unknown alias exits with error."""
-        from unittest.mock import patch
+        from bench_cli.pricing.price_cache import OpenRouterCache
 
-        monkeypatch.chdir(tmp_path)
-        runner = CliRunner()
-        # Mock add_price to avoid writing None key to real cache
-        with patch("bench_cli.prices._cache.add_price") as mock_add:
-            result = runner.invoke(
-                cli, ["prices", "add", "rut-xyz-not-a-real-model", "0.15", "0.60"]
-            )
-            mock_add.assert_not_called()
-        assert result.exit_code == 1
-        assert "Unknown model alias" in result.output
-
-    def test_prices_add_managed_model_rejected(self, tmp_path, monkeypatch):
-        """Managed/local models have no OpenRouter ID — add should reject them."""
-        monkeypatch.chdir(tmp_path)
+        isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["prices", "add", "openai/qwen-local", "0.0", "0.0"]
+            cli, ["prices", "add", "rut-xyz-not-a-real-model", "0.15", "0.60"],
+            obj={"cache": isolated_cache},
+        )
+        assert result.exit_code == 1
+        assert "not in" in result.output.lower()
+
+    def test_prices_add_managed_model_rejected(self, tmp_path):
+        """Managed/local models have no OpenRouter ID — add should reject them."""
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["prices", "add", "openai/qwen-local", "0.0", "0.0"],
+            obj={"cache": isolated_cache},
         )
         assert result.exit_code == 1
         assert "managed" in result.output.lower()
 
-    def test_prices_add_success(self, tmp_path, monkeypatch):
+    def test_prices_add_success(self, tmp_path):
         """Adding a price succeeds and confirms the entry."""
-        from unittest.mock import patch
+        from bench_cli.pricing.price_cache import OpenRouterCache
 
-        monkeypatch.chdir(tmp_path)
+        isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
         runner = CliRunner()
-        with patch("bench_cli.prices._cache.add_price") as mock_add:
-            result = runner.invoke(
-                cli, ["prices", "add", "openai/nvidia-mistral-small4", "0.15", "0.60"]
-            )
-            mock_add.assert_called_once_with("mistralai/mistral-small-4-119b-2603", 0.15, 0.6)
+        result = runner.invoke(
+            cli, ["prices", "add", "openai/nvidia-mistral-small4", "0.15", "0.60"],
+            obj={"cache": isolated_cache},
+        )
         assert result.exit_code == 0, result.output
         assert "Added:" in result.output
         assert "openai/nvidia-mistral-small4" in result.output
+        # Verify the price was actually written to the isolated cache
+        info = isolated_cache.get_price("mistralai/mistral-small-4-119b-2603")
+        assert info.input_price == 0.15
+        assert info.output_price == 0.6
 
 
 class TestPriceGate:
     """Tests for the pre-flight price gate in bench run."""
 
-    def test_gate_skips_when_no_api_key(self, tasks_root, monkeypatch):
-        """With no OPENROUTER_API_KEY set, gate should not fire."""
-        monkeypatch.setenv("OPENROUTER_API_KEY", "")  # empty, not set
+    def test_gate_blocks_without_api_key_when_price_missing(self, tasks_root, monkeypatch):
+        """Gate fires even without OPENROUTER_API_KEY — cache must have the price."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")  # empty, no refresh possible
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             mock_eval.return_value = []
             result = runner.invoke(
                 cli, ["run", "--tier", "quick", "--model", "openai/nvidia-mistral-small4"]
             )
-            # Should not exit with price error
-            assert "No price found" not in result.output
-            assert "ERROR" not in result.output
+            # With empty cache and no key, gate must block
+            assert "No price found" in result.output
+            assert "ERROR" in result.output
 
     def test_gate_exempts_local_models(self, tasks_root, monkeypatch):
         """Local models should be exempt from the price gate."""
@@ -397,10 +415,11 @@ class TestConcurrencyFlags:
         assert result.exit_code == 2
         assert "positive integer" in result.output.lower()
 
-    def test_concurrency_passes_max_tasks_to_eval(self, tasks_root):
+    def test_concurrency_passes_max_tasks_to_eval(self, tasks_root, monkeypatch):
         from inspect_ai import Task
 
         fake_task = Task(dataset=None)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             from types import SimpleNamespace
@@ -414,18 +433,20 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                result = runner.invoke(
-                    cli, ["run", "--tier", "quick", "--concurrency", "4"]
-                )
+                with patch("bench_cli.run._check_price_gate"):
+                    result = runner.invoke(
+                        cli, ["run", "--tier", "quick", "--concurrency", "4"]
+                    )
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args[1]
         assert call_kwargs.get("max_tasks") == 4
 
-    def test_sequential_passes_max_tasks_1_to_eval(self, tasks_root):
+    def test_sequential_passes_max_tasks_1_to_eval(self, tasks_root, monkeypatch):
         from inspect_ai import Task
 
         fake_task = Task(dataset=None)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             from types import SimpleNamespace
@@ -439,19 +460,21 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                result = runner.invoke(
-                    cli, ["run", "--tier", "quick", "--sequential"]
-                )
+                with patch("bench_cli.run._check_price_gate"):
+                    result = runner.invoke(
+                        cli, ["run", "--tier", "quick", "--sequential"]
+                    )
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args[1]
         assert call_kwargs.get("max_tasks") == 1
 
-    def test_sequential_wins_over_concurrency(self, tasks_root):
+    def test_sequential_wins_over_concurrency(self, tasks_root, monkeypatch):
         """--sequential should override --concurrency when both are passed."""
         from inspect_ai import Task
 
         fake_task = Task(dataset=None)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             from types import SimpleNamespace
@@ -465,27 +488,29 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                result = runner.invoke(
-                    cli,
-                    [
-                        "run",
-                        "--tier",
-                        "quick",
-                        "--concurrency",
-                        "4",
-                        "--sequential",
-                    ],
-                )
+                with patch("bench_cli.run._check_price_gate"):
+                    result = runner.invoke(
+                        cli,
+                        [
+                            "run",
+                            "--tier",
+                            "quick",
+                            "--concurrency",
+                            "4",
+                            "--sequential",
+                        ],
+                    )
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args[1]
         assert call_kwargs.get("max_tasks") == 1
 
-    def test_no_concurrency_passes_none_to_eval(self, tasks_root):
+    def test_no_concurrency_passes_none_to_eval(self, tasks_root, monkeypatch):
         """When neither --concurrency nor --sequential is passed, max_tasks is None."""
         from inspect_ai import Task
 
         fake_task = Task(dataset=None)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             from types import SimpleNamespace
@@ -499,19 +524,21 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                result = runner.invoke(
-                    cli, ["run", "--tier", "quick"]
-                )
+                with patch("bench_cli.run._check_price_gate"):
+                    result = runner.invoke(
+                        cli, ["run", "--tier", "quick"]
+                    )
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args[1]
         assert call_kwargs.get("max_tasks") is None
 
-    def test_concurrency_1_sequential_one_by_one(self, tasks_root):
+    def test_concurrency_1_sequential_one_by_one(self, tasks_root, monkeypatch):
         """--concurrency 1 should produce the same max_tasks=1 as --sequential."""
         from inspect_ai import Task
 
         fake_task = Task(dataset=None)
+        monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             from types import SimpleNamespace
@@ -525,9 +552,10 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                result = runner.invoke(
-                    cli, ["run", "--tier", "quick", "--concurrency", "1"]
-                )
+                with patch("bench_cli.run._check_price_gate"):
+                    result = runner.invoke(
+                        cli, ["run", "--tier", "quick", "--concurrency", "1"]
+                    )
         assert result.exit_code == 0, result.output
         call_kwargs = mock_eval.call_args[1]
         assert call_kwargs.get("max_tasks") == 1

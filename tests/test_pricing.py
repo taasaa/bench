@@ -295,21 +295,22 @@ class TestOpenRouterCache:
 class TestLiteLLMConfig:
     """Tests for LiteLLM config parser and resolution."""
 
-    def test_resolve_openrouter_id_from_alias_map(self):
-        """Alias not in LiteLLM config falls back to MODEL_ALIAS_MAP."""
-        # opus is in MODEL_ALIAS_MAP but not in LiteLLM config
-        result = resolve_openrouter_id("openai/opus")
-        assert result is not None
+    def test_resolve_openrouter_id_from_litellm_config_only(self):
+        """Alias not in LiteLLM config returns None — no MODEL_ALIAS_MAP fallback."""
+        # "openai/does-not-exist-xyz789" is not in LiteLLM config → None
+        result = resolve_openrouter_id("openai/does-not-exist-xyz789")
+        assert result is None
 
     def test_resolve_openrouter_id_unknown_alias(self):
         result = resolve_openrouter_id("openai/this-does-not-exist-xyz789")
         assert result is None
 
     def test_resolve_openrouter_id_litellm_name_without_prefix(self):
-        """LiteLLM model names (without openai/ prefix) resolve via LiteLLM config."""
-        # "rut" is a LiteLLM model_name → openai/MiniMax-M2.7
+        """Bench alias without openai/ prefix resolves via LiteLLM config + cache reverse-lookup."""
+        # "rut" in LiteLLM config → "openai/MiniMax-M2.7" → lowercase "minimax-m2.7"
+        # → reverse-lookup in OpenRouter cache → "minimax/minimax-m2.7"
         result = resolve_openrouter_id("rut")
-        assert result == "openai/MiniMax-M2.7"
+        assert result == "minimax/minimax-m2.7"
 
     def test_load_litellm_alias_map_caches(self):
         """Calling twice returns same dict (lru_cache)."""

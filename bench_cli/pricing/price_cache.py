@@ -167,6 +167,7 @@ class OpenRouterCache:
 
     def _write_cache(self, data: dict[str, Any]) -> None:
         """Write cache data to disk as JSON."""
+        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
         self._cache_path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",

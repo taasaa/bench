@@ -102,51 +102,112 @@ def _discover_tasks(
     return specs
 
 
+def parse_model_arg(model: str) -> tuple[str, str | None]:
+    """Split --model value into (alias, openrouter_override).
+
+    Supports optional [override] suffix:
+        openai/nvidia-devstral[mistralai/devstral-2-123b-instruct-2512]
+      → ("openai/nvidia-devstral", "mistralai/devstral-2-123b-instruct-2512")
+
+    Without [override]:
+        openai/nvidia-nemotron-30b
+      → ("openai/nvidia-nemotron-30b", None)
+    """
+    if "[" in model:
+        alias, rest = model.split("[", 1)
+        if "]" not in rest:
+            raise click.BadParameter(
+                f"Invalid --model format: missing closing ']' in {model!r}",
+                param_hint="--model",
+            )
+        or_override = rest.rstrip("]")
+        return alias, or_override
+    return model, None
+
+
 # ---------------------------------------------------------------------------
 # Pre-flight price gate
 # ---------------------------------------------------------------------------
 
-def _check_price_gate(model_alias: str) -> None:
+def _check_price_gate(model_alias: str, override_or_id: str | None = None) -> None:
     """Block eval if model has no known price — before any API calls.
 
-    Only enforces when OPENROUTER_API_KEY is set (user has opted into price tracking).
     Managed/local models (qwen-local, gemma-*-local, etc.) are exempt always.
-    """
-    import os
 
+    override_or_id:
+        If provided, skip LiteLLM config lookup and use this OpenRouter ID
+        directly for the price cache lookup. Used when the model is not in
+        OpenRouter's public catalog (e.g. NVIDIA NIM endpoints).
+    """
+    from bench_cli.pricing import OpenRouterCache
     from bench_cli.pricing.litellm_config import is_managed_model, resolve_openrouter_id
 
     if is_managed_model(model_alias):
         return  # exempt
 
-    or_id = resolve_openrouter_id(model_alias)
-    if or_id is None:
-        return  # unknown alias, let it fail downstream
-
-    # Gate only activates when user has set OPENROUTER_API_KEY
-    if not os.environ.get("OPENROUTER_API_KEY", "").strip():
-        return  # no key, skip gate — price tracking not configured
-
-    from bench_cli.pricing import OpenRouterCache
+    if override_or_id is not None:
+        or_id = override_or_id
+    else:
+        or_id = resolve_openrouter_id(model_alias)
+        if or_id is None:
+            return  # unknown alias, let it fail downstream
 
     cache = OpenRouterCache()
 
-    # Try refreshing first — if price was missing, a refresh may fetch it.
-    # Only one file read (after the refresh), not two.
+    # Try to refresh cache — this pulls fresh prices from OpenRouter.
+    # If OPENROUTER_API_KEY is not set, this raises RuntimeError and we
+    # fall back to the existing cache. If cache is stale and refresh fails,
+    # we also fall back (stale cache still has useful data if the model was
+    # cached before).
     try:
         cache.fetch_and_cache_prices()
     except RuntimeError:
-        pass  # can't refresh, check cache anyway
+        pass  # no key or refresh failed — rely on existing cache
 
+    # Check cache for this specific model's price.
     all_prices = cache.get_all_prices()
-    if or_id in all_prices:
-        return  # price found, proceed
+    if or_id not in all_prices:
+        from bench_cli.pricing.price_suggestions import suggest_alternatives
+
+        alternatives = suggest_alternatives(or_id)
+
+        click.echo(f"ERROR: No price found for {model_alias}", err=True)
+        click.echo(f"  Resolved OpenRouter ID: {or_id}", err=True)
+        click.echo("  This model was not found in the OpenRouter price cache.", err=True)
         click.echo(
-            f"ERROR: No price found for {model_alias}\n"
-            f"  Resolved OpenRouter ID: {or_id}\n"
-            f"  Add price with: bench prices add {model_alias} <input_price> <output_price>",
+            "  The OpenRouter catalog does not have this model — it may be a private/NIM endpoint.",
             err=True,
         )
+
+        if alternatives:
+            provider = alternatives[0].split("/")[0] if alternatives else ""
+            click.echo(f"\n  Other {provider} models that ARE available:", err=True)
+            for alt_id in alternatives:
+                alt_price = all_prices.get(alt_id)
+                if alt_price:
+                    in_ppm = alt_price.input_price * 1e6
+                    out_ppm = alt_price.output_price * 1e6
+                    click.echo(
+                        f"    {alt_id}  (${in_ppm:.4f} / ${out_ppm:.4f} per 1M tokens)",
+                        err=True,
+                    )
+            click.echo(
+                f"\n  To use one of these alternatives instead:\n"
+                f"    bench run --model {model_alias}[{alternatives[0]}] --tier quick",
+                err=True,
+            )
+            click.echo(
+                f"\n  To provide a manual price for {model_alias}:\n"
+                f"    bench prices add {model_alias} <input_per_million> <output_per_million>",
+                err=True,
+            )
+        else:
+            click.echo(
+                f"\n  To provide a manual price for {model_alias}:\n"
+                f"    bench prices add {model_alias} <input_per_million> <output_per_million>",
+                err=True,
+            )
+
         raise SystemExit(1)
 
 
@@ -282,6 +343,10 @@ def run(
     else:
         max_tasks_val = None
 
+    # Parse [override] suffix: alias[openrouter_id] lets you supply the OpenRouter
+    # price-lookup ID separately from the LiteLLM eval model name.
+    bench_alias, or_override = parse_model_arg(model)
+
     # 1. Discover task specs.
     if list_tasks:
         specs = _discover_tasks(tier, max_tasks=None, task_filter=None)
@@ -299,10 +364,10 @@ def run(
         click.echo(f"No tasks found for tier {tier!r}.", err=True)
         raise SystemExit(1)
 
-    click.echo(f"Running {len(specs)} task(s) from tier '{tier}' with model '{model}'.")
+    click.echo(f"Running {len(specs)} task(s) from tier '{tier}' with model '{bench_alias}'.")
 
     # Pre-flight price gate — block if model has no known price.
-    _check_price_gate(model)
+    _check_price_gate(bench_alias, override_or_id=or_override)
     for s in specs:
         click.echo(f"  • {s}")
 
@@ -330,7 +395,7 @@ def run(
             click.echo(f"[{i}/{len(specs)}] Running {spec}")
             result = inspect_eval(
                 tasks=[tasks_with_metadata[i - 1]],
-                model=model,
+                model=bench_alias,
                 solver=solver,
                 log_dir=log_dir,
                 fail_on_error=0.5,
@@ -355,7 +420,7 @@ def run(
     else:
         results = inspect_eval(
             tasks=tasks_with_metadata,
-            model=model,
+            model=bench_alias,
             solver=solver,
             log_dir=log_dir,
             fail_on_error=0.5,
