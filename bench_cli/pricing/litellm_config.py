@@ -4,13 +4,15 @@ Reads ~/dev/litellm/config.yaml and resolves bench model aliases
 (e.g. "openai/nvidia-nemotron-30b") to real OpenRouter model IDs
 (e.g. "nvidia/nemotron-3-nano-30b-a3b").
 
-The LiteLLM config is the ONLY source of truth for model ID resolution.
-The openai/ prefix is stripped from provider endpoints because OpenRouter
-uses <provider>/<model-id> format, not the LiteLLM openai/<provider>/<model> convention.
+Resolution order:
+  1. LiteLLM config → OpenRouter cache lookup (happy path for most models)
+  2. Persistent overrides (human-validated slug corrections)
+If an override is stale (model dropped from cache), raises RuntimeError.
 """
 
 from __future__ import annotations
 
+import json
 import warnings
 from functools import lru_cache
 from pathlib import Path
@@ -18,9 +20,49 @@ from pathlib import Path
 import yaml
 
 _LITELLM_CONFIG_PATH = Path.home() / "dev" / "litellm" / "config.yaml"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_OVERRIDES_PATH = _PROJECT_ROOT / "logs" / "pricing" / "model_overrides.json"
 _OPENAI_PREFIX = "openai/"
-_THREE_PART_PREFIXES = frozenset({"openai/nvidia/", "openai/qwen/", "openai/mistralai/"})
 
+
+# ---------------------------------------------------------------------------
+# Persistent overrides
+# ---------------------------------------------------------------------------
+
+def _load_overrides() -> dict[str, str]:
+    """Load persistent model ID overrides from logs/pricing/model_overrides.json."""
+    if not _OVERRIDES_PATH.is_file():
+        return {}
+    try:
+        return json.loads(_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_override(bench_alias: str, openrouter_id: str) -> None:
+    """Persist a model ID override, but only if it exists in the OpenRouter cache."""
+    from bench_cli.pricing.price_cache import OpenRouterCache
+
+    cache = OpenRouterCache()
+    all_prices = cache.get_all_prices()
+    if openrouter_id not in all_prices:
+        raise ValueError(
+            f"Cannot save override: '{openrouter_id}' not found in OpenRouter cache. "
+            "Refresh the cache first with: bench prices refresh"
+        )
+
+    overrides = _load_overrides()
+    overrides[bench_alias] = openrouter_id
+    _OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _OVERRIDES_PATH.write_text(
+        json.dumps(overrides, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+# ---------------------------------------------------------------------------
+# LiteLLM config
+# ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=1)
 def _load_litellm_alias_map() -> dict[str, str]:
@@ -61,9 +103,11 @@ def _load_litellm_alias_map() -> dict[str, str]:
         litellm_model = litellm_params.get("model", "")
         if not litellm_model:
             continue
-        if any(litellm_model.startswith(p) for p in _THREE_PART_PREFIXES):
-            openrouter_id = litellm_model[len(_OPENAI_PREFIX) :]
-        else:
+        # LiteLLM wraps models in a provider prefix (nvidia_nim/, openrouter/,
+        # minimax/, openai/, etc).  Strip it — the OpenRouter ID is everything
+        # after the first slash: "nvidia_nim/nvidia/nemotron-3-nano" → "nvidia/nemotron-3-nano"
+        _, _, openrouter_id = litellm_model.partition("/")
+        if not openrouter_id:
             openrouter_id = litellm_model
         result[model_name] = openrouter_id.lower()
 
@@ -88,18 +132,8 @@ def _build_reverse_lookup() -> dict[str, str]:
     return result
 
 
-def resolve_openrouter_id(alias: str) -> str | None:
-    """Resolve a bench model alias to the OpenRouter model ID.
-
-    Source of truth: ~/dev/litellm/config.yaml only.
-
-    Args:
-        alias: Bench LiteLLM alias (e.g. "openai/nvidia-nemotron-30b").
-
-    Returns:
-        OpenRouter model ID (e.g. "nvidia/nemotron-3-nano-30b-a3b"),
-        or None if alias is not in the LiteLLM config.
-    """
+def _resolve_from_litellm(alias: str) -> str | None:
+    """Resolve alias from LiteLLM config, return OpenRouter slug or None."""
     litellm_map = _load_litellm_alias_map()
 
     lookup_key = alias[len(_OPENAI_PREFIX) :] if alias.startswith(_OPENAI_PREFIX) else alias
@@ -108,13 +142,55 @@ def resolve_openrouter_id(alias: str) -> str | None:
     if openrouter_id is None:
         return None
 
-    if openrouter_id.startswith(_OPENAI_PREFIX):
-        openrouter_id = openrouter_id[len(_OPENAI_PREFIX) :]
-
     if "/" not in openrouter_id:
         return _build_reverse_lookup().get(openrouter_id, openrouter_id)
 
     return openrouter_id
+
+
+def resolve_openrouter_id(alias: str) -> str | None:
+    """Resolve a bench model alias to an OpenRouter ID present in the price cache.
+
+    Resolution order:
+      1. LiteLLM config → verify slug is in OpenRouter cache (happy path)
+      2. Persistent overrides (human-validated slug corrections)
+      3. If an override exists but the model was dropped from cache → error
+
+    Returns:
+        OpenRouter model ID that IS in the cache, or None if alias is unknown.
+
+    Raises:
+        RuntimeError: if an override exists but the model is no longer in cache.
+    """
+    from bench_cli.pricing.price_cache import OpenRouterCache
+
+    cache = OpenRouterCache()
+    all_prices = cache.get_all_prices()
+
+    # 1. Try LiteLLM config resolution — verify against cache
+    litellm_id = _resolve_from_litellm(alias)
+    if litellm_id is not None and litellm_id in all_prices:
+        return litellm_id
+
+    # 2. Try persistent overrides
+    overrides = _load_overrides()
+    override_id = overrides.get(alias)
+    if override_id is not None:
+        if override_id in all_prices:
+            return override_id
+        # Override is stale — model was dropped from OpenRouter
+        raise RuntimeError(
+            f"Stale override for {alias}: '{override_id}' is no longer in the "
+            "OpenRouter price cache. The model may have been delisted. "
+            "Update the override or refresh the cache."
+        )
+
+    # LiteLLM resolved but slug not in cache, and no override — return the slug
+    # anyway so callers can decide (price gate will block, scorer will NaN)
+    if litellm_id is not None:
+        return litellm_id
+
+    return None
 
 
 def is_managed_model(alias: str) -> bool:

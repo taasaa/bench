@@ -349,7 +349,10 @@ class TestPricesAdd:
         assert "Added:" in result.output
         assert "openai/nvidia-mistral-small4" in result.output
         # Verify the price was actually written to the isolated cache
-        info = isolated_cache.get_price("mistralai/mistral-small-4-119b-2603")
+        from bench_cli.pricing.litellm_config import resolve_openrouter_id
+
+        resolved_id = resolve_openrouter_id("openai/nvidia-mistral-small4")
+        info = isolated_cache.get_price(resolved_id)
         assert info.input_price == 0.15
         assert info.output_price == 0.6
 
@@ -358,15 +361,32 @@ class TestPriceGate:
     """Tests for the pre-flight price gate in bench run."""
 
     def test_gate_blocks_without_api_key_when_price_missing(self, tasks_root, monkeypatch):
-        """Gate fires even without OPENROUTER_API_KEY — cache must have the price."""
+        """Gate fires when model resolves but price isn't in cache."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "")  # empty, no refresh possible
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             mock_eval.return_value = []
-            result = runner.invoke(
-                cli, ["run", "--tier", "quick", "--model", "openai/nvidia-mistral-small4"]
+            # Use an empty isolated cache and empty overrides to guarantee price miss
+            from bench_cli.pricing.price_cache import OpenRouterCache
+            from bench_cli.pricing import litellm_config
+
+            empty_cache_path = tasks_root / "empty-cache.json"
+            empty_cache_path.write_text("{}")
+            empty_overrides_path = tasks_root / "empty-overrides.json"
+            empty_overrides_path.write_text("{}")
+
+            monkeypatch.setattr(
+                OpenRouterCache, "__init__",
+                lambda self, **kw: self.__dict__.update(
+                    _cache_path=empty_cache_path, _data=None
+                ),
             )
-            # With empty cache and no key, gate must block
+            monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", empty_overrides_path)
+            litellm_config._build_reverse_lookup.cache_clear()
+
+            result = runner.invoke(
+                cli, ["run", "--tier", "quick", "--model", "openai/nvidia-nemotron-30b"]
+            )
             assert "No price found" in result.output
             assert "ERROR" in result.output
 

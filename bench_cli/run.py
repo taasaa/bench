@@ -129,15 +129,10 @@ def parse_model_arg(model: str) -> tuple[str, str | None]:
 # Pre-flight price gate
 # ---------------------------------------------------------------------------
 
-def _check_price_gate(model_alias: str, override_or_id: str | None = None) -> None:
+def _check_price_gate(model_alias: str) -> None:
     """Block eval if model has no known price — before any API calls.
 
     Managed/local models (qwen-local, gemma-*-local, etc.) are exempt always.
-
-    override_or_id:
-        If provided, skip LiteLLM config lookup and use this OpenRouter ID
-        directly for the price cache lookup. Used when the model is not in
-        OpenRouter's public catalog (e.g. NVIDIA NIM endpoints).
     """
     from bench_cli.pricing import OpenRouterCache
     from bench_cli.pricing.litellm_config import is_managed_model, resolve_openrouter_id
@@ -145,12 +140,9 @@ def _check_price_gate(model_alias: str, override_or_id: str | None = None) -> No
     if is_managed_model(model_alias):
         return  # exempt
 
-    if override_or_id is not None:
-        or_id = override_or_id
-    else:
-        or_id = resolve_openrouter_id(model_alias)
-        if or_id is None:
-            return  # unknown alias, let it fail downstream
+    or_id = resolve_openrouter_id(model_alias)
+    if or_id is None:
+        return  # unknown alias, let it fail downstream
 
     cache = OpenRouterCache()
 
@@ -347,6 +339,18 @@ def run(
     # price-lookup ID separately from the LiteLLM eval model name.
     bench_alias, or_override = parse_model_arg(model)
 
+    # Persist the override so resolve_openrouter_id() finds it for all callers
+    # (price gate, scorer, compare) — not just the gate.
+    if or_override is not None:
+        from bench_cli.pricing.litellm_config import save_override
+
+        try:
+            save_override(bench_alias, or_override)
+            click.echo(f"Override saved: {bench_alias} → {or_override}")
+        except ValueError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            raise SystemExit(1)
+
     # 1. Discover task specs.
     if list_tasks:
         specs = _discover_tasks(tier, max_tasks=None, task_filter=None)
@@ -367,7 +371,7 @@ def run(
     click.echo(f"Running {len(specs)} task(s) from tier '{tier}' with model '{bench_alias}'.")
 
     # Pre-flight price gate — block if model has no known price.
-    _check_price_gate(bench_alias, override_or_id=or_override)
+    _check_price_gate(bench_alias)
     for s in specs:
         click.echo(f"  • {s}")
 

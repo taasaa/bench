@@ -24,6 +24,7 @@ from bench_cli.pricing.litellm_config import (
     _load_litellm_alias_map,
     is_managed_model,
     resolve_openrouter_id,
+    save_override,
 )
 
 
@@ -317,6 +318,71 @@ class TestLiteLLMConfig:
         first = _load_litellm_alias_map()
         second = _load_litellm_alias_map()
         assert first is second  # same object due to @lru_cache
+
+
+class TestModelOverrides:
+    """Tests for persistent model ID overrides."""
+
+    def test_save_override_rejects_unknown_id(self, tmp_path, monkeypatch):
+        """save_override rejects IDs not in the OpenRouter cache."""
+        from bench_cli.pricing import litellm_config
+
+        overrides_file = tmp_path / "model_overrides.json"
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
+
+        with pytest.raises(ValueError, match="not found in OpenRouter cache"):
+            save_override("openai/test-model", "provider/does-not-exist")
+
+    def test_save_and_load_override(self, tmp_path, monkeypatch):
+        """save_override persists when ID is in cache, resolve picks it up."""
+        from bench_cli.pricing import litellm_config
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        overrides_file = tmp_path / "model_overrides.json"
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
+
+        # Use an ID that's actually in the real cache
+        cache = OpenRouterCache()
+        all_prices = cache.get_all_prices()
+        real_id = next(iter(all_prices))
+
+        save_override("openai/test-model", real_id)
+        assert overrides_file.is_file()
+
+        result = resolve_openrouter_id("openai/test-model")
+        assert result == real_id
+
+    def test_override_used_when_litellm_slug_not_in_cache(self, tmp_path, monkeypatch):
+        """Override kicks in when LiteLLM config slug isn't in the cache."""
+        from bench_cli.pricing import litellm_config
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        overrides_file = tmp_path / "model_overrides.json"
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
+
+        # Use a real cached ID as the override target
+        cache = OpenRouterCache()
+        all_prices = cache.get_all_prices()
+        real_id = next(iter(all_prices))
+
+        # Use a model name that doesn't resolve from LiteLLM at all,
+        # so the override is the only way to find it
+        save_override("openai/fake-test-model", real_id)
+        result = resolve_openrouter_id("openai/fake-test-model")
+        assert result == real_id
+
+    def test_stale_override_raises_error(self, tmp_path, monkeypatch):
+        """Override that points to a model no longer in cache raises RuntimeError."""
+        from bench_cli.pricing import litellm_config
+
+        overrides_file = tmp_path / "model_overrides.json"
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
+
+        # Write an override pointing to a non-existent cache entry
+        overrides_file.write_text(json.dumps({"openai/gone-model": "provider/deleted-model"}))
+
+        with pytest.raises(RuntimeError, match="Stale override"):
+            resolve_openrouter_id("openai/gone-model")
 
 
 class TestIsManagedModel:

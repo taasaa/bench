@@ -84,8 +84,9 @@ class OpenRouterCache:
             if not model_id:
                 continue
             pricing = entry.get("pricing", {})
-            input_price = _safe_float(pricing.get("prompt", 0))
-            output_price = _safe_float(pricing.get("completion", 0))
+            # OpenRouter returns per-token prices; convert to per-million for PriceInfo
+            input_price = _safe_float(pricing.get("prompt", 0)) * 1_000_000
+            output_price = _safe_float(pricing.get("completion", 0)) * 1_000_000
             context = entry.get("context_length")
             context = int(context) if context is not None else None
 

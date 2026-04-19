@@ -244,21 +244,18 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         if samples_list:
             run_samples[run_key] = samples_list
 
-    # For each (task, model), pick the best run by mean correctness
+    # For each (task, model), keep the latest run (logs are loaded newest-first)
     best: dict[tuple[str, str], PillarScores] = {}
 
     for (task, model, _log_name), samples_list in run_samples.items():
-        # Mean correctness for run ranking
-        valid_c = [s[0] for s in samples_list if s[0] is not None]
-        mean_c = sum(valid_c) / len(valid_c) if valid_c else 0.0
-
         key = (task, model)
-        if key in best and mean_c <= best[key].correctness:
+        if key in best:
             continue
 
         n = len(samples_list)
 
         # Correctness average
+        valid_c = [s[0] for s in samples_list if s[0] is not None]
         avg_correctness = sum(valid_c) / len(valid_c) if valid_c else 0.0
 
         # Token ratio average (skip None/NaN)
