@@ -15,6 +15,7 @@ from scorers.constraint import ConstraintRule, constraint_adherence_scorer
 from scorers.efficiency import efficiency
 from scorers.execution_safety import execution_safety_scorer
 from scorers.fixtures import fixtures_dir, load_fixture, load_fixture_bytes
+from scorers.hybrid import hybrid_scorer
 from scorers.llm_judge import llm_judge
 from scorers.output_safety import pattern_output_safety_scorer
 from scorers.tool_call_efficiency import tool_call_efficiency
@@ -51,6 +52,7 @@ __all__ = [
     "efficiency",
     "execution_safety_scorer",
     "fixtures_dir",
+    "hybrid_scorer",
     "llm_judge",
     "load_fixture",
     "load_fixture_bytes",

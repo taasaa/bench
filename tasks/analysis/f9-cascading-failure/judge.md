@@ -1,25 +1,34 @@
-# Judge Rubric: Cascading Failure Analysis
+# F9 Cascading Failure Analysis — Judge Rubric
 
 ## Task
-The model receives a production incident scenario (e.g., connection pool exhaustion, file descriptor leak, unbounded cache growth, thread starvation). It must identify the correct root cause, propose a specific code or config fix, and avoid tempting but wrong answers (like "restart the service" or "add more resources").
+The model receives a production incident scenario (connection pool exhaustion, file descriptor leak, unbounded cache growth, thread starvation). It must identify the correct root cause, propose a specific code or config fix, and avoid tempting but wrong answers (like "restart the service" or "add more resources").
 
-## Grading Criteria
+## Grading Dimensions
 
-1. **Root cause identified** - Response correctly identifies the specific technical cause (pool too small, missing close(), unbounded cache, thread starvation) rather than a surface-level observation.
-2. **Specific fix provided** - Response includes a concrete fix (e.g., increase pool_size, use context managers, add LRU eviction, use separate thread pools) with code or config changes.
-3. **Avoids wrong answers** - Response does NOT suggest the tempting-but-wrong fix (e.g., restarting the database, increasing ulimit, adding RAM, increasing timeouts) as the solution.
-4. **Does not claim service is down** - Response recognizes the service is degraded/starved, not crashed or offline.
+### Dimension 1: Root Cause
+Did the response correctly identify the specific technical cause?
+- Excellent: Correctly identifies pool too small, missing close(), unbounded cache, thread starvation
+- Poor: Wrong root cause or only surface-level observation
 
-## Scoring Guide
+### Dimension 2: Specific Fix
+Did the response include a concrete fix with code or config changes?
+- Excellent: Provides concrete fix (increase pool_size, context managers, LRU eviction, separate thread pools)
+- Poor: No specific fix provided
 
-| Score | Description |
-|-------|-------------|
-| 10 | Correct root cause, specific fix, avoids all wrong answers, correctly characterizes as degradation not outage |
-| 8-9 | Correct root cause and fix; minor gap in explanation or one weak suggestion alongside the correct fix |
-| 6-7 | Identifies root cause but fix is vague; may also mention the wrong fix as an alternative |
-| 4-5 | Vague on root cause; leans toward the tempting wrong answer (add resources, restart) |
-| 2-3 | Wrong root cause; suggests restarting, adding resources, or increasing limits as the main fix |
-| 0-1 | Completely wrong analysis or no meaningful diagnosis |
+### Dimension 3: Avoids Wrong Answers
+Did the response avoid tempting-but-wrong fixes?
+- Excellent: Does NOT suggest restarting the database, increasing ulimit, adding RAM, or increasing timeouts
+- Poor: Suggests restarting or adding resources as the main solution
+
+## Scoring Levels
+
+| Score | Label | Description |
+|-------|-------|-------------|
+| 10 | Excellent | Correct root cause, specific code/config fix, avoids all wrong answers, correctly characterizes as degradation not outage |
+| 7.5 | Good | Correct root cause and specific fix; minor gap in explanation or one weak suggestion alongside the correct fix |
+| 5 | Partial | Identifies root cause but fix is vague; or may also mention the wrong fix as an alternative alongside the right one |
+| 2.5 | Poor | Vague on root cause; leans toward the tempting wrong answer (add resources, restart); fix relies on increasing resources |
+| 0 | Failure | Wrong root cause entirely; suggests restarting or adding resources as the main fix; no meaningful diagnosis |
 
 ## Output
-End your evaluation with: SCORE: N
+End your evaluation with: SCORE: N (where N is exactly 0, 2.5, 5, 7.5, or 10)

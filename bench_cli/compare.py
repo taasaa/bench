@@ -134,10 +134,12 @@ def _extract_from_scorers(
     Returns actual_cost_usd from price_ratio_scorer metadata, or recalculated
     from _MANUAL_PRICES if sample_model_usage and model_alias are provided.
     """
-    # Correctness: llm_judge > verify_sh > exact > includes
+    # Correctness: hybrid_scorer > llm_judge > verify_sh > exact > includes
     # (exact/includes return 'C'/'I' strings, mean() converts to 1.0/0.0 inside Inspect,
     # but compare reads raw scorer keys for pillar extraction)
-    correctness = _numeric_val(sample_scores.get("llm_judge"))
+    correctness = _numeric_val(sample_scores.get("hybrid_scorer"))
+    if correctness is None:
+        correctness = _numeric_val(sample_scores.get("llm_judge"))
     if correctness is None:
         correctness = _numeric_val(sample_scores.get("verify_sh"))
     if correctness is None:

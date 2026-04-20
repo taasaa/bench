@@ -2,7 +2,8 @@
 
 Calls a fixed judge model (never the model under test) with a per-task rubric
 from judge.md. The judge returns a SCORE: N rating (0-10) which is normalized
-to 0.0-1.0 for the correctness pillar.
+to 0.0-1.0 for the correctness pillar. Values are snapped to the discrete
+5-point scale {0, 2.5, 5, 7.5, 10} → {0.0, 0.25, 0.5, 0.75, 1.0}.
 
 Falls back to 0.0 with diagnostic explanation on any failure (missing rubric,
 API error, unparseable response).
@@ -50,12 +51,8 @@ then end with your score on a 0-10 scale using this exact format:
 
 SCORE: <number>
 
-Where:
-- 10 = Perfect response, fully meets all criteria
-- 7-9 = Good response, minor issues
-- 4-6 = Partial response, significant gaps
-- 1-3 = Poor response, major issues
-- 0 = Completely wrong or no relevant content
+You MUST use one of exactly these five values: 0, 2.5, 5, 7.5, or 10.
+Do NOT use any other value. Choose the closest level that matches the response quality.
 """
 
 
@@ -71,15 +68,26 @@ def _load_rubric(task_dir: str) -> str | None:
         return None
 
 
+_DISCRETE_VALUES = (0.0, 2.5, 5.0, 7.5, 10.0)
+
+
+def _snap_to_discrete(raw: float) -> float:
+    """Snap a 0-10 value to the nearest discrete level."""
+    return min(_DISCRETE_VALUES, key=lambda d: abs(d - raw))
+
+
 def _parse_score(response: str) -> float | None:
-    """Extract score from judge response. Returns 0.0-1.0 or None."""
+    """Extract score from judge response. Returns 0.0-1.0 or None.
+
+    Snaps to the discrete 5-point scale before normalizing.
+    """
     match = _SCORE_RE.search(response)
     if match is None:
         return None
     raw = float(match.group(1))
-    # Clamp to 0-10 range, then normalize to 0-1
     raw = max(0.0, min(10.0, raw))
-    return raw / 10.0
+    snapped = _snap_to_discrete(raw)
+    return snapped / 10.0
 
 
 @scorer(metrics=[mean()])

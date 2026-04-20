@@ -1,24 +1,34 @@
-# Judge Rubric: Intermittent Test Failure Diagnosis
+# F11 Intermittent Test Failure — Judge Rubric
 
 ## Task
 The model receives a scenario where tests pass locally but fail intermittently in CI. It must identify the root cause as timing/race-condition related and suggest a proper fix (not just "add more sleep").
 
-## Grading Criteria
+## Grading Dimensions
 
-1. **Root cause identified** - Response identifies the issue as timing-dependent, a race condition, or non-deterministic ordering (not a logic bug or missing dependency).
-2. **Proper fix suggested** - Response recommends a real fix such as polling, waiting for a condition, mocking/freezing time, using events, or subprocess.wait (not simply increasing sleep duration).
-3. **Avoids superficial fixes** - Response does NOT recommend "increase sleep", "add more sleep", "use a longer timeout", or similar band-aids as the primary fix.
+### Dimension 1: Root Cause
+Did the response identify the issue as timing-dependent, a race condition, or non-deterministic ordering?
+- Excellent: Correctly identifies timing/race condition as the root cause (not logic bug or missing dependency)
+- Poor: Wrong diagnosis (blames missing deps, wrong test logic, etc.)
 
-## Scoring Guide
+### Dimension 2: Proper Fix
+Did the response recommend a real fix such as polling, waiting for a condition, mocking/freezing time, using events, or subprocess.wait?
+- Excellent: Recommends a proper synchronization mechanism or mocking approach
+- Poor: Only recommends increasing sleep or timeout
 
-| Score | Description |
-|-------|-------------|
-| 10 | Correctly identifies timing/race root cause, suggests a proper fix, and avoids superficial sleep/timeout increases |
-| 8-9 | Identifies timing issue and suggests proper fix; explanation is slightly imprecise |
-| 6-7 | Identifies timing issue but fix is weak or incomplete; may mention sleep increase secondarily |
-| 4-5 | Vaguely mentions timing but doesn't clearly identify it as the root cause; fix relies on increasing sleep |
-| 2-3 | Only restates the problem; suggests increasing sleep or timeout as the main fix |
-| 0-1 | Completely wrong diagnosis (blames missing deps, wrong test logic, etc.) or no meaningful analysis |
+### Dimension 3: Avoids Superficial Fixes
+Did the response NOT recommend increasing sleep/timeout as the primary fix?
+- Excellent: Does NOT suggest "increase sleep", "add more sleep", or "use a longer timeout"
+- Poor: Primary fix relies on increasing sleep duration
+
+## Scoring Levels
+
+| Score | Label | Description |
+|-------|-------|-------------|
+| 10 | Excellent | Identifies timing/race root cause, suggests proper synchronization fix, avoids superficial sleep/timeout increases |
+| 7.5 | Good | Identifies timing issue and suggests proper fix; explanation is slightly imprecise but fundamentally correct |
+| 5 | Partial | Identifies timing issue but fix is weak or incomplete; may mention sleep increase secondarily |
+| 2.5 | Poor | Vaguely mentions timing but doesn't clearly identify it as the root cause; fix relies on increasing sleep |
+| 0 | Failure | Wrong diagnosis (blames missing deps, wrong test logic); or suggests only increasing sleep/timeout as the main fix |
 
 ## Output
-End your evaluation with: SCORE: N
+End your evaluation with: SCORE: N (where N is exactly 0, 2.5, 5, 7.5, or 10)

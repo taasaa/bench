@@ -531,6 +531,16 @@ def _resolve_task(spec: str) -> task:
             sample.metadata = {}
         sample.metadata["bench_task_dir"] = task_dir
 
+        # Inject fixture path from dataset.json "fixture" field.
+        # The fixture field specifies a scenario_id under fixtures/.
+        fixture_id = sample.metadata.get("fixture") if isinstance(sample.metadata, dict) else None
+        if fixture_id:
+            from bench_cli.fixtures import fixture_dir_for
+
+            fdir = fixture_dir_for(task_dir, str(fixture_id))
+            if fdir:
+                sample.metadata["fixture_path"] = str(fdir)
+
     # Merge generous timeout into task config.  Local models behind LiteLLM
     # can be slow — a single generate() on a complex prompt may take 2-3
     # minutes.  Default OpenAI SDK timeout is 600s which is fine, but some

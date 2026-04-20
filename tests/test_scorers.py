@@ -589,17 +589,40 @@ class TestResolveBaselineReference:
 
 
 class TestParseScore:
-    """Unit tests for _parse_score regex extraction and normalization."""
+    """Unit tests for _parse_score regex extraction, normalization, and snap-to-discrete."""
 
-    def test_integer_score(self):
+    def test_discrete_values_pass_through(self):
         from scorers.llm_judge import _parse_score
 
-        assert _parse_score("Great work. SCORE: 8") == 0.8
+        assert _parse_score("SCORE: 10") == 1.0
+        assert _parse_score("SCORE: 7.5") == 0.75
+        assert _parse_score("SCORE: 5") == 0.5
+        assert _parse_score("SCORE: 2.5") == 0.25
+        assert _parse_score("SCORE: 0") == 0.0
 
-    def test_fractional_score(self):
+    def test_snap_to_discrete_rounds_to_nearest(self):
         from scorers.llm_judge import _parse_score
 
-        assert _parse_score("Score: 7.5") == 0.75
+        # 8 → snaps to 7.5 (nearest discrete)
+        assert _parse_score("SCORE: 8") == 0.75
+        # 6 → snaps to 5.0 (nearest discrete)
+        assert _parse_score("score: 6") == 0.5
+        # 9 → snaps to 10.0 (nearest discrete)
+        assert _parse_score("SCORE: 9") == 1.0
+        # 3 → snaps to 2.5 (nearest discrete)
+        assert _parse_score("SCORE: 3") == 0.25
+
+    def test_snap_edge_cases(self):
+        from scorers.llm_judge import _parse_score
+
+        # 0.24 on 0-10 scale = 2.4 → snaps to 2.5
+        assert _parse_score("SCORE: 2.4") == 0.25
+        # 3.75 → exactly midpoint, snaps to 2.5 (lower)
+        assert _parse_score("SCORE: 3.75") == 0.25
+        # 6.25 → snaps to 5.0
+        assert _parse_score("SCORE: 6.25") == 0.5
+        # 8.75 → equidistant between 7.5 and 10, snaps to 7.5 (first match)
+        assert _parse_score("SCORE: 8.75") == 0.75
 
     def test_perfect_score(self):
         from scorers.llm_judge import _parse_score
@@ -614,16 +637,13 @@ class TestParseScore:
     def test_score_with_slash_10(self):
         from scorers.llm_judge import _parse_score
 
-        assert _parse_score("SCORE: 8/10") == 0.8
-
-    def test_case_insensitive(self):
-        from scorers.llm_judge import _parse_score
-
-        assert _parse_score("score: 6") == 0.6
+        # 8/10 → 8 → snaps to 7.5
+        assert _parse_score("SCORE: 8/10") == 0.75
 
     def test_no_space_after_colon(self):
         from scorers.llm_judge import _parse_score
 
+        # 5 → discrete value, passes through
         assert _parse_score("SCORE:5") == 0.5
 
     def test_clamp_above_10(self):
@@ -747,7 +767,7 @@ class TestLLMJudgeScorer:
         assert result.metadata.get("judge_error") == "unparseable"
 
     def test_successful_judge_score(self):
-        """Judge returns SCORE: 8 → value 0.8 with metadata."""
+        """Judge returns SCORE: 7.5 → value 0.75 with metadata (discrete scale)."""
         from unittest.mock import AsyncMock, patch
 
         from inspect_ai.model import ModelOutput
@@ -757,7 +777,7 @@ class TestLLMJudgeScorer:
         mock_model = AsyncMock()
         mock_model.generate.return_value = ModelOutput.from_content(
             model="judge",
-            content="Good analysis. SCORE: 8",
+            content="Good analysis. SCORE: 7.5",
         )
 
         with patch("scorers.llm_judge.get_model", return_value=mock_model):
@@ -768,9 +788,9 @@ class TestLLMJudgeScorer:
             bench_task_dir="tasks/execution/q4-root-cause",
         )
         result = run_async(s(state, state.target))
-        assert result.value == pytest.approx(0.8)
+        assert result.value == pytest.approx(0.75)
         assert result.metadata.get("pillar") == "correctness"
-        assert result.metadata.get("judge_score_raw") == pytest.approx(8.0)
+        assert result.metadata.get("judge_score_raw") == pytest.approx(7.5)
         assert result.metadata.get("judge_model") == "openai/judge"
 
     def test_perfect_score(self):
@@ -967,3 +987,250 @@ class TestPriceRatioScorer:
         # 1000 input + 2000 output at $2.5/$5.0 per M
         cost = info.cost_per_sample(1000, 2000)
         assert cost == pytest.approx(0.0125)
+
+
+# ---------------------------------------------------------------------------
+# Fixture loading tests
+# ---------------------------------------------------------------------------
+
+
+class TestLoadFixtures:
+    """Unit tests for bench_cli.fixtures module."""
+
+    def test_load_fixtures_returns_none_for_none_scenario(self):
+        from bench_cli.fixtures import load_fixtures
+
+        assert load_fixtures("/some/dir", None) is None
+
+    def test_load_fixtures_returns_none_for_missing_scenario(self):
+        from bench_cli.fixtures import load_fixtures
+
+        assert load_fixtures("/nonexistent", "missing_scenario") is None
+
+    def test_load_fixtures_reads_files(self, tmp_path):
+        from bench_cli.fixtures import load_fixtures
+
+        fixture_dir = tmp_path / "fixtures" / "test_scenario"
+        fixture_dir.mkdir(parents=True)
+        (fixture_dir / "config.py").write_text("TIMEOUT = 30")
+        (fixture_dir / "README.md").write_text("# Test fixture")
+
+        result = load_fixtures(str(tmp_path), "test_scenario")
+        assert result is not None
+        assert "config.py" in result
+        assert "README.md" in result
+        assert result["config.py"] == "TIMEOUT = 30"
+
+    def test_load_fixtures_empty_dir_returns_none(self, tmp_path):
+        from bench_cli.fixtures import load_fixtures
+
+        fixture_dir = tmp_path / "fixtures" / "empty_scenario"
+        fixture_dir.mkdir(parents=True)
+
+        assert load_fixtures(str(tmp_path), "empty_scenario") is None
+
+    def test_fixture_dir_for_returns_path(self, tmp_path):
+        from bench_cli.fixtures import fixture_dir_for
+
+        fixture_dir = tmp_path / "fixtures" / "scenario1"
+        fixture_dir.mkdir(parents=True)
+
+        result = fixture_dir_for(str(tmp_path), "scenario1")
+        assert result is not None
+        assert result == fixture_dir.resolve()
+
+    def test_fixture_dir_for_missing_returns_none(self, tmp_path):
+        from bench_cli.fixtures import fixture_dir_for
+
+        assert fixture_dir_for(str(tmp_path), "nonexistent") is None
+
+    def test_list_fixture_files(self, tmp_path):
+        from bench_cli.fixtures import list_fixture_files
+
+        fixture_dir = tmp_path / "fixtures" / "scenario"
+        fixture_dir.mkdir(parents=True)
+        (fixture_dir / "a.py").write_text("a")
+        (fixture_dir / "b.py").write_text("b")
+        subdir = fixture_dir / "sub"
+        subdir.mkdir()
+        (subdir / "c.py").write_text("c")
+
+        files = list_fixture_files(str(tmp_path), "scenario")
+        assert files == ["a.py", "b.py", "sub/c.py"]
+
+    def test_list_fixture_files_none_scenario(self):
+        from bench_cli.fixtures import list_fixture_files
+
+        assert list_fixture_files("/some/dir", None) == []
+
+    def test_existing_scorers_fixtures_untouched(self):
+        """Verify scorers/fixtures.py still works independently."""
+        from scorers.fixtures import fixtures_dir, load_fixture
+
+        # The existing module should still be importable
+        assert callable(fixtures_dir)
+        assert callable(load_fixture)
+
+
+# ---------------------------------------------------------------------------
+# Multi-shot solver tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultishotSolver:
+    """Unit tests for bench_cli.solvers.multishot module."""
+
+    def test_max_turns_1_returns_bare_generate(self):
+        """max_turns=1 branches to bare generate() — no tool injection."""
+        from bench_cli.solvers.multishot import multishot_solver
+
+        s = multishot_solver(max_turns=1)
+        assert s is not None
+
+    def test_solver_creation_default_params(self):
+        from bench_cli.solvers.multishot import multishot_solver
+
+        s = multishot_solver()
+        assert s is not None
+
+    def test_solver_creation_with_turns(self):
+        from bench_cli.solvers.multishot import multishot_solver
+
+        s = multishot_solver(max_turns=5)
+        assert s is not None
+
+    def test_sandbox_reject_path_traversal(self, tmp_path):
+        from bench_cli.solvers.multishot import sandbox_read
+
+        result = sandbox_read(tmp_path.resolve(), "../../../etc/passwd")
+        assert "escapes workspace boundary" in result
+
+    def test_sandbox_reject_absolute_path(self, tmp_path):
+        from bench_cli.solvers.multishot import sandbox_read
+
+        result = sandbox_read(tmp_path.resolve(), "/etc/passwd")
+        assert "escapes workspace boundary" in result
+
+    def test_sandbox_read_file(self, tmp_path):
+        from bench_cli.solvers.multishot import sandbox_read
+
+        (tmp_path / "test.py").write_text("print('hello')")
+        result = sandbox_read(tmp_path.resolve(), "test.py")
+        assert result == "print('hello')"
+
+    def test_sandbox_read_missing_file(self, tmp_path):
+        from bench_cli.solvers.multishot import sandbox_read
+
+        result = sandbox_read(tmp_path.resolve(), "nonexistent.py")
+        assert "not found" in result
+
+    def test_sandbox_list_directory(self, tmp_path):
+        from bench_cli.solvers.multishot import sandbox_list
+
+        (tmp_path / "a.py").write_text("a")
+        (tmp_path / "b.py").write_text("b")
+        result = sandbox_list(tmp_path.resolve(), ".")
+        assert "a.py" in result
+        assert "b.py" in result
+
+    def test_sandbox_list_rejects_escape(self, tmp_path):
+        from bench_cli.solvers.multishot import sandbox_list
+
+        result = sandbox_list(tmp_path.resolve(), "../../..")
+        assert "escapes workspace boundary" in result
+
+    def test_build_fixture_context_no_path(self):
+        from bench_cli.solvers.multishot import _build_fixture_context
+
+        assert _build_fixture_context(None) == ""
+
+    def test_build_fixture_context_with_files(self, tmp_path):
+        from bench_cli.solvers.multishot import _build_fixture_context
+
+        fixture_dir = tmp_path / "fixtures" / "scenario"
+        fixture_dir.mkdir(parents=True)
+        (fixture_dir / "config.py").write_text("X=1")
+
+        ctx = _build_fixture_context(str(fixture_dir))
+        assert "config.py" in ctx
+        assert "read_file" in ctx
+
+    def test_solver_importable_from_init(self):
+        from bench_cli.solvers import multishot_solver
+
+        assert callable(multishot_solver)
+
+
+# ---------------------------------------------------------------------------
+# Hybrid scorer tests
+# ---------------------------------------------------------------------------
+
+
+class TestHybridScorer:
+    """Unit tests for scorers/hybrid.py weighted combination logic."""
+
+    def test_hybrid_scorer_importable(self):
+        from scorers.hybrid import hybrid_scorer
+
+        assert callable(hybrid_scorer)
+
+    def test_hybrid_exported_from_init(self):
+        from scorers import hybrid_scorer
+
+        assert callable(hybrid_scorer)
+
+    def test_weighted_combination_math(self):
+        """v=0.8, j=0.6, w=(0.7,0.3) → 0.74."""
+        # Verify the math: (0.7 * 0.8 + 0.3 * 0.6) / 1.0 = 0.74
+        v_val, j_val = 0.8, 0.6
+        v_w, j_w = 0.7, 0.3
+        expected = (v_w * v_val + j_w * j_val) / (v_w + j_w)
+        assert expected == pytest.approx(0.74)
+
+    def test_pure_verify_fallback(self):
+        """verify_weight=1.0, judge_weight=0 → only verify matters."""
+        from scorers.hybrid import hybrid_scorer
+
+        scorer_fn = hybrid_scorer(verify_weight=1.0, judge_weight=0.0)
+        assert scorer_fn is not None
+
+    def test_pure_judge_fallback(self):
+        """verify_weight=0, judge_weight=1.0 → only judge matters."""
+        from scorers.hybrid import hybrid_scorer
+
+        scorer_fn = hybrid_scorer(verify_weight=0.0, judge_weight=1.0)
+        assert scorer_fn is not None
+
+    def test_custom_weights(self):
+        """Custom weights are accepted."""
+        from scorers.hybrid import hybrid_scorer
+
+        scorer_fn = hybrid_scorer(verify_weight=0.5, judge_weight=0.5)
+        assert scorer_fn is not None
+
+    def test_compare_discovers_hybrid_scorer(self):
+        """compare.py _extract_from_scorers finds hybrid_scorer first."""
+        from bench_cli.compare import _extract_from_scorers
+
+        # Mock a hybrid_scorer Score object
+        mock_score = type("Score", (), {
+            "value": 0.85,
+            "metadata": {
+                "scorer_type": "hybrid",
+                "verify_sh_score": 0.9,
+                "llm_judge_score": 0.75,
+            },
+        })()
+        scores = {"hybrid_scorer": mock_score}
+        correctness, _, _, _ = _extract_from_scorers(scores)
+        assert correctness == 0.85
+
+    def test_compare_prefers_hybrid_over_judge(self):
+        """When both hybrid and judge exist, hybrid wins."""
+        from bench_cli.compare import _extract_from_scorers
+
+        mock_hybrid = type("Score", (), {"value": 0.7, "metadata": {}})()
+        mock_judge = type("Score", (), {"value": 0.5, "metadata": {}})()
+        scores = {"hybrid_scorer": mock_hybrid, "llm_judge": mock_judge}
+        correctness, _, _, _ = _extract_from_scorers(scores)
+        assert correctness == 0.7

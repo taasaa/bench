@@ -2,7 +2,7 @@
 
 > **What every task tests, why it matters, and how the scoring proves it.**
 
-**Last updated:** 2026-04-17
+**Last updated:** 2026-04-20
 **Tasks:** 34 total — 2 smoke, 6 competence, 10 execution, 6 analysis, 10 universal
 **Scoring:** 4 independent pillars (correctness, token efficiency, latency, cost)
 
@@ -14,7 +14,7 @@ Every task produces four independent scores. No composite formula — each pilla
 
 | Pillar | Scorer | Value | What it measures |
 |--------|--------|-------|-----------------|
-| **Correctness** | `verify_sh` or `llm_judge` | 0.0–1.0 | Did the model produce the right answer or behavior? |
+| **Correctness** | `verify_sh`, `llm_judge`, or `hybrid_scorer` | 0.0–1.0 | Did the model produce the right answer or behavior? |
 | **Token Efficiency** | `token_ratio_scorer` | unbounded ratio | `reference_tokens / actual_tokens` — higher = fewer tokens used |
 | **Latency** | `time_ratio_scorer` | unbounded ratio | `reference_seconds / actual_seconds` — higher = faster |
 | **Cost** | `price_ratio_scorer` | unbounded ratio | `reference_cost / actual_cost` — higher = cheaper |
@@ -32,6 +32,24 @@ Ratio scorers use a 3-tier reference chain — most specific wins:
 1. **Baseline store** (`baselines/{task}/{model}.json`) — measured run, highest fidelity
 2. **Task budget** (`scorers/task_budgets.py`) — per-task calibrated from qwen-local runs
 3. **System default** (1000 tokens, 30 seconds) — scaffolding fallback
+
+### Correctness Scorers
+
+Tasks use one of three correctness scorers:
+
+| Scorer | What it does | When used |
+|--------|-------------|-----------|
+| `verify_sh` | Pipes model output through `verify.sh` script. Returns N/M checks passed, normalized to 0-1. | Deterministic tasks with scriptable checks |
+| `llm_judge` | Calls a separate judge model with per-task rubric from `judge.md`. Judge outputs `SCORE: N` (0-10), normalized to 0-1. | Qualitative tasks requiring reasoning evaluation |
+| `hybrid_scorer` | Runs both `verify_sh` AND `llm_judge`, combines weighted mean (default: verify=0.7, judge=0.3). Sub-scores in metadata. | Tasks benefiting from both deterministic and qualitative evaluation |
+
+### Discrete Judge Scale
+
+All `judge.md` rubrics use a discrete 5-point scale. The judge outputs one of: `0, 2.5, 5, 7.5, 10` (normalized to `0.0, 0.25, 0.5, 0.75, 1.0`). Intermediate values are snapped to the nearest discrete level. This reduces judge variance from ±0.15 on continuous scales.
+
+### Multi-Shot Solver
+
+Tasks can opt into multi-shot evaluation via `multishot_solver(max_turns=N)` which provides read-only tools (`read_file`, `list_directory`) sandboxed to the task's fixture directory. At `max_turns=1`, branches to bare `generate()` with no tool injection.
 
 ---
 
