@@ -36,6 +36,7 @@ _MANUAL_PRICES: dict[str, tuple[float, float]] = {
     "openai/nvidia-devstral": (0.40, 2.00),
     "openai/nvidia-qwen-next": (0.455, 1.82),
     "openai/gemma-4-26-local": (0.08, 0.35),
+    "openai/qwen-local": (0.1625, 1.30),
 }
 
 
