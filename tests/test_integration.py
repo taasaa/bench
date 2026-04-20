@@ -272,7 +272,10 @@ class TestTaskCoverage:
         "tasks/execution/f17-config-migration",      # agent-mode task
         # NOTE: f4-dependency-version-audit is llm_judge, no verify.sh
         # NOTE: f19-admit-uncertainty is llm_judge, no verify.sh
-        # NOTE: f21-liars-codebase is llm_judge, no verify.sh
+        # New hybrid-scored tasks (PRD phases 5-7)
+        "tasks/analysis/f21-liars-codebase",          # hybrid scorer, verify.sh added
+        "tasks/universal/u17-dirty-workspace-triage",  # new task, hybrid scorer
+        "tasks/universal/u18-resume-after-bad-attempt", # new task, hybrid scorer
     }
 
     def test_all_verify_tasks_have_coverage(self):

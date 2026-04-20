@@ -1,0 +1,3 @@
+http.server>=0.1
+json>=2.0
+hashlib>=0.1

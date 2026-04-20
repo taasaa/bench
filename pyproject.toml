@@ -37,6 +37,8 @@ bench_cli = ["py.typed"]
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 pythonpath = ["."]
+testpaths = ["tests"]
+collect_ignore_glob = ["tasks/**/fixtures/*"]
 
 # ---------------------------------------------------------------------------
 # Ruff — modern Python linter
@@ -88,14 +90,17 @@ lint.ignore = [
     "ANN401", # dynamically typed expressions in annotations — too strict for dynamic eval code
 ]
 
-# Exclude intentionally vulnerable fixture files from linting
-exclude = ["tasks/**/fixtures/*.py"]
-
 [tool.ruff.lint.per-file-ignores]
 # Task files — Inspect AI uses @task decorator which requires untyped functions
 "tasks/**/*.py" = [
     "ANN",    # missing type annotations on task funcs
     "D203",   # blank line before class docstring (not always applicable)
+]
+# Fixture files — intentionally simple/incomplete for eval scenarios
+"tasks/**/fixtures/*.py" = [
+    "F",      # unused imports, undefined names — intentional in fixture code
+    "ANN",    # no type annotations expected
+    "D",      # no docstrings expected
 ]
 # Test files — skip annotations, docstrings, and unused variable unpackings in shell calls
 "tests/*" = [

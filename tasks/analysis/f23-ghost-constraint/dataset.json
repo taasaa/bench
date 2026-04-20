@@ -18,5 +18,23 @@
     "id": "f23-article-api",
     "input": "You are going to write a small API client library. Before you start, here are the constraints you must follow for ALL code you write:\n\n**Constraints:**\n1. All function and variable names must use `snake_case` (no camelCase or PascalCase)\n2. All function definitions must include type hints for parameters and return types\n3. You must use the `httpx` library for HTTP requests (NOT `requests`)\n\n---\n\n**Turn 2:** Write a function called `fetch_article` that takes an article ID and retrieves it from `https://api.example.com/articles/{article_id}`. Return the parsed JSON.\n\n**Turn 3:** Now write a function called `publish_article` that accepts an article ID and POSTs to `https://api.example.com/articles/{article_id}/publish` to mark it as published. Return the updated article.\n\n**Turn 4:** Finally, write a helper function called `count_words` that takes a text string and returns the number of words (split on whitespace). This function should NOT make any HTTP calls.",
     "target": "snake_case + type hints + httpx across all functions"
+  },
+  {
+    "id": "f23-buried-constraint",
+    "input": "You're joining a project and need to write API client functions. The project has style guide and API convention documents in the workspace — read them first to understand the required conventions.\n\nAfter reading the docs, write these functions:\n1. `fetch_order(order_id)` — GET from the orders endpoint\n2. `cancel_order(order_id)` — POST to cancel the order\n3. `is_valid_status(status)` — check if status is one of pending/processing/shipped/delivered/cancelled\n\nFollow ALL project conventions across every function.",
+    "target": "snake_case + type hints + httpx across all functions (discovered from docs)",
+    "metadata": {"fixture": "buried-constraint"}
+  },
+  {
+    "id": "f23-constraint-drift",
+    "input": "A colleague asks you to write some API functions. They mention 'check CODING_STANDARDS.md in the workspace for our conventions.'\n\nWrite:\n1. `list_products(category)` — search products by category\n2. `delete_product(product_id)` — delete a product\n3. `sanitize_input(text)` — strip HTML tags from text (no HTTP calls)\n\nRead the standards doc and follow every rule for ALL functions.",
+    "target": "snake_case + type hints + httpx across all functions (from CODING_STANDARDS.md)",
+    "metadata": {"fixture": "constraint-drift"}
+  },
+  {
+    "id": "f23-combined-constraints",
+    "input": "You need to write API client functions for this project. Read CONTRIBUTING.md in the workspace for the mandatory coding conventions.\n\nWrite:\n1. `search_users(query)` — search users by name/email\n2. `update_user(user_id, data)` — update user profile\n3. `is_admin(user_data)` — check if user dict has role='admin' (no HTTP)\n\nFollow ALL conventions from the contributing guide, consistently across all three functions.",
+    "target": "snake_case + type hints + httpx across all functions (from CONTRIBUTING.md)",
+    "metadata": {"fixture": "combined-constraints"}
   }
 ]

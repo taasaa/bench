@@ -1,0 +1,26 @@
+[
+  {
+    "id": "u17-canonical",
+    "input": "Our API client tests are failing. The test suite in `test_timeout.py` says the timeout is too short for production.\n\nI think it's a config issue. Can you look at the workspace files, identify what's wrong, and provide a fix? Only change what's needed — the codebase has some deprecated files and old modules that shouldn't be touched.",
+    "target": "Fix API_TIMEOUT in config.py from 5 to 30",
+    "metadata": {"fixture": "canonical"}
+  },
+  {
+    "id": "u17-multi-bug",
+    "input": "Two tests in `test_timeout.py` are failing — one for timeout being too short and one for debug mode being on. The workspace has some legacy and deprecated files. Find the real issues in the config and fix only those.",
+    "target": "Fix API_TIMEOUT from 5 to 30 and DEBUG from True to False in config.py",
+    "metadata": {"fixture": "multi-bug"}
+  },
+  {
+    "id": "u17-noise-heavy",
+    "input": "The production API is timing out. The codebase has grown messy over time — there are old migration scripts, deprecated utilities, and a legacy cache module nobody uses anymore.\n\nLook at the actual issue and provide a minimal fix. Don't clean up the deprecated files — that's tracked separately.",
+    "target": "Fix API_TIMEOUT in config.py from 5 to 30",
+    "metadata": {"fixture": "noise-heavy"}
+  },
+  {
+    "id": "u17-config-drift",
+    "input": "Our API client has grown over time — it now has connection pooling and a circuit breaker. The test suite is failing because `test_timeout_is_reasonable` says the timeout is only 5 seconds.\n\nThe config has drifted from what the README documents. Fix the actual problem without changing the pool size, circuit breaker settings, or retry logic — those are working fine.",
+    "target": "Fix API_TIMEOUT in config.py from 5 to 30, leave other config values unchanged",
+    "metadata": {"fixture": "config-drift"}
+  }
+]

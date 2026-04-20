@@ -48,6 +48,8 @@ TASK_BUDGETS: dict[str, TaskBudget] = {
     "f18_direct_answer_first": TaskBudget(output_tokens=120, latency_seconds=6.0, reference_cost_usd=0.00016439999999999998),
     "f19_admit_uncertainty": TaskBudget(output_tokens=800, latency_seconds=25.0, reference_cost_usd=0.001658175),
     "f21_liars_codebase": TaskBudget(output_tokens=2200, latency_seconds=55.0, reference_cost_usd=0.002397525),
+    "u17_dirty_workspace_triage": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=None),
+    "u18_resume_after_bad_attempt": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=None),
 }
 
 

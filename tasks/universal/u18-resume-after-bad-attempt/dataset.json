@@ -1,0 +1,26 @@
+[
+  {
+    "id": "u18-canonical",
+    "input": "I was fixing a bug in scheduler.py but ran out of time. The bug is in `get_next()` — it compares the deadline as a string instead of a datetime, so tasks with different date formats get wrong ordering.\n\nI left detailed notes in ATTEMPT_NOTES.md about what I found and where I left off. There's a `duration.py` module with helper functions that should make this fix clean.\n\nPlease read my notes, understand the bug, and provide the corrected `get_next()` method. Key requirements:\n1. Fix the string comparison bug in `get_next()`\n2. Use the existing `is_expired()` helper from `duration.py`\n3. Don't change the API contract — callers still pass ISO strings\n4. Don't add new parsing logic to scheduler.py",
+    "target": "Fix get_next() to use is_expired() from duration.py instead of string comparison",
+    "metadata": {"fixture": "canonical"}
+  },
+  {
+    "id": "u18-partial-fix",
+    "input": "A teammate started fixing a bug in scheduler.py but didn't finish. The bug: `get_next()` compares deadlines as strings instead of datetimes.\n\nThey already added `import duration` to the file but didn't wire it into the comparison. Check ATTEMPT_NOTES.md for their analysis.\n\nFix the remaining issue:\n1. Wire `is_expired()` from `duration.py` into `get_next()`\n2. Remove the broken string comparison\n3. Keep the import they already added\n4. Don't change anything else — the rest of the class works fine",
+    "target": "Wire is_expired() from duration.py into get_next(), remove string comparison",
+    "metadata": {"fixture": "partial-fix"}
+  },
+  {
+    "id": "u18-wrong-approach",
+    "input": "Someone tried to fix a deadline comparison bug in scheduler.py but took the wrong approach — they added a `_to_timestamp()` helper at the bottom of the file instead of using the existing utilities.\n\nRead ATTEMPT_NOTES.md for their post-mortem. The correct fix uses `is_expired()` from `duration.py`.\n\nProvide a corrected scheduler.py that:\n1. Removes the wrong `_to_timestamp()` function\n2. Imports `is_expired` from `duration.py`\n3. Fixes `get_next()` to use `not is_expired(task['deadline'])`\n4. Leaves everything else unchanged",
+    "target": "Remove wrong _to_timestamp, import is_expired from duration.py, fix get_next()",
+    "metadata": {"fixture": "wrong-approach"}
+  },
+  {
+    "id": "u18-abandoned-refactor",
+    "input": "A developer started fixing the string comparison bug in scheduler.py's `get_next()` but abandoned the approach mid-way — there's dead code (a commented `get_next_v2` stub).\n\nTheir notes in ATTEMPT_NOTES.md explain what happened and what the right fix is.\n\nClean up and fix:\n1. Remove the dead `get_next_v2` comment/stub\n2. Import `is_expired` from `duration.py`\n3. Replace the string comparison with `not is_expired(task['deadline'])`\n4. Don't touch `cancel_task` or `pending_count` — they work fine",
+    "target": "Remove dead code, import is_expired, fix string comparison in get_next()",
+    "metadata": {"fixture": "abandoned-refactor"}
+  }
+]

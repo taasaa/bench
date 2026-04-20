@@ -1,6 +1,6 @@
 # PRD: Extend Bench Task Suite — Infrastructure + Context Hygiene Tasks
 
-**Status:** draft
+**Status:** complete
 **Project:** bench
 **Owner:** Michael Mazyar
 **Scope:** feature + refactor

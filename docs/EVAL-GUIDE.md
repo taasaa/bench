@@ -3,7 +3,7 @@
 > **What every task tests, why it matters, and how the scoring proves it.**
 
 **Last updated:** 2026-04-20
-**Tasks:** 34 total — 2 smoke, 6 competence, 10 execution, 6 analysis, 10 universal
+**Tasks:** 36 total — 2 smoke, 6 competence, 10 execution, 6 analysis, 12 universal
 **Scoring:** 4 independent pillars (correctness, token efficiency, latency, cost)
 
 ---
@@ -310,7 +310,7 @@ These tasks test the model's ability to execute reliably under multi-constraint 
 ### f11-intermittent-bug
 
 **Tier:** execution
-**Scorer:** `llm_judge`
+**Scorer:** `hybrid_scorer`
 **Samples:** 4
 **Scenarios:** `f11-sleep-timestamp`, `f11-concurrent-file-access`, `f11-float-comparison`, `f11-racy-counter`
 **qwen-local score:** 0.90
@@ -350,7 +350,7 @@ These tasks test the model's ability to execute reliably under multi-constraint 
 ### q4-root-cause
 
 **Tier:** execution
-**Scorer:** `llm_judge`
+**Scorer:** `hybrid_scorer`
 **Samples:** 4
 **Scenarios:** `q4-pip-python-mismatch`, `q4-wrong-virtualenv`, `q4-missing-pytest`, `q4-import-path`
 **qwen-local score:** 0.50
@@ -416,7 +416,7 @@ These tasks test the model's ability to reason through non-trivial problems, cro
 ### f1-multi-file-verify
 
 **Tier:** analysis
-**Scorer:** `llm_judge`
+**Scorer:** `hybrid_scorer`
 **Samples:** 4
 **Scenarios:** `f1-url-shortener`, `f1-auth-middleware`, `f1-data-pipeline`, `f1-api-endpoint`
 **qwen-local score:** 0.50
@@ -436,7 +436,7 @@ These tasks test the model's ability to reason through non-trivial problems, cro
 ### f9-cascading-failure
 
 **Tier:** analysis
-**Scorer:** `llm_judge`
+**Scorer:** `hybrid_scorer`
 **Samples:** 4
 **Scenarios:** `f9-conn-pool`, `f9-fd-leak`, `f9-memory-leak`, `f9-socket-exhaustion`
 **qwen-local score:** 0.75
@@ -456,7 +456,7 @@ These tasks test the model's ability to reason through non-trivial problems, cro
 ### f10-env-mismatch
 
 **Tier:** analysis
-**Scorer:** `llm_judge`
+**Scorer:** `hybrid_scorer`
 **Samples:** 4
 **Scenarios:** `f10-shebang-alias`, `f10-python-version`, `f10-path-order`, `f10-venv-not-activated`
 **qwen-local score:** 0.75
@@ -496,9 +496,9 @@ These tasks test the model's ability to reason through non-trivial problems, cro
 ### f21-liars-codebase
 
 **Tier:** analysis
-**Scorer:** `llm_judge`
-**Samples:** 4
-**Scenarios:** `f21-wrong-framework`, `f21-wrong-status-code`, `f21-fake-cache`, `f21-wrong-db-driver`
+**Scorer:** `hybrid_scorer`
+**Samples:** 6
+**Scenarios:** `f21-fastapi-bench`, `f21-redis-cache`, `f21-ml-pipeline`, `f21-auth-jwt`, `f21-stale-summary`, `f21-stale-verification`
 **qwen-local score:** 0.50
 
 **What it tests:** The model distrusts documentation and verifies actual code behavior — the epistemic discipline of not trusting what you're told.
@@ -516,9 +516,9 @@ These tasks test the model's ability to reason through non-trivial problems, cro
 ### f23-ghost-constraint
 
 **Tier:** analysis
-**Scorer:** `llm_judge`
-**Samples:** 5
-**Scenarios:** `f23-snake-case`, `f23-no-requests`, `f23-type-hints`, `f23-httpx-only`, `f23-combined`
+**Scorer:** `hybrid_scorer`
+**Samples:** 7
+**Scenarios:** `f23-user-api`, `f23-product-api`, `f23-order-api`, `f23-article-api`, `f23-buried-constraint`, `f23-constraint-drift`, `f23-combined-constraints`
 **qwen-local score:** 0.80
 
 **What it tests:** The model retains constraints from earlier turns and applies them consistently across subsequent turns.
@@ -659,6 +659,42 @@ These tasks test failure modes that are universal to all AI agents regardless of
 
 ---
 
+### u17-dirty-workspace-triage
+
+**Tier:** universal
+**Scorer:** `hybrid_scorer`
+**Samples:** 4
+**Scenarios:** `u17-canonical`, `u17-multi-bug`, `u17-noise-heavy`, `u17-config-drift`
+**qwen-local score:** — (new task)
+
+**What it tests:** The model can find and fix the actual bug in a noisy workspace without engaging in cleanup theater.
+
+**Why it matters:** Real codebases have deprecated files, old migrations, legacy modules, and stale docs. A model that gets distracted by cleanup or proposes multi-file refactors when only one value needs changing will waste time and introduce risk. Scope discipline under noise is critical.
+
+**How it works:** Each scenario provides a workspace with a real bug (wrong config value) buried among distractor files. The model must use multi-shot tools to explore, identify the actual issue, and fix only that. `verify_sh` checks the fix targets the right value and doesn't touch distractors. `llm_judge` evaluates triage quality and scope discipline.
+
+**What makes it hard:** The distractor files look like legitimate cleanup targets. The model must resist the urge to refactor, remove deprecated files, or fix non-issues.
+
+---
+
+### u18-resume-after-bad-attempt
+
+**Tier:** universal
+**Scorer:** `hybrid_scorer`
+**Samples:** 4
+**Scenarios:** `u18-canonical`, `u18-partial-fix`, `u18-wrong-approach`, `u18-abandoned-refactor`
+**qwen-local score:** — (new task)
+
+**What it tests:** The model can resume work after a partially-correct prior attempt — reading prior notes, avoiding documented false leads, and reusing existing helpers.
+
+**Why it matters:** Real bug fixes often start with a colleague's partial attempt. The model must build on prior work (reading notes, reusing existing helpers) rather than starting from scratch. Repeating documented wrong approaches wastes time and breaks trust.
+
+**How it works:** Each scenario provides a workspace with: a buggy source file, a correct helper module, and ATTEMPT_NOTES.md documenting what was tried and what failed. The model must read the notes, identify the correct fix approach, and implement it using the existing helper. `verify_sh` checks the correct import and function usage. `llm_judge` evaluates prior-work awareness and dead-end avoidance.
+
+**What makes it hard:** The prior notes contain both correct insights and false leads. The model must distinguish between them and not repeat documented mistakes.
+
+---
+
 ## Appendix: Task → Capability Matrix
 
 | Task | Correctness Scorer | Pillar(s) Tested | Failure Cluster | Cognitive Tier | qwen-local |
@@ -675,23 +711,25 @@ These tasks test failure modes that are universal to all AI agents regardless of
 | f20-scope-calibration | verify_sh | Correctness | Over-investigation | competence | 0.67 |
 | f6-partial-impl | verify_sh | Correctness | Acting Without Approval | execution | 0.75 |
 | f8-negative-constraint | verify_sh | Correctness | Instruction Ignoring | execution | 0.75 |
-| f11-intermittent-bug | llm_judge | Correctness + Reasoning | Shallow Fixes | execution | 0.90 |
+| f11-intermittent-bug | hybrid_scorer | Correctness + Reasoning | Shallow Fixes | execution | 0.90 |
 | f14-insert-dont-replace | verify_sh | Correctness | Edit Tool Failures | execution | 0.75 |
-| q4-root-cause | llm_judge | Correctness + Reasoning | Shallow Fixes | execution | 0.50 |
+| q4-root-cause | hybrid_scorer | Correctness + Reasoning | Shallow Fixes | execution | 0.50 |
 | f4-dependency-version-audit | llm_judge | Correctness + Reasoning | False Verification | execution | 0.50 |
 | f5-multi-constraint-edit | verify_sh | Correctness + Memory | Instruction Ignoring | execution | 0.75 |
-| f1-multi-file-verify | llm_judge | Correctness + Reasoning | False Verification | analysis | 0.50 |
-| f9-cascading-failure | llm_judge | Correctness + Reasoning | Shallow Fixes | analysis | 0.75 |
-| f10-env-mismatch | llm_judge | Correctness + Reasoning | Shallow Fixes | analysis | 0.75 |
+| f1-multi-file-verify | hybrid_scorer | Correctness + Reasoning | False Verification | analysis | 0.50 |
+| f9-cascading-failure | hybrid_scorer | Correctness + Reasoning | Shallow Fixes | analysis | 0.75 |
+| f10-env-mismatch | hybrid_scorer | Correctness + Reasoning | Shallow Fixes | analysis | 0.75 |
 | f19-admit-uncertainty | llm_judge | Correctness + Reasoning | Unrelated Responses | analysis | 0.75 |
-| f21-liars-codebase | llm_judge | Correctness + Reasoning | False Verification | analysis | 0.50 |
-| f23-ghost-constraint | llm_judge | Correctness + Memory | Instruction Ignoring | analysis | 0.80 |
+| f21-liars-codebase | hybrid_scorer | Correctness + Reasoning | False Verification | analysis | 0.50 |
+| f23-ghost-constraint | hybrid_scorer | Correctness + Memory | Instruction Ignoring | analysis | 0.80 |
 | f22-error-spiral | llm_judge | Correctness + Reasoning | Shallow Fixes | universal | 0.30 |
 | f25-prompt-injection | llm_judge | Correctness + Safety | Prompt Injection | universal | 0.65 |
 | f26-instruction-hierarchy | llm_judge | Correctness | Instruction Ignoring | universal | 0.80 |
 | f27-self-verification | llm_judge | Correctness + Reasoning | Shallow Fixes | universal | 0.84 |
 | u7-git-safety | llm_judge | Correctness + Safety | Git Safety | universal | 0.39 |
 | u8-edit-reliability | llm_judge | Correctness + Reliability | Edit Tool Failures | universal | 0.66 |
+| u17-dirty-workspace-triage | hybrid_scorer | Correctness + Scope Discipline | Over-investigation | universal | — |
+| u18-resume-after-bad-attempt | hybrid_scorer | Correctness + Prior-Work Awareness | Shallow Fixes | universal | — |
 
 ---
 

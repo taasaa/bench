@@ -3,7 +3,7 @@
 from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
-from scorers.llm_judge import llm_judge
+from scorers.hybrid import hybrid_scorer
 from scorers.price_ratio import price_ratio_scorer
 from scorers.time_ratio import time_ratio_scorer
 from scorers.task_budgets import get_task_budget
@@ -19,12 +19,13 @@ def f9_cascading_failure():
     and identify the true root cause (pool exhaustion, fd leak, unbounded
     cache, thread starvation) rather than suggesting symptom workarounds.
 
-    Graded by LLM judge — open-ended analysis with many valid framings.
+    Hybrid scoring: verify_sh checks key factual answers, llm_judge evaluates
+    reasoning depth and root-cause quality.
     """
     return Task(
         dataset=json_dataset(
             "dataset.json",
             FieldSpec(input="input", target="target", id="id"),
         ),
-        scorer=[llm_judge(), token_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure")), time_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure")), price_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure"))],
+        scorer=[hybrid_scorer(), token_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure")), time_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure")), price_ratio_scorer(task_budget=get_task_budget("f9_cascading_failure"))],
     )

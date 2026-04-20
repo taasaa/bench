@@ -47,7 +47,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **LiteLLM proxy config:** `~/dev/litellm/config.yaml` — edit this to add/remove models, set RPM limits (`rpm:` per deployment), or change `enforce_model_rate_limits`. This path is required constantly.
 
 ## Current Focus
-Phase 1C complete. 32 tasks scored across 4 tiers (competence, execution, analysis, universal). 4-pillar scoring: correctness + token efficiency + latency + cost. minimax m2.7 is the cost benchmark reference. Agent eval: 3 agents x 4 modes. 309 tests passing.
+PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, analysis, universal). 4-pillar scoring: correctness + token efficiency + latency + cost. minimax m2.7 is the cost benchmark reference. Multi-shot solver + hybrid scoring (verify_sh + llm_judge) for 10 tasks. Rich fixtures for u17, u18, f23 extensions, f21 extensions. 398 tests passing.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
@@ -60,10 +60,10 @@ Phase 1C complete. 32 tasks scored across 4 tiers (competence, execution, analys
 - **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh`
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
-- **Tiers:** quick (verification: smoke + agent_smoke) + full (32 tasks: competence/execution/analysis/universal)
-- **Scoring:** 4 independent scorers per task — verify_sh or llm_judge (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency) + price_ratio_scorer (cost)
-- **Correctness:** verify_sh for deterministic tasks, llm_judge for open-ended tasks (judge model: `openai/judge` → GLM-5.1); `includes()`/`exact()` return 'C'/'I' strings handled by compare.py
-- **Task format:** Directory with task.py + dataset.json + verify.sh or judge.md + fixtures/
+- **Tiers:** quick (verification: smoke + agent_smoke) + full (36 tasks: competence/execution/analysis/universal)
+- **Scoring:** 4 independent scorers per task — verify_sh, llm_judge, or hybrid_scorer (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency) + price_ratio_scorer (cost)
+- **Correctness:** verify_sh for deterministic tasks, llm_judge for open-ended tasks, hybrid_scorer for tasks benefiting from both (verify_sh 0.7 + llm_judge 0.3 weighted); judge model: `openai/judge` → GLM-5.1
+- **Task format:** Directory with task.py + dataset.json + verify.sh or judge.md + fixtures/ (optional, for multi-shot tasks)
 - **Viewer:** `inspect view` (localhost:7575) for interactive log inspection
 - **Comparison:** `bench compare` — single pillar table with CORRECT/TOK_RATIO/TIME_RATIO/TOKENS/TIME/COST_RATIO/AVG COST columns, multi-model side-by-side, geometric mean for ratio aggregates
 - **Model cards:** `results/` — auto-generated markdown cards per model (OpenRouter slug naming), with overview, 4-pillar scores, per-task table, LLM summary; auto-updated after each eval run
