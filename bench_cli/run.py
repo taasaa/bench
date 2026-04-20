@@ -461,6 +461,16 @@ def run(
         else:
             click.echo("  (no scored logs found — run bench compare after eval completes)")
 
+    # 6. Auto-generate model card.
+    try:
+        from bench_cli.results import generate_card_for_model
+
+        card_path = generate_card_for_model(bench_alias, Path(log_dir))
+        if card_path:
+            click.echo(f"\n── Model card updated: {card_path} ──")
+    except Exception as exc:
+        click.echo(f"Warning: model card generation failed: {exc}", err=True)
+
 
 def _resolve_task(spec: str) -> task:
     """Load a task spec (path or name) and inject bench_task_dir into its metadata.

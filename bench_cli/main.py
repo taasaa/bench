@@ -22,12 +22,14 @@ def cli() -> None:
 from bench_cli.baseline import baseline
 from bench_cli.compare import compare
 from bench_cli.prices import prices
+from bench_cli.results import results
 from bench_cli.run import run
 
 cli.add_command(run)
 cli.add_command(compare)
 cli.add_command(baseline)
 cli.add_command(prices)
+cli.add_command(results)
 
 
 if __name__ == "__main__":

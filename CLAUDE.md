@@ -21,6 +21,7 @@ exponential backoff. rpm limits per model prevent queue saturation.
 python -m bench_cli baseline record --model openai/qwen-local --tier full
 python -m bench_cli baseline list
 python -m bench_cli compare
+python -m bench_cli results generate    # regenerate all model cards from eval logs
 pytest                    # run test suite
 
 # Agent eval (requires agent CLI installed: claude, codex, or gemini):
@@ -65,6 +66,7 @@ Phase 1C complete. 32 tasks scored across 4 tiers (competence, execution, analys
 - **Task format:** Directory with task.py + dataset.json + verify.sh or judge.md + fixtures/
 - **Viewer:** `inspect view` (localhost:7575) for interactive log inspection
 - **Comparison:** `bench compare` — single pillar table with CORRECT/TOK_RATIO/TIME_RATIO/TOKENS/TIME/COST_RATIO/AVG COST columns, multi-model side-by-side, geometric mean for ratio aggregates
+- **Model cards:** `results/` — auto-generated markdown cards per model (OpenRouter slug naming), with overview, 4-pillar scores, per-task table, LLM summary; auto-updated after each eval run
 
 ## Cost Scoring (4th Pillar)
 
