@@ -21,7 +21,13 @@ exponential backoff. rpm limits per model prevent queue saturation.
 python -m bench_cli baseline record --model openai/qwen-local --tier full
 python -m bench_cli baseline list
 python -m bench_cli compare
+python -m bench_cli inspect stats --model <alias>       # per-task pillar averages
+python -m bench_cli inspect compare --model <alias>       # new vs old delta comparison
+python -m bench_cli inspect deep-check --model <alias>    # full QA report
 python -m bench_cli results generate    # regenerate all model cards from eval logs
+python -m bench_cli prices refresh      # fetch prices from OpenRouter API
+python -m bench_cli prices list         # show cached prices for LiteLLM models
+python -m bench_cli prices add MODEL --input PRICE --output PRICE  # inject manual price
 pytest                    # run test suite
 
 # Agent eval (requires agent CLI installed: claude, codex, or gemini):
@@ -41,6 +47,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
   ```
   OPENAI_BASE_URL=http://smallbox:4000/v1
   OPENAI_API_KEY=<litellm-proxy-token>
+  OPENROUTER_API_KEY=<openrouter-key>
   ```
 - **Available models** (check with `curl -s http://smallbox:4000/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`): qwen-local, gemma-4-e2-local, gemma-4-26-local, glm-local, qwen3-coder-plus, qwen3-max, opus, pro, and more
 - **Default model:** `openai/default` (maps to whatever LiteLLM configures as default)
@@ -60,7 +67,7 @@ PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, 
 - **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh`
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
-- **Tiers:** quick (verification: smoke + agent_smoke) + full (36 tasks: competence/execution/analysis/universal)
+- **Tiers:** quick (verification: smoke + agent_smoke) + full (36 tasks: 9 competence / 10 execution / 7 analysis / 8 universal / 2 smoke)
 - **Scoring:** 4 independent scorers per task — verify_sh, llm_judge, or hybrid_scorer (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency) + price_ratio_scorer (cost)
 - **Correctness:** verify_sh for deterministic tasks, llm_judge for open-ended tasks, hybrid_scorer for tasks benefiting from both (verify_sh 0.7 + llm_judge 0.3 weighted); judge model: `openai/judge` → GLM-5.1
 - **Task format:** Directory with task.py + dataset.json + verify.sh or judge.md + fixtures/ (optional, for multi-shot tasks)
@@ -70,29 +77,22 @@ PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, 
 
 ## Cost Scoring (4th Pillar)
 
-**Benchmark reference:** minimax m2.7 (2026-04-17 eval). All 32 tasks have `reference_cost_usd` set to the actual measured average cost per sample in `scorers/task_budgets.py`.
+**Benchmark reference:** minimax m2.7 (2026-04-17 eval). All 36 tasks have `reference_cost_usd` in `scorers/task_budgets.py`.
 
 **How it works:**
-- `price_ratio_scorer` reads actual usage from `state.output.usage` (input_tokens, output_tokens)
-- Resolves model alias → KiloCode price via `MODEL_ALIAS_MAP` in `bench_cli/pricing/model_aliases.py`
-- Computes `actual_cost = input_tokens × price_in + output_tokens × price_out`
-- Computes `price_ratio = reference_cost_usd / actual_cost_usd`
-- Free models (`is_free=True`) return `inf`; KiloCode cache misses return `NaN`
+- `price_ratio_scorer` reads `state.output.usage` tokens, resolves model alias → OpenRouter price via `MODEL_ALIAS_MAP`
+- `price_ratio = reference_cost_usd / actual_cost_usd` — >1 means cheaper than benchmark, <1 means more expensive
+- Free models return `inf`; cache misses return `NaN` (soft stop, run continues)
 
 **Price sources:**
-- **KiloCode API** (`https://api.kilo.ai/api/openrouter/models`) for OpenRouter model prices — cached at `logs/pricing/kilocode-models.json` (3-day TTL). Refresh with `python -m bench_cli prices refresh`
-- **Built-in table** in `bench_cli/pricing/__init__.py` for known local/proxy models (qwen-local, gemma, etc.)
-- **`MODEL_ALIAS_MAP`** in `bench_cli/pricing/model_aliases.py`: maps bench LiteLLM alias (`openai/<name>`) → KiloCode model ID (`provider/model-slug`)
-
-**compare.py display:**
-- `AVG COST`: arithmetic mean of actual cost per sample, 9 decimal places — no rounding
-- `COST_RATIO`: `reference_cost / actual_cost` — ratio >1 means model is cheaper than benchmark, <1 means more expensive. "FREE" for `inf`, "--" for NaN
-- When `reference_cost_usd` is `None` (smoke task, no budget): both columns show "--"
+- **OpenRouter API** — cached at `logs/pricing/openrouter-models.json` (3-day TTL). Refresh with `python -m bench_cli prices refresh`
+- **Built-in table** in `bench_cli/pricing/__init__.py` for local/proxy models (qwen-local, gemma, etc.)
+- **`MODEL_ALIAS_MAP`** in `bench_cli/pricing/model_aliases.py`: maps bench alias (`openai/<name>`) → OpenRouter model ID (`provider/model-slug`)
 
 **Adding a new model:**
-1. Add KiloCode price to `logs/pricing/kilocode-models.json` or built-in table
+1. Add OpenRouter price to cache with `python -m bench_cli prices add` or built-in table
 2. Add alias mapping to `MODEL_ALIAS_MAP` if needed
-3. Add `reference_cost_usd` to `scorers/task_budgets.py` for all 32 tasks (copy from minimax column after running new model)
+3. Add `reference_cost_usd` to `scorers/task_budgets.py` for all 36 tasks (copy from minimax column after running new model)
 
 ## Key Decisions
 - Standalone project — no connection to PAI
@@ -100,10 +100,12 @@ PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, 
 - inspect-swe handles Docker agent eval — local agents run as subprocesses via `local_agent` solver
 - Inspect captures tokens, latency, tool calls, event transcripts natively for both modes
 - Same EvalLog format for model eval and agent eval
-- Phase 1: local sandbox (no Docker), deterministic scoring, raw score comparison
 - Use `.eval` binary format by default, caching enabled, execution limits configured
 
 ## Next Steps
-- Re-run eval to bake new minimax m2.7 cost references into eval logs (4 agents running 32 tasks in background — check back in ~15 min)
-- Run agent evals across all combinations (agent x mode) and compare results via `bench compare`
-- Phase 2: LLM judge calibration (Cohen's Kappa), statistics, Docker sandboxing
+- Storage rework — separate eval logs from baseline JSONs (logs/ vs baselines/)
+- U9 Context Coherence + U10 Refactoring Safety (need Docker infra)
+- F2 Test Output Parsing + F13 Multi-file Refactor (not yet implemented)
+- More model baselines for ratio scoring
+- LLM judge calibration (Cohen's Kappa ≥ 0.61)
+- Agent evals across all combinations (agent x mode) and compare via `bench compare`
