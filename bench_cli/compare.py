@@ -29,7 +29,13 @@ from scorers.task_budgets import get_task_budget
 # ---------------------------------------------------------------------------
 _MANUAL_PRICES: dict[str, tuple[float, float]] = {
     # model_alias → (input_price_per_M, output_price_per_M)
+    # Covers all models evaluated before the per-token→per-M cache fix.
+    "openai/default": (0.30, 1.20),
     "openai/nvidia-mistral-small4": (0.15, 0.60),
+    "openai/nvidia-nemotron-30b": (0.05, 0.20),
+    "openai/nvidia-devstral": (0.40, 2.00),
+    "openai/nvidia-qwen-next": (0.455, 1.82),
+    "openai/gemma-4-26-local": (0.08, 0.35),
 }
 
 
@@ -150,17 +156,21 @@ def _extract_from_scorers(
             actual_cost_usd = float(cost_val)
 
     # Fall back to manual price recalculation if scorer didn't capture cost
-    if actual_cost_usd is None and sample_model_usage and model_alias:
-        # Find the primary model usage (exclude 'openai/judge')
-        primary = None
-        if model_alias in sample_model_usage:
-            primary = sample_model_usage[model_alias]
-        elif len(sample_model_usage) == 1:
-            primary = next(iter(sample_model_usage.values()))
-        if primary is not None:
-            inp = getattr(primary, "input_tokens", 0) or 0
-            out = getattr(primary, "output_tokens", 0) or 0
-            actual_cost_usd = _recalc_cost(model_alias, int(inp), int(out))
+    # or if the cached cost is from the old per-token cache (pre-fix values are ~1e-10).
+    if actual_cost_usd is None or (actual_cost_usd is not None and actual_cost_usd < 1e-6):
+        if sample_model_usage and model_alias:
+            # Find the primary model usage (exclude 'openai/judge')
+            primary = None
+            if model_alias in sample_model_usage:
+                primary = sample_model_usage[model_alias]
+            elif len(sample_model_usage) == 1:
+                primary = next(iter(sample_model_usage.values()))
+            if primary is not None:
+                inp = getattr(primary, "input_tokens", 0) or 0
+                out = getattr(primary, "output_tokens", 0) or 0
+                recalc = _recalc_cost(model_alias, int(inp), int(out))
+                if recalc is not None:
+                    actual_cost_usd = recalc
 
     return correctness, token_ratio, time_ratio, actual_cost_usd
 
