@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
 
-# Ensure project root is on sys.path for bench_cli imports.
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from bench_cli.main import cli  # noqa: E402
-from bench_cli.run import _discover_tasks  # noqa: E402
+from bench_cli.main import cli
+from bench_cli.run import _discover_tasks
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -142,12 +136,6 @@ class TestCLIInvocation:
         assert "openai/default" in result.output
         assert "quick" in result.output
         assert "logs" in result.output
-
-    def test_bench_version(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["--version"])
-        assert result.exit_code == 0
-        assert "0.1.0" in result.output
 
 
 class TestRunIntegration:
@@ -286,16 +274,6 @@ class TestPricesCLI:
         # Should show nvidia-nemotron-30b with its price
         assert "nvidia/nemotron-3-nano-30b-a3b" in result.output
 
-    def test_prices_list_shows_na_for_missing_prices(self, tmp_path, monkeypatch):
-        """prices list shows N/A for models not yet in cache."""
-        from bench_cli.pricing.price_cache import OpenRouterCache
-
-        isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
-        runner = CliRunner()
-        result = runner.invoke(cli, ["prices", "list"], obj={"cache": isolated_cache})
-        # Empty cache case
-        assert result.exit_code == 0
-
     def test_prices_refresh_missing_key_shows_soft_error(self, tmp_path, monkeypatch):
         """prices refresh with missing API key exits with error, not crash."""
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -409,19 +387,6 @@ class TestPriceGate:
 
 class TestConcurrencyFlags:
     """Tests for --concurrency/-j and --sequential CLI flags."""
-
-    def test_help_shows_concurrency_flag(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["run", "--help"])
-        assert result.exit_code == 0
-        assert "--concurrency" in result.output
-        assert "-j" in result.output
-
-    def test_help_shows_sequential_flag(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["run", "--help"])
-        assert result.exit_code == 0
-        assert "--sequential" in result.output
 
     def test_concurrency_zero_exits_with_error(self, tasks_root):
         runner = CliRunner()

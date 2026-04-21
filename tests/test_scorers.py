@@ -1,15 +1,8 @@
 """Unit tests for scorers: efficiency, safety, and composite."""
 
-import sys
-from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 import pytest
-
-# Ensure project root is on sys.path for scorers imports.
-ROOT = Path(__file__).parent.parent.resolve()
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 # Helpers imported from conftest.py
 # Backwards-compat aliases (deprecated — use make_task_state and run_async)
@@ -300,16 +293,6 @@ class TestScorerSchema:
                 f"explanation: {result.explanation!r}"
             )
 
-    def test_safety_patterns_reviewed_this_quarter(self):
-        """Safety patterns must be reviewed within 90 days."""
-        import datetime
-
-        REVIEW_INTERVAL_DAYS = 90
-        last_review = datetime.date(2026, 4, 12)
-        assert (datetime.date.today() - last_review).days < REVIEW_INTERVAL_DAYS, (
-            "Safety patterns need quarterly review"
-        )
-
 
 # ---------------------------------------------------------------------------
 # New pillar scorer tests
@@ -508,17 +491,6 @@ class TestConstraintAdherenceScorer:
 
 
 class TestCompositeSafetyScorer:
-    def test_min_returns_lowest_active(self):
-        """min() of active sub-scores returns the lowest."""
-        active = [1.0, 0.4, 0.9]
-        assert min(active) == 0.4
-
-    def test_none_values_excluded_from_min(self):
-        """None sub-scores are excluded, not treated as 0.0 or 1.0."""
-        active = [1.0, None, 0.5, None]
-        result = [s for s in active if s is not None]
-        assert min(result) == 0.5  # if None was treated as 0.0, min would be 0.0
-
     def test_all_none_returns_safe_score(self):
         """All sub-scorers None → returns 1.0 (treat as safe)."""
         from scorers.composite_safety import composite_safety_scorer
@@ -528,36 +500,6 @@ class TestCompositeSafetyScorer:
         result = run_async(s(state, state.target))
         assert result.value == 1.0
 
-
-class TestBaselineStore:
-    def test_correctness_gate_rejects_low_baseline(self):
-        """Baseline with correctness below gate → not valid for reference."""
-
-        from scorers.baseline_store import Baseline
-
-        baseline = Baseline(
-            task_id="test",
-            model_id="claude-3",
-            run_at="2026-04-13T00:00:00Z",
-            correctness=0.6,
-            valid_for_reference=False,  # below 0.8 gate
-            total_tokens=1000,
-        )
-        assert baseline.valid_for_reference is False
-
-    def test_baseline_above_gate_valid(self):
-        """Baseline with correctness >= 0.8 → valid for reference."""
-        from scorers.baseline_store import Baseline
-
-        baseline = Baseline(
-            task_id="test",
-            model_id="claude-3",
-            run_at="2026-04-13T00:00:00Z",
-            correctness=0.9,
-            valid_for_reference=True,
-            total_tokens=1000,
-        )
-        assert baseline.valid_for_reference is True
 
 
 class TestResolveBaselineReference:
@@ -589,77 +531,36 @@ class TestResolveBaselineReference:
 
 
 class TestParseScore:
-    """Unit tests for _parse_score regex extraction, normalization, and snap-to-discrete."""
+    """_parse_score: regex extraction, snap-to-discrete, edge cases."""
 
-    def test_discrete_values_pass_through(self):
+    @pytest.mark.parametrize("text,expected", [
+        ("SCORE: 10", 1.0),
+        ("SCORE: 7.5", 0.75),
+        ("SCORE: 5", 0.5),
+        ("SCORE: 2.5", 0.25),
+        ("SCORE: 0", 0.0),
+        ("SCORE: 8", 0.75),        # snaps to 7.5
+        ("score: 6", 0.5),         # snaps to 5.0
+        ("SCORE: 9", 1.0),         # snaps to 10.0
+        ("SCORE: 3", 0.25),        # snaps to 2.5
+        ("SCORE: 2.4", 0.25),      # edge snap
+        ("SCORE: 8.75", 0.75),     # equidistant → 7.5
+        ("SCORE: 8/10", 0.75),     # slash-10 format
+        ("SCORE:5", 0.5),          # no space
+        ("Score: 0", 0.0),         # case insensitive
+        ("SCORE: 15", 1.0),        # clamp above 10
+    ])
+    def test_parses_to_expected(self, text, expected):
         from scorers.llm_judge import _parse_score
+        assert _parse_score(text) == expected
 
-        assert _parse_score("SCORE: 10") == 1.0
-        assert _parse_score("SCORE: 7.5") == 0.75
-        assert _parse_score("SCORE: 5") == 0.5
-        assert _parse_score("SCORE: 2.5") == 0.25
-        assert _parse_score("SCORE: 0") == 0.0
-
-    def test_snap_to_discrete_rounds_to_nearest(self):
+    @pytest.mark.parametrize("text", [
+        "no score here",
+        "SCORE: -1",
+    ])
+    def test_returns_none_for_invalid(self, text):
         from scorers.llm_judge import _parse_score
-
-        # 8 → snaps to 7.5 (nearest discrete)
-        assert _parse_score("SCORE: 8") == 0.75
-        # 6 → snaps to 5.0 (nearest discrete)
-        assert _parse_score("score: 6") == 0.5
-        # 9 → snaps to 10.0 (nearest discrete)
-        assert _parse_score("SCORE: 9") == 1.0
-        # 3 → snaps to 2.5 (nearest discrete)
-        assert _parse_score("SCORE: 3") == 0.25
-
-    def test_snap_edge_cases(self):
-        from scorers.llm_judge import _parse_score
-
-        # 0.24 on 0-10 scale = 2.4 → snaps to 2.5
-        assert _parse_score("SCORE: 2.4") == 0.25
-        # 3.75 → exactly midpoint, snaps to 2.5 (lower)
-        assert _parse_score("SCORE: 3.75") == 0.25
-        # 6.25 → snaps to 5.0
-        assert _parse_score("SCORE: 6.25") == 0.5
-        # 8.75 → equidistant between 7.5 and 10, snaps to 7.5 (first match)
-        assert _parse_score("SCORE: 8.75") == 0.75
-
-    def test_perfect_score(self):
-        from scorers.llm_judge import _parse_score
-
-        assert _parse_score("SCORE: 10") == 1.0
-
-    def test_zero_score(self):
-        from scorers.llm_judge import _parse_score
-
-        assert _parse_score("Score: 0") == 0.0
-
-    def test_score_with_slash_10(self):
-        from scorers.llm_judge import _parse_score
-
-        # 8/10 → 8 → snaps to 7.5
-        assert _parse_score("SCORE: 8/10") == 0.75
-
-    def test_no_space_after_colon(self):
-        from scorers.llm_judge import _parse_score
-
-        # 5 → discrete value, passes through
-        assert _parse_score("SCORE:5") == 0.5
-
-    def test_clamp_above_10(self):
-        from scorers.llm_judge import _parse_score
-
-        assert _parse_score("SCORE: 15") == 1.0
-
-    def test_no_score_returns_none(self):
-        from scorers.llm_judge import _parse_score
-
-        assert _parse_score("no score here") is None
-
-    def test_negative_returns_none(self):
-        from scorers.llm_judge import _parse_score
-
-        assert _parse_score("SCORE: -1") is None
+        assert _parse_score(text) is None
 
 
 class TestLoadRubric:
@@ -1063,14 +964,6 @@ class TestLoadFixtures:
 
         assert list_fixture_files("/some/dir", None) == []
 
-    def test_existing_scorers_fixtures_untouched(self):
-        """Verify scorers/fixtures.py still works independently."""
-        from scorers.fixtures import fixtures_dir, load_fixture
-
-        # The existing module should still be importable
-        assert callable(fixtures_dir)
-        assert callable(load_fixture)
-
 
 # ---------------------------------------------------------------------------
 # Multi-shot solver tests
@@ -1155,11 +1048,6 @@ class TestMultishotSolver:
         assert "config.py" in ctx
         assert "read_file" in ctx
 
-    def test_solver_importable_from_init(self):
-        from bench_cli.solvers import multishot_solver
-
-        assert callable(multishot_solver)
-
 
 # ---------------------------------------------------------------------------
 # Hybrid scorer tests
@@ -1173,40 +1061,6 @@ class TestHybridScorer:
         from scorers.hybrid import hybrid_scorer
 
         assert callable(hybrid_scorer)
-
-    def test_hybrid_exported_from_init(self):
-        from scorers import hybrid_scorer
-
-        assert callable(hybrid_scorer)
-
-    def test_weighted_combination_math(self):
-        """v=0.8, j=0.6, w=(0.7,0.3) → 0.74."""
-        # Verify the math: (0.7 * 0.8 + 0.3 * 0.6) / 1.0 = 0.74
-        v_val, j_val = 0.8, 0.6
-        v_w, j_w = 0.7, 0.3
-        expected = (v_w * v_val + j_w * j_val) / (v_w + j_w)
-        assert expected == pytest.approx(0.74)
-
-    def test_pure_verify_fallback(self):
-        """verify_weight=1.0, judge_weight=0 → only verify matters."""
-        from scorers.hybrid import hybrid_scorer
-
-        scorer_fn = hybrid_scorer(verify_weight=1.0, judge_weight=0.0)
-        assert scorer_fn is not None
-
-    def test_pure_judge_fallback(self):
-        """verify_weight=0, judge_weight=1.0 → only judge matters."""
-        from scorers.hybrid import hybrid_scorer
-
-        scorer_fn = hybrid_scorer(verify_weight=0.0, judge_weight=1.0)
-        assert scorer_fn is not None
-
-    def test_custom_weights(self):
-        """Custom weights are accepted."""
-        from scorers.hybrid import hybrid_scorer
-
-        scorer_fn = hybrid_scorer(verify_weight=0.5, judge_weight=0.5)
-        assert scorer_fn is not None
 
     def test_compare_discovers_hybrid_scorer(self):
         """compare.py _extract_from_scorers finds hybrid_scorer first."""

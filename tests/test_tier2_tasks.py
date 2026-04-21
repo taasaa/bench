@@ -7,16 +7,8 @@ For each of the 5 Tier 2 tasks (f6, f8, f14, q4, f11), test verify.sh with:
 This validates the scoring logic independently of the model.
 """
 
-import sys
-from pathlib import Path
-
 import pytest
 from conftest import run_verify_script
-
-ROOT = Path(__file__).parent.parent.resolve()
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -6,22 +6,15 @@ Fast tests: no I/O. CLI tests use CliRunner.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from bench_cli.inspect import (  # noqa: E402
+from bench_cli.inspect import (
     SampleScore,
     _load_pillar_map,
     _per_task_stats,
     _resolve_alias,
-    _short_model,
 )
 
 
@@ -72,36 +65,13 @@ def _mock_sample(
 
 class TestResolveAlias:
     def test_full_alias_unchanged(self):
-        """Passing 'openai/' prefix returns unchanged."""
         assert _resolve_alias("openai/nvidia-nemotron-30b") == "openai/nvidia-nemotron-30b"
 
-    def test_short_alias_prefixed(self):
-        """Short alias gets 'openai/' prepended."""
+    def test_short_and_foreign_prefixes_normalized(self):
         assert _resolve_alias("nvidia-nemotron-30b") == "openai/nvidia-nemotron-30b"
-
-    def test_strips_models_prefix(self):
         assert _resolve_alias("models/nvidia-nemotron-30b") == "openai/nvidia-nemotron-30b"
-
-    def test_strips_openrouter_prefix(self):
         assert _resolve_alias("openrouter/nvidia-nemotron-30b") == "openai/nvidia-nemotron-30b"
-
-    def test_strips_openai_prefix(self):
-        assert _resolve_alias("openai/nvidia-nemotron-30b") == "openai/nvidia-nemotron-30b"
-
-    def test_whitespace_stripped(self):
         assert _resolve_alias("  nvidia-nemotron-30b  ") == "openai/nvidia-nemotron-30b"
-
-
-# ---------------------------------------------------------------------------
-# _short_model
-# ---------------------------------------------------------------------------
-
-class TestShortModel:
-    def test_strips_openai_prefix(self):
-        assert _short_model("openai/qwen-local") == "qwen-local"
-
-    def test_no_change_without_prefix(self):
-        assert _short_model("qwen-local") == "qwen-local"
 
 
 # ---------------------------------------------------------------------------

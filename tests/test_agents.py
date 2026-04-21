@@ -6,7 +6,6 @@ from unittest.mock import patch
 import pytest
 
 from bench_cli.agents import (
-    AGENT_MODES,
     AGENT_REGISTRY,
     _extract_jsonl_result,
     _extract_result,
@@ -29,9 +28,6 @@ class TestAgentConfig:
     def test_get_unknown_agent_raises(self):
         with pytest.raises(ValueError, match="Unknown agent"):
             get_agent_config("nonexistent")
-
-    def test_agent_modes_tuple(self):
-        assert AGENT_MODES == ("local", "bare", "docker", "harness")
 
     def test_claude_config(self):
         cfg = get_agent_config("claude")

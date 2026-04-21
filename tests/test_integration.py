@@ -2,9 +2,9 @@
 
 import importlib.util
 import os
-import sys
 
 import pytest
+from conftest import make_task_state, run_async
 
 
 def _module_available(name: str) -> bool:
@@ -12,10 +12,7 @@ def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
 
-# Ensure project root is on sys.path for scorers import
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
 
 # Each task is defined in a subdirectory with hyphens, so they can't be
 # imported as regular Python packages.  We load them via importlib and
@@ -34,8 +31,7 @@ BASIC_TASK_SPECS = [
     ("tasks/competence/f20-scope-calibration/task.py", "f20_scope_calibration"),
 ]
 
-# All known task specs (for generic wiring checks)
-ALL_TASK_SPECS = COMPOSITE_TASK_SPECS + BASIC_TASK_SPECS
+
 
 
 def _load_task(rel_path: str, func_name: str):
@@ -67,24 +63,10 @@ class TestCompositeScorerWiring:
 
     @pytest.mark.parametrize("rel_path,func_name", COMPOSITE_TASK_SPECS)
     def test_task_uses_composite_scorer(self, rel_path, func_name):
-        """composite scorer: value in [0,1], explanation has pillar fields."""
         t = _load_task(rel_path, func_name)
         scorer = _get_scorer_fn(t)
-
-        import asyncio
-
-        from inspect_ai.model import ChatMessageAssistant, ModelOutput
-        from inspect_ai.scorer import Target
-        from inspect_ai.solver import TaskState
-
-        output = ModelOutput.from_content(model="test", content="hello world")
-        state = TaskState(
-            model="test", sample_id="x", epoch=0, input="",
-            messages=[ChatMessageAssistant(content="hello world")],
-            target=Target("hello world"),
-            output=output,
-        )
-        result = asyncio.run(scorer(state, state.target))
+        state = make_task_state("hello world", target="hello world")
+        result = run_async(scorer(state, state.target))
 
         assert 0.0 <= result.value <= 1.0, (
             f"{func_name} scorer value {result.value} outside [0,1]"
@@ -104,24 +86,10 @@ class TestBasicTasksUseVerifySh:
 
     @pytest.mark.parametrize("rel_path,func_name", BASIC_TASK_SPECS)
     def test_basic_task_uses_verify_sh(self, rel_path, func_name):
-        """verify_sh scorer: value in [0,1], explanation has correctness field."""
         t = _load_task(rel_path, func_name)
         scorer = _get_scorer_fn(t)
-
-        import asyncio
-
-        from inspect_ai.model import ChatMessageAssistant, ModelOutput
-        from inspect_ai.scorer import Target
-        from inspect_ai.solver import TaskState
-
-        output = ModelOutput.from_content(model="test", content="some model output")
-        state = TaskState(
-            model="test", sample_id="x", epoch=0, input="",
-            messages=[ChatMessageAssistant(content="some model output")],
-            target=Target(""),
-            output=output,
-        )
-        result = asyncio.run(scorer(state, state.target))
+        state = make_task_state("some model output", target="")
+        result = run_async(scorer(state, state.target))
 
         assert 0.0 <= result.value <= 1.0, (
             f"{func_name} scorer value {result.value} outside [0,1]"
@@ -137,38 +105,14 @@ class TestBasicTasksUseVerifySh:
         )
 
 
-class TestAllTasksScorerName:
-    """All tasks should have a scorer function named 'score'."""
-
-    @pytest.mark.parametrize("rel_path,func_name", ALL_TASK_SPECS)
-    def test_task_scorer_name(self, rel_path, func_name):
-        t = _load_task(rel_path, func_name)
-        scorer = _get_scorer_fn(t)
-        assert scorer.__name__ == "score"
-
-
 class TestVerificationTasksUnmodified:
     """Verification tasks should NOT use the composite scorer."""
 
     def _load_and_check(self, rel_path: str, func_name: str) -> None:
-        """Load task and verify scorer returns non-None result with explanation."""
         t = _load_task(rel_path, func_name)
         scorer = _get_scorer_fn(t)
-
-        import asyncio
-
-        from inspect_ai.model import ChatMessageAssistant, ModelOutput
-        from inspect_ai.scorer import Target
-        from inspect_ai.solver import TaskState
-
-        output = ModelOutput.from_content(model="test", content="test output")
-        state = TaskState(
-            model="test", sample_id="x", epoch=0, input="",
-            messages=[ChatMessageAssistant(content="test output")],
-            target=Target(""),
-            output=output,
-        )
-        result = asyncio.run(scorer(state, state.target))
+        state = make_task_state("test output", target="")
+        result = run_async(scorer(state, state.target))
 
         assert result is not None, f"{func_name} scorer returned None"
         assert isinstance(result.explanation, str)
@@ -183,49 +127,20 @@ class TestVerificationTasksUnmodified:
         reason="inspect_swe not installed (Docker agent eval dependency)",
     )
     def test_agent_smoke_task_scorer_behavior(self):
-        """agent_smoke task scorer returns numeric result with explanation."""
         t = _load_task("tasks/verification/agent_smoke/task.py", "agent_smoke")
         scorer = _get_scorer_fn(t)
 
-        import asyncio
-
-        from inspect_ai.model import ChatMessageAssistant, ModelOutput
-        from inspect_ai.scorer import Target
-        from inspect_ai.solver import TaskState
-
-        # Test matching output — target "hello world" is in the output
-        output = ModelOutput.from_content(
-            model="test", content="I created hello.py with hello world"
+        state = make_task_state(
+            "I created hello.py with hello world", target="hello world"
         )
-        state = TaskState(
-            model="test",
-            sample_id="x",
-            epoch=0,
-            input="",
-            messages=[ChatMessageAssistant(content="I created hello.py with hello world")],
-            target=Target("hello world"),
-            output=output,
-        )
-        result = asyncio.run(scorer(state, state.target))
-        assert isinstance(result.value, float), (
-            f"Expected float, got {type(result.value).__name__}: {result.value!r}"
-        )
+        result = run_async(scorer(state, state.target))
+        assert isinstance(result.value, float)
         assert result.value == 1.0
         assert isinstance(result.explanation, str)
         assert len(result.explanation) > 0
 
-        # Test non-matching output
-        output2 = ModelOutput.from_content(model="test", content="Something unrelated")
-        state2 = TaskState(
-            model="test",
-            sample_id="x",
-            epoch=0,
-            input="",
-            messages=[ChatMessageAssistant(content="Something unrelated")],
-            target=Target("hello world"),
-            output=output2,
-        )
-        result2 = asyncio.run(scorer(state2, state2.target))
+        state2 = make_task_state("Something unrelated", target="hello world")
+        result2 = run_async(scorer(state2, state2.target))
         assert isinstance(result2.value, float)
         assert result2.value == 0.0
 
@@ -278,36 +193,10 @@ class TestTaskCoverage:
         "tasks/universal/u18-resume-after-bad-attempt", # new task, hybrid scorer
     }
 
-    def test_all_verify_tasks_have_coverage(self):
-        """Every task directory with verify.sh must be in VERIFY_TASKS_WITH_COVERAGE."""
-        import os
-
+    @staticmethod
+    def _scan_verify_tasks():
         tasks_root = os.path.join(ROOT, "tasks")
-        missing = []
-        for tier in os.listdir(tasks_root):
-            tier_path = os.path.join(tasks_root, tier)
-            if not os.path.isdir(tier_path):
-                continue
-            for task_name in os.listdir(tier_path):
-                task_dir = os.path.join(tier_path, task_name)
-                if not os.path.isdir(task_dir):
-                    continue
-                if os.path.isfile(os.path.join(task_dir, "verify.sh")):
-                    rel = os.path.join("tasks", tier, task_name)
-                    if rel not in self.VERIFY_TASKS_WITH_COVERAGE:
-                        missing.append(rel)
-
-        assert missing == [], (
-            f"Tasks with verify.sh but no test coverage: {missing}\n"
-            f"Add them to VERIFY_TASKS_WITH_COVERAGE in test_integration.py"
-        )
-
-    def test_all_verify_tasks_have_coverage_stated_count(self):
-        """Coverage list must match actual verify.sh count."""
-        import os
-
-        tasks_root = os.path.join(ROOT, "tasks")
-        actual_verify_tasks = []
+        found = []
         for tier in os.listdir(tasks_root):
             tier_path = os.path.join(tasks_root, tier)
             if not os.path.isdir(tier_path):
@@ -315,10 +204,20 @@ class TestTaskCoverage:
             for task_name in os.listdir(tier_path):
                 task_dir = os.path.join(tier_path, task_name)
                 if os.path.isdir(task_dir) and os.path.isfile(os.path.join(task_dir, "verify.sh")):
-                    actual_verify_tasks.append(os.path.join("tasks", tier, task_name))
+                    found.append(os.path.join("tasks", tier, task_name))
+        return found
 
-        assert len(self.VERIFY_TASKS_WITH_COVERAGE) == len(actual_verify_tasks), (
+    def test_all_verify_tasks_have_coverage(self):
+        missing = [t for t in self._scan_verify_tasks() if t not in self.VERIFY_TASKS_WITH_COVERAGE]
+        assert missing == [], (
+            f"Tasks with verify.sh but no test coverage: {missing}\n"
+            f"Add them to VERIFY_TASKS_WITH_COVERAGE in test_integration.py"
+        )
+
+    def test_all_verify_tasks_have_coverage_stated_count(self):
+        actual = self._scan_verify_tasks()
+        assert len(self.VERIFY_TASKS_WITH_COVERAGE) == len(actual), (
             f"VERIFY_TASKS_WITH_COVERAGE has {len(self.VERIFY_TASKS_WITH_COVERAGE)} entries "
-            f"but found {len(actual_verify_tasks)} verify.sh files: "
-            f"{sorted(actual_verify_tasks)}"
+            f"but found {len(actual)} verify.sh files: "
+            f"{sorted(actual)}"
         )

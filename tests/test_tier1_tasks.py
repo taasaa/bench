@@ -7,16 +7,7 @@ For each task, test verify.sh with:
 This validates the scoring logic independently of the model.
 """
 
-import sys
-from pathlib import Path
-
 from conftest import run_verify_script
-
-ROOT = Path(__file__).parent.parent.resolve()
-
-# Ensure project root is on sys.path
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 # ── Q1: Verification Gate ────────────────────────────────────────────────

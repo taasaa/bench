@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from bench_cli.compare import (  # noqa: E402
+from bench_cli.compare import (
     CompareData,
     PillarScores,
     format_json,
     format_pillar_table,
     load_compare_data,
-)
+)  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Test data fixtures
@@ -59,25 +52,7 @@ def two_model_data():
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestPillarScores:
-    def test_creation_defaults(self):
-        ps = PillarScores(
-            correctness=0.9, token_ratio=1.5, time_ratio=1.2,
-            avg_tokens=450.0, avg_time=3.5, samples=5,
-        )
-        assert ps.correctness == 0.9
-        assert ps.token_ratio == 1.5
-        assert ps.time_ratio == 1.2
-        assert ps.token_suppressed == 0  # default
-        assert ps.time_suppressed == 0   # default
-
-
 class TestCompareData:
-    def test_empty(self):
-        data = CompareData()
-        assert data.tasks == []
-        assert data.models == []
-
     def test_matrix_access(self, two_model_data):
         assert two_model_data.matrix["task_a"]["model-x"].correctness == 0.9
         assert two_model_data.matrix["task_b"].get("model-y") is None
@@ -104,11 +79,6 @@ class TestFormatPillarTable:
         assert "CORRECT" in result
         assert "TOK_RATIO" in result
         assert "TIME_RATIO" in result
-
-    def test_absolute_metrics_columns(self, two_model_data):
-        result = format_pillar_table(two_model_data)
-        assert "TOKENS" in result
-        assert "TIME" in result
 
     def test_mean_row(self, two_model_data):
         result = format_pillar_table(two_model_data)

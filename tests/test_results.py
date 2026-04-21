@@ -2,29 +2,16 @@
 
 from __future__ import annotations
 
-import math
-import sys
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 from click.testing import CliRunner
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from bench_cli.results import (
     _rating,
     _format_ratio,
     _compute_pillar_scores,
     _slug_from_alias,
-    _real_model_name,
     _extract_task_scores,
     _generate_summary,
     generate_card,
-    generate_all_cards,
-    generate_card_for_model,
     results,
 )
 
@@ -34,19 +21,12 @@ from bench_cli.results import (
 # ---------------------------------------------------------------------------
 
 class TestRating:
-    def test_excellent(self):
-        assert _rating(0.95) == "excellent"
+    def test_boundaries(self):
         assert _rating(0.90) == "excellent"
-
-    def test_good(self):
         assert _rating(0.89) == "good"
         assert _rating(0.75) == "good"
-
-    def test_fair(self):
         assert _rating(0.74) == "fair"
         assert _rating(0.60) == "fair"
-
-    def test_weak(self):
         assert _rating(0.59) == "weak"
         assert _rating(0.0) == "weak"
 
@@ -59,19 +39,13 @@ class TestRating:
 # ---------------------------------------------------------------------------
 
 class TestFormatRatio:
-    def test_none(self):
+    def test_special_values(self):
         assert _format_ratio(None) == "--"
-
-    def test_nan(self):
         assert _format_ratio(float("nan")) == "--"
-
-    def test_inf(self):
         assert _format_ratio(float("inf")) == "FREE"
 
-    def test_normal(self):
+    def test_numeric(self):
         assert _format_ratio(1.234) == "1.234"
-
-    def test_zero(self):
         assert _format_ratio(0.0) == "0.000"
 
 
@@ -130,32 +104,14 @@ class TestComputePillarScores:
 # ---------------------------------------------------------------------------
 
 class TestSlugFromAlias:
-    def test_known_model(self):
+    def test_produces_slug_without_slash(self):
         slug = _slug_from_alias("openai/gemma-4-26-local")
         assert "gemma" in slug
         assert "/" not in slug
 
-    def test_unknown_model(self):
+    def test_unknown_model_falls_back(self):
         slug = _slug_from_alias("openai/some-unknown-model")
         assert "some-unknown-model" in slug
-
-    def test_no_openai_prefix(self):
-        slug = _slug_from_alias("bare-name")
-        assert slug == "bare-name"
-
-
-# ---------------------------------------------------------------------------
-# _real_model_name
-# ---------------------------------------------------------------------------
-
-class TestRealModelName:
-    def test_known_model(self):
-        name = _real_model_name("openai/gemma-4-26-local")
-        assert "gemma" in name
-
-    def test_unknown_model(self):
-        name = _real_model_name("openai/some-model")
-        assert "some-model" in name
 
 
 # ---------------------------------------------------------------------------

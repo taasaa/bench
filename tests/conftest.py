@@ -3,9 +3,14 @@
 import asyncio
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.resolve()
+
+# Ensure project root is on sys.path for all test modules.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def run_verify_script(
