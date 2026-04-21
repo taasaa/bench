@@ -8,5 +8,20 @@
     "id": "f17-dotenv-multifile",
     "input": "Migrate this project from python-dotenv to pydantic-settings. Project is in /tmp/multifile_proj/. Files: app.py (uses os.environ for DATABASE_URL), config.py (uses os.environ for API_KEY), database.py (uses os.environ for REDIS_URL). Migrate all files.\n\n\nRequirements:\n1. Create a Settings class using pydantic-settings with all fields from the .env file\n2. Replace all os.environ.get() calls with Settings class access\n3. Remove python-dotenv imports\n4. Do NOT change any business logic or return values\n5. Keep the same environment variable names\n\nRead all files first, then migrate.",
     "target": "all files migrated, no os.environ.get, no python-dotenv, behavior unchanged"
+  },
+  {
+    "id": "f17-type-coercion",
+    "input": "Migrate this project from python-dotenv to pydantic-settings. The project is in /tmp/type_coercion_proj/.\n\nImportant: the config uses int() and bool comparisons around os.environ.get. With pydantic-settings, the Settings fields should use proper Python types (int, bool) so pydantic handles coercion automatically.\n\nRequirements:\n1. Create a Settings class using pydantic-settings with proper field types (int for PORT and MAX_CONNECTIONS, bool for DEBUG, str for API_KEY)\n2. Replace all os.environ.get() calls and their int()/bool wrappers\n3. Remove python-dotenv imports\n4. Do NOT change business logic or return values\n5. Keep the same default values\n\nRead the files first, then migrate.",
+    "target": "type-aware migration, proper pydantic types, no behavior change"
+  },
+  {
+    "id": "f17-derived-config",
+    "input": "Migrate this project from python-dotenv to pydantic-settings. The project is in /tmp/derived_proj/.\n\nImportant: the config builds DATABASE_URL from individual env vars (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD). The migration must preserve this derived value — the DATABASE_URL is computed from other settings fields.\n\nRequirements:\n1. Create a Settings class with fields for DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, and API_VERSION\n2. Preserve the DATABASE_URL computation (derived from the other fields)\n3. Remove python-dotenv imports and os.environ.get calls\n4. Do NOT change the get_db_url() return value or behavior\n\nRead the files first, then migrate.",
+    "target": "derived config preserved, Settings class with computed field, no behavior change"
+  },
+  {
+    "id": "f17-no-env-file",
+    "input": "Migrate this project from os.environ.get to pydantic-settings. The project is in /tmp/no_env_proj/.\n\nImportant: there is NO .env file in this project. All config comes from os.environ.get with defaults hardcoded in the source code. You must create the Settings class by reading the defaults from the code.\n\nRequirements:\n1. Create a Settings class with proper types: str for API_KEY and BASE_URL, int for TIMEOUT and RETRY_COUNT, bool for ENABLE_CACHING\n2. Preserve all default values exactly as they appear in the code\n3. Replace os.environ.get calls with Settings class access\n4. Do NOT change business logic\n\nRead the code carefully to extract all defaults, then migrate.",
+    "target": "Settings class with correct defaults inferred from code, no behavior change"
   }
 ]

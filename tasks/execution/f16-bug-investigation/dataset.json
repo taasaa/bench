@@ -8,5 +8,20 @@
     "id": "f16-auth-middleware",
     "input": "There's a bug in this auth middleware. All requests return 401 Unauthorized even with a valid Authorization header. The app is in /tmp/auth_app/. Investigate and fix it. Do NOT rewrite the entire app. Find the specific issue and fix only that.\n\nThe app structure:\n- /tmp/auth_app/app.py\n- /tmp/auth_app/middleware.py\n\nRead the files, find the bug, fix it, then run the tests.",
     "target": "bug fixed, valid auth requests return 200"
+  },
+  {
+    "id": "f16-data-pipeline",
+    "input": "There's a bug in a CSV data processor at /tmp/data_pipeline_app/. The processor should filter orders where age >= 18 and return their summary, but it returns empty results or crashes even though the CSV has valid data.\n\nThe app structure:\n- /tmp/data_pipeline_app/processor.py\n- /tmp/data_pipeline_app/orders.csv\n\nRead the files, find the bug, fix only that specific issue, and verify the fix works. Do NOT rewrite the processor.",
+    "target": "bug fixed, processor correctly filters adults"
+  },
+  {
+    "id": "f16-cross-file-mismatch",
+    "input": "There's a bug in the project at /tmp/cross_file_app/. Running service.py causes an ImportError — it can't find the function it's trying to use from calculator.py.\n\nThe app structure:\n- /tmp/cross_file_app/calculator.py (defines compute_total)\n- /tmp/cross_file_app/service.py (imports calculate_total)\n\nRead both files, find why the import fails, make the smallest fix possible, and verify it works. Do NOT rewrite either file.",
+    "target": "bug fixed, import works, service runs correctly"
+  },
+  {
+    "id": "f16-cli-args",
+    "input": "There's a bug in a CLI tool at /tmp/cli_tool_app/. When you run: python cli.py input.txt output.txt\nit fails because the positional arguments are handled incorrectly — the help text says one thing but the code does another, so files get read/written in the wrong order.\n\nThe app structure:\n- /tmp/cli_tool_app/cli.py\n\nRead the file, find the argument handling bug, fix only that, and verify the fix. Do NOT rewrite the tool.",
+    "target": "bug fixed, CLI arguments work correctly"
   }
 ]

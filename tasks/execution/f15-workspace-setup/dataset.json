@@ -8,5 +8,20 @@
     "id": "f15-api-project",
     "input": "Create a Python project structure in /tmp/api_service/ with the following components:\n1. Create directory /tmp/api_service/\n2. Create /tmp/api_service/__init__.py with __version__ = \"2.0.0\"\n3. Create /tmp/api_service/app.py with a Flask app with routes: GET /hello (returns {\"message\": \"Hello\"}), GET /health (returns {\"status\": \"ok\"})\n4. Create /tmp/api_service/models.py with a Product dataclass: id: int, name: str, price: float\n5. Create /tmp/api_service/tests/test_app.py with test for /hello route returning \"Hello\" message\n6. Run the tests and report results\n\nWork in /tmp/api_service/. Create all files first, then run the tests.",
     "target": "project created, tests pass"
+  },
+  {
+    "id": "f15-cross-imports",
+    "input": "Create a Python project at /tmp/validlib/ where the files import from each other:\n\n1. Create /tmp/validlib/validators.py with a function is_valid_email(email: str) -> bool that returns True if the string has exactly one @ and at least one . after the @\n2. Create /tmp/validlib/models.py with a dataclass Contact with fields: name: str, email: str\n   Add a method is_email_valid(self) that calls is_valid_email from validators.py\n3. Create /tmp/validlib/__init__.py with __version__ = \"3.0.0\"\n4. Create /tmp/validlib/tests/test_contact.py that imports Contact from models, creates a contact with an invalid email, and asserts is_email_valid() returns False\n5. Run the tests and report the result\n\nThe files must import from each other correctly. Work in /tmp/validlib/.",
+    "target": "project created with cross-module imports, tests pass"
+  },
+  {
+    "id": "f15-partial-scaffold",
+    "input": "A partial Python project already exists at /tmp/partialproj/. It has:\n- /tmp/partialproj/__init__.py containing __version__ = \"1.5.0\"\n- /tmp/partialproj/helpers.py containing a function greet(name: str) -> str that returns f\"Hello, {name}\"\n\nDo NOT delete or recreate any existing files.\nComplete the project by adding:\n- /tmp/partialproj/models.py with a dataclass Item with fields: id: int, name: str, price: float\n- /tmp/partialproj/tests/test_helpers.py with a test that calls greet(\"World\") and asserts it returns \"Hello, World\"\n- Run the tests and report the result\n\nKeep the existing files unchanged.",
+    "target": "existing files preserved, new files added, tests pass"
+  },
+  {
+    "id": "f15-pyproject-package",
+    "input": "Create an installable Python package at /tmp/mathkit/ with:\n\n1. /tmp/mathkit/pyproject.toml with:\n   - name = \"mathkit\"\n   - version = \"0.1.0\"\n   - requires-python = \">=3.10\"\n2. /tmp/mathkit/src/mathkit/__init__.py with __version__ = \"0.1.0\" and a function add(a: int, b: int) -> int\n3. /tmp/mathkit/src/mathkit/ops.py with a function multiply(a: int, b: int) -> int\n4. /tmp/mathkit/tests/test_math.py that tests add() and multiply() with at least 2 cases each\n5. Run the tests and report the result\n\nUse a src layout with pyproject.toml. Work in /tmp/mathkit/.",
+    "target": "installable package with src layout, tests pass"
   }
 ]

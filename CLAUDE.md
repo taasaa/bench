@@ -54,7 +54,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **LiteLLM proxy config:** `~/dev/litellm/config.yaml` — edit this to add/remove models, set RPM limits (`rpm:` per deployment), or change `enforce_model_rate_limits`. This path is required constantly.
 
 ## Current Focus
-PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, analysis, universal). 4-pillar scoring: correctness + token efficiency + latency + cost. minimax m2.7 is the cost benchmark reference. Multi-shot solver + hybrid scoring (verify_sh + llm_judge) for 10 tasks. Rich fixtures for u17, u18, f23 extensions, f21 extensions. 398 tests passing.
+PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, analysis, universal). 4-pillar scoring: correctness + token efficiency + latency + cost. minimax m2.7 is the cost benchmark reference. Multi-shot solver + hybrid scoring (verify_sh + llm_judge) for 10 tasks. Rich fixtures for u17, u18, f23 extensions, f21 extensions. 405 tests passing. f15/f16/f17 expanded from 2 to 5 samples each.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
@@ -104,8 +104,7 @@ PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, 
 
 ## Next Steps
 - Storage rework — separate eval logs from baseline JSONs (logs/ vs baselines/)
-- U9 Context Coherence + U10 Refactoring Safety (need Docker infra)
-- F2 Test Output Parsing + F13 Multi-file Refactor (not yet implemented)
+- ~~F2, F13, U9, U10 — REDUNDANT, not building~~ (F2: Q1+F7 cover it; F13: F20+U17 cover it; U9: F23 covers it; U10: same as F13)
 - More model baselines for ratio scoring
 - LLM judge calibration (Cohen's Kappa ≥ 0.61)
 - Agent evals across all combinations (agent x mode) and compare via `bench compare`

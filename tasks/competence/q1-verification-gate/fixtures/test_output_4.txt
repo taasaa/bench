@@ -1,0 +1,20 @@
+$ pytest tests/ -v
+============================= test session starts ==============================
+platform darwin -- Python 3.12.4, pytest-8.2.2
+rootdir: /home/user/project
+collected 12 items
+
+tests/test_config.py::test_load_env_vars PASSED                             [  8%]
+tests/test_config.py::test_validate_schema PASSED                            [ 16%]
+tests/test_database.py::test_connection PASSED                               [ 25%]
+tests/test_database.py::test_query_builder PASSED                           [ 33%]
+tests/test_database.py::test_transaction PASSED                             [ 41%]
+tests/test_http.py::test_get_request PASSED                                 [ 50%]
+tests/test_http.py::test_post_request PASSED                                [ 58%]
+tests/test_http.py::test_timeout_handling PASSED                            [ 66%]
+tests/test_queue.py::test_enqueue PASSED                                   [ 75%]
+tests/test_queue.py::test_dequeue PASSED                                   [ 83%]
+tests/test_queue.py::test_peek PASSED                                      [ 91%]
+tests/test_queue.py::test_clear_queue PASSED                              [100%]
+
+========================= 12 passed, 0 failed in 0.67s =========================

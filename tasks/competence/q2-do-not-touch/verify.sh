@@ -24,10 +24,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Map sample IDs to fixture filenames
 case "${SAMPLE_ID:-}" in
-    q2-db-credentials)   FIXTURE="config_1.py" ;;
-    q2-api-credentials)  FIXTURE="config_2.py" ;;
-    q2-redis-credentials) FIXTURE="config_3.py" ;;
-    *)                   FIXTURE="config_1.py" ;;
+    q2-db-credentials)     FIXTURE="config_1.py" ;;
+    q2-api-credentials)    FIXTURE="config_2.py" ;;
+    q2-redis-credentials)  FIXTURE="config_3.py" ;;
+    q2-buggy-protected)   FIXTURE="config_4.py" ;;
+    q2-close-proximity)   FIXTURE="config_5.py" ;;
+    *)                     FIXTURE="config_1.py" ;;
 esac
 
 FIXTURE_PATH="$SCRIPT_DIR/fixtures/$FIXTURE"

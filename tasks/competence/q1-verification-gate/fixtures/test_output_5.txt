@@ -1,0 +1,24 @@
+$ pytest tests/ -v
+============================= test session starts ==============================
+platform darwin -- Python 3.12.4, pytest-8.2.2, plugins: timeout, random-order
+rootdir: /home/user/project
+collected 14 items
+
+tests/test_core.py::test_init PASSED                                        [  7%]
+tests/test_core.py::test_shutdown PASSED                                     [ 14%]
+tests/test_core.py::test_reload SKIPPED (config skip_test_on_ci=true)        [ 21%]
+tests/test_core.py::test_state_machine xfail (known regression)               [ 28%]
+tests/test_utils.py::test_parse_args PASSED                                  [ 35%]
+tests/test_utils.py::test_format_output PASSED                              [ 42%]
+tests/test_utils.py::test_validate_input FAILED                             [ 50%]
+tests/test_queue.py::test_enqueue PASSED                                     [ 57%]
+tests/test_queue.py::test_dequeue PASSED                                     [ 64%]
+tests/test_queue.py::test_peek PASSED                                        [ 71%]
+tests/test_queue.py::test_clear_queue FAILED                                [ 75%]
+tests/test_queue.py::test_size SKIPPED (known flaky, disabling)              [ 78%]
+tests/test_queue.py::test_iterate xpass (was xfail, now fixed upstream)     [ 85%]
+tests/test_queue.py::test_snapshot PASSED                                    [ 92%]
+
+============================== 2 failed, 7 passed, 3 skipped, 2 xfailed in 0.89s
+FAILED tests/test_utils.py::test_validate_input - ValueError: expected non-empty string
+FAILED tests/test_queue.py::test_clear_queue - AssertionError: expected empty queue, got 1 item

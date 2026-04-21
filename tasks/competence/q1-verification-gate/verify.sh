@@ -35,9 +35,8 @@ else
     echo "  Missing or incorrect pass count" >&2
 fi
 
-# Check 2: Response mentions "failed" with a number
-# Same flexibility as check 1
-if grep -qiE '([0-9]+[^0-9]*failed|failed[^0-9]*[0-9]+)' "$STDIN_FILE"; then
+# Check 2: Response mentions "failed" with a number, OR explicitly says "0 failed" / "no failures"
+if grep -qiE '([0-9]+[^0-9]*failed|failed[^0-9]*[0-9]+|0[^0-9]*failed|failed[^0-9]*0|no[^0-9]*fail)' "$STDIN_FILE"; then
     PASSED=$((PASSED + 1))
 else
     echo "  Missing or incorrect fail count" >&2
