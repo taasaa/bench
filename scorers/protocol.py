@@ -80,7 +80,7 @@ The actual ratio values stored in Score.metadata are NOT floored.
 This constant is a computational artifact for geometric/harmonic mean math only.
 """
 
-DEFAULT_NOISE_FLOOR = 5.0
+DEFAULT_NOISE_FLOOR = 1.0
 """Default latency noise floor in seconds.
 
 A latency ratio is suppressed (returns Score(value=None)) when
@@ -117,7 +117,7 @@ class TaskBudget:
     """Override for system default latency budget (30.0)."""
 
     noise_floor_seconds: float | None = None
-    """Override for DEFAULT_NOISE_FLOOR (5.0). Lower = more sensitive."""
+    """Override for DEFAULT_NOISE_FLOOR (1.0). Lower = more sensitive."""
 
     reference_cost_usd: float | None = None
     """Expected cost in USD for this task. Used by price_ratio_scorer as the reference cost."""

@@ -603,9 +603,10 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         if stats_.get("n_nan_time") == n and n > 0:
             anomalies.append(f"{task}: ALL NaN time_ratio — noise floor triggering incorrectly")
 
-        # Scorer-specific
+        # Scorer-specific: non-binary verify_sh scores are expected (n/total checks),
+        # not a scorer bug. Collect unique values for optional info (not an anomaly).
         if stats_.get("scorer_type") == "verify_sh" and not stats_.get("all_verify_sh_binary"):
-            anomalies.append(f"{task}: verify_sh score not binary (0.0/1.0) — scorer bug")
+            pass  # expected behavior, intentionally no anomaly entry
 
         # Judge quality
         for s in samples:
@@ -682,17 +683,10 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
                     judge_quality = "SOUND"
                     judge_notes = f"Avg explanation length: {avg_len:.0f} chars, {unique} unique"
 
-        # Score correctness
+        # Score correctness — verify_sh scores are always SOUND (n/total is by design)
         score_sound = "SOUND"
         score_notes = ""
-        if scorer_type == "verify_sh":
-            non_binary = [s for s in samples if s.correctness is not None and s.correctness not in (0.0, 1.0)]
-            if non_binary:
-                score_sound = "FLAWED"
-                score_notes = f"{len(non_binary)} non-binary scores"
-            else:
-                score_sound = "SOUND"
-        elif scorer_type in ("llm_judge", "hybrid_scorer"):
+        if scorer_type in ("llm_judge", "hybrid_scorer"):
             # Check judge explanation matches score
             mismatches = 0
             for s in samples:
