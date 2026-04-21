@@ -261,14 +261,14 @@ class TestInspectCLI:
         assert result.exit_code != 0
 
     def test_stats_unknown_model_exits_nonzero(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {}
             result = self.runner.invoke(inspect, ["stats", "--model", "openai/nonexistent"])
         assert result.exit_code != 0
         assert "No eval logs found" in result.output
 
     def test_stats_shows_data(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "f22_error_spiral": [_mock_sample(0.5, working_time=10.0)],
                 "add_tests": [_mock_sample(1.0, scorer_type="verify_sh", working_time=2.0)],
@@ -279,18 +279,18 @@ class TestInspectCLI:
         assert "add_tests" in result.output
 
     def test_compare_no_baseline_shows_new_task(self):
-        with patch("bench_cli.inspect._load_samples") as mock_s:
+        with patch("bench_cli.inspect.cli._load_samples") as mock_s:
             mock_s.return_value = {"task_a": [_mock_sample(0.5)]}
-            with patch("bench_cli.inspect._load_baseline") as mock_b:
+            with patch("bench_cli.inspect.cli._load_baseline") as mock_b:
                 mock_b.return_value = {}
                 result = self.runner.invoke(inspect, ["compare", "--model", "openai/test"])
         assert result.exit_code == 0
         assert "NEW TASK" in result.output
 
     def test_compare_significant_delta_flagged(self):
-        with patch("bench_cli.inspect._load_samples") as mock_s:
+        with patch("bench_cli.inspect.cli._load_samples") as mock_s:
             mock_s.return_value = {"task_a": [_mock_sample(0.8), _mock_sample(0.8)]}
-            with patch("bench_cli.inspect._load_baseline") as mock_b:
+            with patch("bench_cli.inspect.cli._load_baseline") as mock_b:
                 mock_b.return_value = {"task_a": 0.3}
                 result = self.runner.invoke(
                     inspect, ["compare", "--model", "openai/test", "--delta-threshold", "0.15"]
@@ -300,9 +300,9 @@ class TestInspectCLI:
         assert "+0.500" in result.output
 
     def test_compare_small_delta_not_flagged(self):
-        with patch("bench_cli.inspect._load_samples") as mock_s:
+        with patch("bench_cli.inspect.cli._load_samples") as mock_s:
             mock_s.return_value = {"task_a": [_mock_sample(0.5), _mock_sample(0.5)]}
-            with patch("bench_cli.inspect._load_baseline") as mock_b:
+            with patch("bench_cli.inspect.cli._load_baseline") as mock_b:
                 mock_b.return_value = {"task_a": 0.4}
                 result = self.runner.invoke(
                     inspect, ["compare", "--model", "openai/test", "--delta-threshold", "0.15"]
@@ -311,9 +311,9 @@ class TestInspectCLI:
         assert "SIGNIFICANT" not in result.output
 
     def test_compare_tight_threshold_flags_more(self):
-        with patch("bench_cli.inspect._load_samples") as mock_s:
+        with patch("bench_cli.inspect.cli._load_samples") as mock_s:
             mock_s.return_value = {"task_a": [_mock_sample(0.5), _mock_sample(0.5)]}
-            with patch("bench_cli.inspect._load_baseline") as mock_b:
+            with patch("bench_cli.inspect.cli._load_baseline") as mock_b:
                 mock_b.return_value = {"task_a": 0.4}
                 r_tight = self.runner.invoke(
                     inspect, ["compare", "--model", "openai/test", "--delta-threshold", "0.01"])
@@ -324,7 +324,7 @@ class TestInspectCLI:
         assert sig_tight >= sig_loose
 
     def test_deep_check_produces_full_report(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "f22_error_spiral": [
                     _mock_sample(0.5, scorer_type="llm_judge",
@@ -341,7 +341,7 @@ class TestInspectCLI:
         assert "f22_error_spiral" in result.output
 
     def test_deep_check_flags_all_zero(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "failing_task": [_mock_sample(0.0), _mock_sample(0.0)],
             }
@@ -350,7 +350,7 @@ class TestInspectCLI:
         assert "ALL-ZERO" in result.output
 
     def test_deep_check_flags_all_perfect(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "trivial_task": [_mock_sample(1.0), _mock_sample(1.0)],
             }
@@ -359,7 +359,7 @@ class TestInspectCLI:
         assert "ALL-PERFECT" in result.output
 
     def test_deep_check_flags_short_judge_explanation(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "judge_task": [
                     _mock_sample(0.5, scorer_type="llm_judge", judge_explanation="OK"),
@@ -371,7 +371,7 @@ class TestInspectCLI:
         assert "too short" in result.output
 
     def test_deep_check_flags_broken_judge(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "judge_task": [
                     _mock_sample(0.5, scorer_type="llm_judge", judge_explanation="OK"),
@@ -385,7 +385,7 @@ class TestInspectCLI:
 
     def test_deep_check_writes_output_file(self, tmp_path):
         out_file = tmp_path / "qa.md"
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {"task_a": [_mock_sample(0.5)]}
             result = self.runner.invoke(
                 inspect, ["deep-check", "--model", "openai/test", "--output", str(out_file)]
@@ -395,7 +395,7 @@ class TestInspectCLI:
         assert "# Deep QA Report" in out_file.read_text()
 
     def test_deep_check_verdict_sound_for_good_judge(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "good_task": [
                     _mock_sample(
@@ -409,7 +409,7 @@ class TestInspectCLI:
         assert "SOUND" in result.output or "Verdict Summary" in result.output
 
     def test_deep_check_non_binary_verify_sh_flagged(self):
-        with patch("bench_cli.inspect._load_samples") as mock:
+        with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "verify_task": [
                     _mock_sample(0.75, scorer_type="verify_sh"),

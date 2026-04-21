@@ -1,4 +1,4 @@
-"""Model card generation from eval logs.
+"""Core business logic for model card generation from eval logs.
 
 Scans logs/*.eval files, groups by model, deduplicates to latest run per task,
 and generates markdown model cards in results/ named by OpenRouter slug.
@@ -16,7 +16,7 @@ import click
 from bench_cli.pricing.litellm_config import resolve_openrouter_id, is_managed_model
 from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _RESULTS_DIR = _PROJECT_ROOT / "results"
 _LOGS_DIR = _PROJECT_ROOT / "logs"
 
@@ -24,22 +24,11 @@ _LOGS_DIR = _PROJECT_ROOT / "logs"
 # 2026-04-16T23-13-32-00-00_task-name_ID.eval
 _FNAME_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T[\d-]+)_(.+)_([A-Za-z0-9]+)\.eval")
 
-# Task-to-pillar mapping from directory structure
-_PILLAR_MAP: dict[str, str] = {}
-
 
 def _build_pillar_map() -> dict[str, str]:
-    """Scan tasks/ directory to build task_name → pillar mapping."""
-    if _PILLAR_MAP:
-        return _PILLAR_MAP
-    tasks_root = _PROJECT_ROOT / "tasks"
-    for pillar_dir in tasks_root.iterdir():
-        if not pillar_dir.is_dir():
-            continue
-        for task_dir in pillar_dir.iterdir():
-            if task_dir.is_dir() and (task_dir / "task.py").is_file():
-                _PILLAR_MAP[task_dir.name] = pillar_dir.name
-    return _PILLAR_MAP
+    """Scan tasks/ directory to build task_name -> pillar mapping."""
+    from bench_cli.inspect.core import _load_pillar_map
+    return _load_pillar_map()
 
 
 def _slug_from_alias(bench_alias: str) -> str:
@@ -493,7 +482,7 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     for task_name in sorted(eval_tasks.keys()):
         td = eval_tasks[task_name]
         s = td["scores"]
-        pillar = _PILLAR_MAP.get(task_name, "?")
+        pillar = _build_pillar_map().get(task_name, "?")
 
         # Determine scorer type
         scorer = "--"
@@ -569,32 +558,3 @@ def generate_card_for_model(bench_alias: str, log_dir: Path | None = None) -> Pa
     if bench_alias not in model_data:
         return None
     return generate_card(bench_alias, model_data[bench_alias], log_dir)
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-@click.group("results")
-def results() -> None:
-    """Generate and manage model result cards."""
-
-
-@results.command("generate")
-@click.option("--log-dir", default="logs", show_default=True, type=click.Path(), help="Eval log directory.")
-def generate_cmd(log_dir: str) -> None:
-    """Generate model cards from all eval logs."""
-    log_path = Path(log_dir)
-    if not log_path.is_dir():
-        click.echo(f"Error: {log_dir} is not a directory.", err=True)
-        raise SystemExit(1)
-
-    click.echo("Generating model cards from eval logs...")
-    generated = generate_all_cards(log_path)
-
-    if generated:
-        click.echo(f"\nGenerated {len(generated)} model card(s):")
-        for p in generated:
-            click.echo(f"  {p}")
-    else:
-        click.echo("No eval logs found. Run some evaluations first.")

@@ -64,7 +64,7 @@ PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, 
 - **Agent solvers:** `bench_cli/solvers/local_agent.py` (subprocess) and `docker_agent.py` (inspect-swe wrapper)
 - **Agent bridge:** `sandbox_agent_bridge()` proxies CLI agent API calls, captures every token/tool call
 - **Sandboxing:** Inspect native — Docker, K8s, local. Phase 1: local. Phase 2+: Docker.
-- **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh`
+- **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh` — each command is a Python package (`bench_cli/{run,compare,inspect,results}/`) with `cli.py` (Click adapters) + `core.py` (business logic)
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
 - **Tiers:** quick (verification: smoke + agent_smoke) + full (36 tasks: 9 competence / 10 execution / 7 analysis / 8 universal / 2 smoke)

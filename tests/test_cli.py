@@ -159,8 +159,8 @@ class TestRunIntegration:
                 ),
             )
             mock_eval.return_value = [fake_log]
-            with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run._check_price_gate"):
+            with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+                with patch("bench_cli.run.cli._check_price_gate"):
                     result = runner.invoke(
                         cli, ["run", "--model", "openai/default", "--tier", "quick"]
                     )
@@ -194,7 +194,7 @@ class TestRunIntegration:
                 results=None,
             )
             mock_eval.return_value = [error_log]
-            with patch("bench_cli.run._resolve_task", return_value=fake_task):
+            with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
                 result = runner.invoke(cli, ["run", "--tier", "quick"])
 
         assert result.exit_code == 1
@@ -207,7 +207,7 @@ class TestRunIntegration:
         monkeypatch.setenv("OPENROUTER_API_KEY", "")
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
-            with patch("bench_cli.run._resolve_agent_solver") as mock_solver:
+            with patch("bench_cli.run.cli._resolve_agent_solver") as mock_solver:
                 from types import SimpleNamespace
 
                 mock_solver.return_value = "fake_solver"
@@ -217,8 +217,8 @@ class TestRunIntegration:
                     results=None,
                 )
                 mock_eval.return_value = [fake_log]
-                with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                    with patch("bench_cli.run._check_price_gate"):
+                with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+                    with patch("bench_cli.run.cli._check_price_gate"):
                         result = runner.invoke(
                             cli, ["run", "--agent", "claude", "--tier", "quick"]
                         )
@@ -417,8 +417,8 @@ class TestConcurrencyFlags:
                 ),
             )
             mock_eval.return_value = [fake_log]
-            with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run._check_price_gate"):
+            with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+                with patch("bench_cli.run.cli._check_price_gate"):
                     result = runner.invoke(
                         cli, ["run", "--tier", "quick", "--concurrency", "4"]
                     )
@@ -444,8 +444,8 @@ class TestConcurrencyFlags:
                 ),
             )
             mock_eval.return_value = [fake_log]
-            with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run._check_price_gate"):
+            with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+                with patch("bench_cli.run.cli._check_price_gate"):
                     result = runner.invoke(
                         cli, ["run", "--tier", "quick", "--sequential"]
                     )
@@ -472,8 +472,8 @@ class TestConcurrencyFlags:
                 ),
             )
             mock_eval.return_value = [fake_log]
-            with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run._check_price_gate"):
+            with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+                with patch("bench_cli.run.cli._check_price_gate"):
                     result = runner.invoke(
                         cli,
                         [
@@ -508,8 +508,8 @@ class TestConcurrencyFlags:
                 ),
             )
             mock_eval.return_value = [fake_log]
-            with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run._check_price_gate"):
+            with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+                with patch("bench_cli.run.cli._check_price_gate"):
                     result = runner.invoke(
                         cli, ["run", "--tier", "quick"]
                     )
@@ -536,8 +536,8 @@ class TestConcurrencyFlags:
                 ),
             )
             mock_eval.return_value = [fake_log]
-            with patch("bench_cli.run._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run._check_price_gate"):
+            with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+                with patch("bench_cli.run.cli._check_price_gate"):
                     result = runner.invoke(
                         cli, ["run", "--tier", "quick", "--concurrency", "1"]
                     )

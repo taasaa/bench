@@ -194,10 +194,11 @@ class TestGenerateCard:
         assert result is None
 
     def test_generates_card_file(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("bench_cli.results._RESULTS_DIR", tmp_path)
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
         # Clear pillar map cache so it rebuilds from real tasks/
-        import bench_cli.results as mod
-        mod._PILLAR_MAP.clear()
+        import bench_cli.inspect.core as _ic
+        _ic._PILLAR_MAP.clear()
+        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data = {
             "tasks": {
@@ -227,9 +228,10 @@ class TestGenerateCard:
         assert "FREE" in content  # qwen-local is free
 
     def test_smoke_tasks_filtered(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("bench_cli.results._RESULTS_DIR", tmp_path)
-        import bench_cli.results as mod
-        mod._PILLAR_MAP.clear()
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+        import bench_cli.inspect.core as _ic
+        _ic._PILLAR_MAP.clear()
+        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data = {
             "tasks": {
@@ -247,9 +249,10 @@ class TestGenerateCard:
         assert "add-tests" in content
 
     def test_card_contains_all_sections(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("bench_cli.results._RESULTS_DIR", tmp_path)
-        import bench_cli.results as mod
-        mod._PILLAR_MAP.clear()
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+        import bench_cli.inspect.core as _ic
+        _ic._PILLAR_MAP.clear()
+        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data = {
             "tasks": {
@@ -266,9 +269,10 @@ class TestGenerateCard:
         assert "llm_judge" in content  # scorer type
 
     def test_overwrite_on_rerun(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("bench_cli.results._RESULTS_DIR", tmp_path)
-        import bench_cli.results as mod
-        mod._PILLAR_MAP.clear()
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+        import bench_cli.inspect.core as _ic
+        _ic._PILLAR_MAP.clear()
+        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data_v1 = {
             "tasks": {"add-tests": {"date": "2026-04-19", "samples": 4, "input_tokens": 500, "output_tokens": 3000, "scores": {"verify_sh": 0.5}}},

@@ -52,10 +52,6 @@ def _recalc_cost(model_alias: str, input_tokens: int, output_tokens: int) -> flo
     return input_tokens * inp_price / 1_000_000 + output_tokens * out_price / 1_000_000
 
 
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
-
 @dataclass
 class PillarScores:
     """Score breakdown for one (task, model) pair — averaged over samples."""
@@ -82,10 +78,6 @@ class CompareData:
     tasks: list[str] = field(default_factory=list)
     models: list[str] = field(default_factory=list)
 
-
-# ---------------------------------------------------------------------------
-# Score extraction helpers
-# ---------------------------------------------------------------------------
 
 _RE_EFF_RATIO = re.compile(r"efficiency_ratio=([\d.]+)")
 _RE_LAT_RATIO = re.compile(r"latency_ratio=([\d.]+)")
@@ -184,10 +176,6 @@ def _is_suppressed(score: object) -> bool:
         return score.metadata.get("suppressed", False)
     return False
 
-
-# ---------------------------------------------------------------------------
-# Log loading
-# ---------------------------------------------------------------------------
 
 def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
     """Read eval logs and extract pillar-scored data.
@@ -326,10 +314,6 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
     return CompareData(matrix=matrix, tasks=tasks, models=models)
 
 
-# ---------------------------------------------------------------------------
-# Formatting helpers
-# ---------------------------------------------------------------------------
-
 def _short_model(name: str) -> str:
     """Strip 'openai/' prefix for display."""
     return name.removeprefix("openai/")
@@ -395,10 +379,6 @@ def _geometric_mean(vals: list[float]) -> float:
     log_sum = math.fsum(math.log(v) for v in vals)
     return math.exp(log_sum / len(vals))
 
-
-# ---------------------------------------------------------------------------
-# Table formatting
-# ---------------------------------------------------------------------------
 
 # Columns: TASK | CORRECT | TOK_RATIO | TIME_RATIO | TOKENS | TIME | COST_RATIO | AVG COST
 _COL_HEADERS = ["CORRECT", "TOK_RATIO", "TIME_RATIO", "TOKENS", "TIME", "COST_RATIO", "AVG COST"]
@@ -564,41 +544,3 @@ def format_json(data: CompareData) -> str:
                     "avg_cost_usd": round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None,
                 })
     return json.dumps(rows, indent=2)
-
-
-# ---------------------------------------------------------------------------
-# CLI command
-# ---------------------------------------------------------------------------
-
-import click
-
-
-@click.command()
-@click.option(
-    "--log-dir",
-    default="logs",
-    show_default=True,
-    type=click.Path(),
-    help="Directory containing EvalLog files.",
-)
-@click.option(
-    "--latest",
-    type=int,
-    default=None,
-    help="Limit to the last N runs (default: all).",
-)
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Output results as JSON.",
-)
-def compare(log_dir: str, latest: int | None, as_json: bool) -> None:
-    """Compare evaluation results across models with pillar breakdowns."""
-    data = load_compare_data(log_dir, latest)
-
-    if as_json:
-        click.echo(format_json(data))
-    else:
-        click.echo(format_pillar_table(data, "BENCHMARK RESULTS"))
