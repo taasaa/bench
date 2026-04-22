@@ -111,6 +111,16 @@ lint.ignore = [
     "RUF059", # unpacked `rc`/`stderr` from shell calls in tests are intentionally unused
     "RUF012", # mutable default in pytest parametrize — harmless, mark as ClassVar if needed
 ]
+# Discriminative module — data classes with intentional math notation (sigma/multiplication)
+"bench_cli/discriminative/*" = [
+    "D101",   # dataclasses and enums are self-documenting
+    "D102",   # properties are obvious from field names
+    "ANN001", # private helpers take Inspect eval log objects — hard to annotate
+    "RUF001", # sigma symbol is standard in statistics notation
+    "RUF002", # sigma in docstrings is intentional
+    "RUF003", # multiplication sign is standard in formulas
+    "PERF401", # list.extend over simple loops is micro-optimization
+]
 # CLI bootstrap — sys.path.insert() before imports is intentional
 "bench_cli/main.py" = ["E402"]
 "bench_cli/compare.py" = ["E402"]
