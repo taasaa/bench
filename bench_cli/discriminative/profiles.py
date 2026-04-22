@@ -5,6 +5,7 @@ import statistics
 from typing import TYPE_CHECKING
 
 from bench_cli.discriminative.ci import agresti_coull_ci, c_is_significant
+from bench_cli.discriminative.gates import format_gate_results
 from bench_cli.discriminative.types import (
     ClusterDelta,
     ClusterScore,
@@ -16,6 +17,61 @@ from bench_cli.discriminative.types import (
 
 if TYPE_CHECKING:
     pass
+
+
+# ---------------------------------------------------------------------------
+# Cronbach's Alpha — cluster coherence validation
+# ---------------------------------------------------------------------------
+
+def cronbach_alpha(item_scores: list[list[float]]) -> float | None:
+    """Compute Cronbach's alpha for a set of items (tasks) across subjects (samples).
+
+    item_scores: list of per-item score lists. Each inner list is one "item"
+    (task), containing scores across subjects (samples).
+    Alpha < 0.5 → items don't cohere, cluster may need redefinition.
+
+    Formula: alpha = (k / (k-1)) * (1 - sum(var_i) / var_total)
+    where k = number of items, var_i = variance of item i, var_total = variance of total scores.
+
+    Returns None if fewer than 2 items or 2 subjects.
+    """
+    k = len(item_scores)
+    if k < 2:
+        return None
+
+    # Each inner list must have at least 2 scores for variance
+    n_list = [len(scores) for scores in item_scores]
+    if min(n_list) < 2:
+        return None
+
+    # Compute variance of each item
+    item_variances: list[float] = []
+    for scores in item_scores:
+        if len(scores) >= 2:
+            item_variances.append(statistics.variance(scores))
+        else:
+            item_variances.append(0.0)
+
+    # Compute total scores per subject
+    total_scores: list[float] = []
+    max_n = max(n_list)
+    for i in range(max_n):
+        total = sum(scores[i] for scores in item_scores if i < len(scores))
+        total_scores.append(total)
+
+    if len(total_scores) < 2:
+        return None
+
+    var_total = statistics.variance(total_scores)
+    sum_item_var = sum(item_variances)
+
+    if var_total == 0:
+        # All items have identical scores across subjects — no coherence
+        return 0.0
+
+    alpha = (k / (k - 1)) * (1 - sum_item_var / var_total)
+    # Clamp to [0, 1] — alpha > 1 is mathematically possible (perfect correlation)
+    return max(0.0, min(1.0, alpha))
 
 
 N_SAMPLES = 5  # samples per task in eval
@@ -221,6 +277,14 @@ def format_profile(profile: SubjectProfile) -> str:
     if profile.tool_calls_avg is not None:
         lines.append(f"TOOL CALLS: {profile.tool_calls_avg:.1f} avg/sample")
     lines.append("")
+
+    # Gate results — delegate to gates module for consistent formatting
+    if profile.gate_results:
+        lines.append("SAFETY GATES:")
+        gate_lines = format_gate_results(profile.gate_results).split("\n")
+        # Skip the "SAFETY GATES:" header (already printed)
+        lines.extend(gate_lines[1:])
+        lines.append("")
 
     # Verdict
     lines.append(f"VERDICT: {profile.verdict}")

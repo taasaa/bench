@@ -182,10 +182,15 @@ def run(
     for s in specs:
         click.echo(f"  • {s}")
 
-    # 2. Resolve solver.
+    # 2. Resolve solver and sandbox.
     solver = None
+    eval_sandbox = None
     if agent is not None:
         solver = _resolve_agent_solver(agent, agent_mode)
+        # Docker agent modes require sandbox="docker" on eval() so inspect-swe
+        # can inject tools and manage container lifecycle for every task.
+        if agent_mode in ("docker", "harness"):
+            eval_sandbox = "docker"
 
     # 0. Convert spec strings to Task objects with bench_task_dir injected.
     # inspect_eval runs scorers inside an async event loop where stack introspection
@@ -208,6 +213,7 @@ def run(
                 tasks=[tasks_with_metadata[i - 1]],
                 model=bench_alias,
                 solver=solver,
+                sandbox=eval_sandbox,
                 log_dir=log_dir,
                 fail_on_error=0.5,
                 retry_on_error=2,
@@ -233,6 +239,7 @@ def run(
             tasks=tasks_with_metadata,
             model=bench_alias,
             solver=solver,
+            sandbox=eval_sandbox,
             log_dir=log_dir,
             fail_on_error=0.5,
             retry_on_error=2,

@@ -59,7 +59,7 @@ def docker_agent(agent_name: str, harness: bool = False) -> object:
     if factory is None:
         raise ValueError(f"No Docker solver for agent {agent_name!r}")
 
-    kwargs = {}
+    kwargs = {"cwd": "workspace"}
     if harness:
         instructions = _load_project_instructions()
         if instructions:

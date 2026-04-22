@@ -284,6 +284,13 @@ def _resolve_task(spec: str) -> Task:
             fdir = fixture_dir_for(task_dir, str(fixture_id))
             if fdir:
                 sample.metadata["fixture_path"] = str(fdir)
+                # Copy fixture files into sample.files so Inspect AI's sandbox
+                # init writes them into the Docker container.  This makes fixture
+                # files available to agent solvers (which bypass the multishot
+                # solver and its read_file/list_directory tools).
+                if sample.files is None:
+                    sample.files = {}
+                sample.files["workspace"] = str(fdir)
 
     # Merge generous timeout into task config.  Local models behind LiteLLM
     # can be slow -- a single generate() on a complex prompt may take 2-3

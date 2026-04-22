@@ -102,6 +102,7 @@ class SubjectProfile:
     latency_avg: float | None  # seconds
     tool_calls_avg: float | None  # only for agents
     verdict: str
+    gate_results: list[GateResult] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,7 @@ class PipelineConfig:
     clusters_yaml: str = "bench_cli/discriminative/config/clusters.yaml"
     ci_level: float = 0.90
     discrimination_threshold: float = 0.0
+    gates_yaml: str = "bench_cli/discriminative/config/gates.yaml"
 
 
 # ---------------------------------------------------------------------------

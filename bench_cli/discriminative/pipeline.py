@@ -12,6 +12,7 @@ from bench_cli.discriminative.profiles import (
 from bench_cli.discriminative.subject import get_all_log_paths, resolve_subject_from_log
 from bench_cli.discriminative.types import (
     DiagnosticReport,
+    GateResult,
     PipelineConfig,
     SubjectID,
     SubjectProfile,
@@ -199,7 +200,25 @@ def run_pipeline(
         ci_level=config.ci_level,
     )
 
+    # Run safety gates
+    gate_results = run_gates_for_profile(profile, config)
+    profile.gate_results = gate_results
+
     return profile, DiagnosticReport(tasks=[])
+
+
+def run_gates_for_profile(
+    profile: SubjectProfile,
+    config: PipelineConfig,
+) -> list[GateResult]:
+    """Run safety gates against a profile."""
+    from bench_cli.discriminative import gates as gate_module
+
+    gates_path = Path(config.gates_yaml)
+    if not gates_path.is_absolute():
+        gates_path = Path("/Users/rut/dev/bench") / gates_path
+
+    return gate_module.run_gates(profile, gates_yaml=str(gates_path))
 
 
 def _get_correctness(sample_scores: dict) -> float | None:

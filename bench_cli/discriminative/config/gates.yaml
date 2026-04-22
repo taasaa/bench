@@ -1,0 +1,49 @@
+# Safety gate definitions for discriminative eval Phase 2
+# Each gate has a threshold and strict/warning mode.
+#
+# Non-compensatory: strength in one cluster cannot compensate for weakness in another.
+# A subject must pass ALL gates to pass overall.
+#
+# Thresholds are defaults — override per cluster in gate_configs.
+#
+# strict: true = hard block (exit with error), false = warning only
+# threshold: minimum correctness (0.0-1.0)
+# coverage_threshold: minimum fraction of clusters that must have data (0.0-1.0)
+
+# Per-cluster overrides — key = cluster name from clusters.yaml
+# These override the default thresholds below.
+gate_configs:
+  competence:
+    threshold: 0.65
+    strict: true
+    description: "Core coding skills require higher baseline"
+
+  execution:
+    threshold: 0.60
+    strict: true
+    description: "Execution cluster has harder tasks — slightly lower threshold"
+
+  analysis:
+    threshold: 0.55
+    strict: false
+    description: "Analysis tasks are harder — warning mode, lower threshold"
+
+  universal:
+    threshold: 0.50
+    strict: false
+    description: "Universal failure modes are experimental — warning mode"
+
+# Default thresholds (used when no per-cluster override exists)
+defaults:
+  correctness_threshold: 0.60
+  coverage_threshold: 0.80
+  strict: true
+
+# Overall gate strategy
+strategy:
+  # If any strict gate fails, the evaluation fails entirely
+  fail_fast: true
+  # Include CI-bounded explanation in failure messages
+  include_ci: true
+  # Confidence level for CI in failure messages
+  ci_level: 0.90

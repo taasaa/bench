@@ -998,3 +998,236 @@ class TestSubjectHelpers:
     def test_infer_agent_mode_local(self):
         from bench_cli.discriminative.subject import _infer_agent_mode
         assert _infer_agent_mode(None, {}) == "local"
+
+
+# ---------------------------------------------------------------------------
+# gates.py -- non-compensatory safety gates
+# ---------------------------------------------------------------------------
+
+class TestCorrectnessGate:
+    """correctness_gate: all clusters must exceed threshold."""
+
+    def test_pass_when_all_above_threshold(self):
+        from bench_cli.discriminative.gates import correctness_gate
+
+        profile = _make_profile(correctness=[0.8, 0.7, 0.7, 0.7])
+        result = correctness_gate(profile, threshold=0.60)
+        assert result.passed is True
+        assert result.score >= 0.60
+
+    def test_fail_when_below_threshold(self):
+        from bench_cli.discriminative.gates import correctness_gate
+
+        profile = _make_profile(correctness=[0.8, 0.5, 0.5, 0.5])
+        result = correctness_gate(profile, threshold=0.60)
+        assert result.passed is False
+        assert len(result.failed_tasks) > 0
+
+    def test_strict_vs_warning_message(self):
+        from bench_cli.discriminative.gates import correctness_gate
+
+        profile = _make_profile(correctness=[0.8, 0.4, 0.4, 0.4])
+        strict_result = correctness_gate(profile, threshold=0.60, strict=True)
+        warn_result = correctness_gate(profile, threshold=0.60, strict=False)
+        assert "FAILED" in strict_result.message or "FAIL" in strict_result.message
+        assert "WARNING" in warn_result.message
+
+
+class TestCoverageGate:
+    """coverage_gate: all clusters must have data."""
+
+    def test_pass_when_all_clusters_have_data(self):
+        from bench_cli.discriminative.gates import coverage_gate
+        profile = _make_profile(correctness=[0.8, 0.7, 0.7, 0.7])
+        result = coverage_gate(profile, threshold=0.80)
+        assert result.passed is True
+
+    def test_fail_when_no_data(self):
+        from bench_cli.discriminative.gates import coverage_gate
+        from bench_cli.discriminative.types import ClusterScore, SubjectProfile
+        profile = SubjectProfile(
+            subject_id=types.SubjectID(model="test"),
+            cluster_scores=[
+                ClusterScore(name="competence", correct=0.0, token_ratio=0.0, time_ratio=0.0,
+                            cost_ratio=0.0, ci_low=0.0, ci_high=0.0, task_count=0),
+                ClusterScore(name="execution", correct=0.0, token_ratio=0.0, time_ratio=0.0,
+                            cost_ratio=0.0, ci_low=0.0, ci_high=0.0, task_count=0),
+                ClusterScore(name="analysis", correct=0.0, token_ratio=0.0, time_ratio=0.0,
+                            cost_ratio=0.0, ci_low=0.0, ci_high=0.0, task_count=0),
+                ClusterScore(name="universal", correct=0.0, token_ratio=0.0, time_ratio=0.0,
+                            cost_ratio=0.0, ci_low=0.0, ci_high=0.0, task_count=0),
+            ],
+            strengths=[], weaknesses=[],
+            non_discriminative_tasks=[],
+            cost_per_sample=None, latency_avg=None, tool_calls_avg=None, verdict="",
+            gate_results=[],
+        )
+        result = coverage_gate(profile, threshold=0.80)
+        assert result.passed is False
+
+
+class TestRunGates:
+    """run_gates applies all gates to a profile."""
+
+    def test_run_default_gates(self):
+        from bench_cli.discriminative.gates import run_gates
+        profile = _make_profile(correctness=[0.8, 0.7, 0.7, 0.7])
+        results = run_gates(profile)
+        assert len(results) == 2  # correctness_gate + coverage_gate
+        names = {r.name for r in results}
+        assert "correctness_gate" in names
+        assert "coverage_gate" in names
+
+
+class TestFormatGateResults:
+    """format_gate_results renders gate results."""
+
+    def test_pass_format(self):
+        from bench_cli.discriminative.gates import format_gate_results
+        from bench_cli.discriminative.types import GateResult
+        results = [GateResult(name="correctness_gate", passed=True, threshold=0.60, score=0.75)]
+        output = format_gate_results(results)
+        assert "PASS" in output
+        assert "correctness_gate" in output
+
+    def test_fail_format(self):
+        from bench_cli.discriminative.gates import format_gate_results
+        from bench_cli.discriminative.types import GateResult
+        results = [GateResult(name="correctness_gate", passed=False, threshold=0.60, score=0.40)]
+        output = format_gate_results(results)
+        assert "FAIL" in output
+
+
+# ---------------------------------------------------------------------------
+# pareto.py -- Pareto frontier computation
+# ---------------------------------------------------------------------------
+
+class TestComputeQuality:
+    """compute_quality: geometric mean of cluster correctness scores."""
+
+    def test_perfect_scores(self):
+        from bench_cli.discriminative.pareto import compute_quality
+        profile = _make_profile(correctness=[1.0, 1.0, 1.0, 1.0])
+        assert abs(compute_quality(profile) - 1.0) < 1e-9
+
+    def test_zero_cluster_drops_quality(self):
+        from bench_cli.discriminative.pareto import compute_quality
+        profile = _make_profile(correctness=[1.0, 0.0, 1.0, 1.0])
+        # Geometric mean of [1, 0, 1, 1] = 0, product is 0
+        assert compute_quality(profile) == 0.0
+
+    def test_all_zero(self):
+        from bench_cli.discriminative.pareto import compute_quality
+        profile = _make_profile(correctness=[0.0, 0.0, 0.0, 0.0])
+        assert compute_quality(profile) == 0.0
+
+    def test_mixed_scores(self):
+        from bench_cli.discriminative.pareto import compute_quality
+        profile = _make_profile(correctness=[0.8, 0.6, 0.6, 0.6])
+        q = compute_quality(profile)
+        assert 0.0 < q < 1.0
+
+
+class TestParetoFrontier:
+    """compute_pareto_frontier marks undominated subjects."""
+
+    def test_free_model_not_dominated_by_paid(self):
+        from bench_cli.discriminative.pareto import compute_pareto_frontier
+
+        free_profile = _make_profile(correctness=[0.8, 0.8, 0.8, 0.8], cost=0.0)
+        paid_profile = _make_profile(correctness=[0.9, 0.9, 0.9, 0.9], cost=0.01)
+
+        points = compute_pareto_frontier([free_profile, paid_profile])
+        free_pt = next(p for p in points if p.is_free)
+        paid_pt = next(p for p in points if not p.is_free)
+        # Free is undominated in its free tier, paid is undominated in paid tier
+        assert free_pt.dominated is False  # free models don't dominate each other if quality is lower
+        assert paid_pt.dominated is False  # paid model is best on quality in paid tier
+
+    def test_best_quality_is_undominated(self):
+        from bench_cli.discriminative.pareto import compute_pareto_frontier
+
+        low = _make_profile(correctness=[0.5, 0.5, 0.5, 0.5], cost=0.01)
+        high = _make_profile(correctness=[0.9, 0.9, 0.9, 0.9], cost=0.01)
+
+        points = compute_pareto_frontier([low, high])
+        high_pt = next(p for p in points if p.quality > 0.8)
+        assert high_pt.dominated is False
+
+    def test_format_pareto(self):
+        from bench_cli.discriminative.pareto import compute_pareto_frontier, format_pareto_frontier
+
+        p1 = _make_profile(correctness=[0.9, 0.9, 0.9, 0.9], cost=0.01)
+        p2 = _make_profile(correctness=[0.5, 0.5, 0.5, 0.5], cost=0.005)
+        points = compute_pareto_frontier([p1, p2])
+        output = format_pareto_frontier(points)
+        assert "PARETO" in output
+        assert "UNDOMINATED" in output or "undominated" in output.lower()
+
+
+class TestCronbachAlpha:
+    """cronbach_alpha: cluster coherence validation."""
+
+    def test_good_alpha(self):
+        # Items (tasks) with similar scores across subjects → high alpha
+        # 3 tasks, 5 "subjects" (sample runs)
+        from bench_cli.discriminative.profiles import cronbach_alpha
+        item_scores = [
+            [0.90, 0.95, 0.88, 0.92, 0.90],
+            [0.79, 0.85, 0.78, 0.82, 0.80],
+            [0.95, 0.99, 0.93, 0.97, 0.95],
+        ]
+        alpha = cronbach_alpha(item_scores)
+        assert alpha is not None
+        assert alpha > 0.5  # tasks cohere
+
+    def test_low_alpha(self):
+        # Items with very different patterns → low alpha
+        from bench_cli.discriminative.profiles import cronbach_alpha
+        item_scores = [
+            [1.0, 0.0, 1.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0, 0.0, 1.0],
+        ]
+        alpha = cronbach_alpha(item_scores)
+        assert alpha is not None
+        assert alpha < 0.5
+
+    def test_too_few_items(self):
+        from bench_cli.discriminative.profiles import cronbach_alpha
+        alpha = cronbach_alpha([[1.0, 0.0]])
+        assert alpha is None  # need ≥2 items
+
+    def test_too_few_subjects(self):
+        from bench_cli.discriminative.profiles import cronbach_alpha
+        item_scores = [[1.0], [0.0]]  # only 1 subject
+        alpha = cronbach_alpha(item_scores)
+        assert alpha is None
+
+
+# ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+def _make_profile(correctness: list[float], cost: float | None = None) -> types.SubjectProfile:
+    """Create a SubjectProfile with given per-cluster correctness scores."""
+    from bench_cli.discriminative.types import ClusterScore, SubjectProfile
+    cluster_names = ["competence", "execution", "analysis", "universal"]
+    cluster_scores = []
+    for i, name in enumerate(cluster_names):
+        score = correctness[i] if i < len(correctness) else 0.8
+        cluster_scores.append(ClusterScore(
+            name=name, correct=score, token_ratio=1.0, time_ratio=1.0,
+            cost_ratio=1.0, ci_low=0.0, ci_high=1.0, task_count=5,
+        ))
+    return SubjectProfile(
+        subject_id=types.SubjectID(model="test-model"),
+        cluster_scores=cluster_scores,
+        strengths=[], weaknesses=[],
+        non_discriminative_tasks=[],
+        cost_per_sample=cost,
+        latency_avg=10.0,
+        tool_calls_avg=None,
+        verdict="Test profile",
+        gate_results=[],
+    )
