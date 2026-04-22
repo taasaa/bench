@@ -5,16 +5,11 @@ from pathlib import Path
 
 import yaml
 
-from bench_cli.discriminative.diagnostics import run_diagnostics, format_diagnostic_summary
-from bench_cli.discriminative.filters import compute_task_discrimination, flag_non_discriminative
 from bench_cli.discriminative.profiles import (
     build_profile,
-    compare_subjects,
-    format_profile,
 )
 from bench_cli.discriminative.subject import get_all_log_paths, resolve_subject_from_log
 from bench_cli.discriminative.types import (
-    CompareResult,
     DiagnosticReport,
     PipelineConfig,
     SubjectID,
@@ -51,19 +46,22 @@ def _extract_pillar_data(sample) -> dict[str, float]:
     if sample.scores:
         tr = sample.scores.get("token_ratio_scorer")
         if tr is not None:
-            val = getattr(tr, "value", None) or (float(tr) if isinstance(tr, (int, float)) else None)
+            raw = getattr(tr, "value", None)
+            val = raw if raw is not None else (float(tr) if isinstance(tr, (int, float)) else None)
             if val is not None:
                 result["token_ratio"] = float(val)
 
         lr = sample.scores.get("time_ratio_scorer")
         if lr is not None:
-            val = getattr(lr, "value", None) or (float(lr) if isinstance(lr, (int, float)) else None)
+            raw = getattr(lr, "value", None)
+            val = raw if raw is not None else (float(lr) if isinstance(lr, (int, float)) else None)
             if val is not None:
                 result["time_ratio"] = float(val)
 
         pr = sample.scores.get("price_ratio_scorer")
         if pr is not None:
-            val = getattr(pr, "value", None) or (float(pr) if isinstance(pr, (int, float)) else None)
+            raw = getattr(pr, "value", None)
+            val = raw if raw is not None else (float(pr) if isinstance(pr, (int, float)) else None)
             if val is not None and not math.isnan(float(val)):
                 result["cost_ratio"] = float(val)
 

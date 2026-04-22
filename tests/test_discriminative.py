@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
-from bench_cli.discriminative import ci, types, filters, diagnostics, profiles, pipeline
-
+from bench_cli.discriminative import ci, diagnostics, filters, pipeline, profiles, types
 
 # ---------------------------------------------------------------------------
 # ci.py -- Agresti-Coull confidence intervals
@@ -803,7 +801,6 @@ class TestLoadClustersYaml:
     """load_clusters_yaml reads cluster definitions from YAML."""
 
     def test_dict_format(self, tmp_path):
-        import yaml
         clusters_file = tmp_path / "clusters.yaml"
         clusters_file.write_text("""
 competence:
@@ -891,7 +888,6 @@ class TestPipelineHelpers:
             def __init__(self, value):
                 self.value = value
 
-        import math
         scores = {"hybrid_scorer": FakeScore(float("nan"))}
         result = pipeline._get_correctness(scores)
         assert result is None
@@ -942,7 +938,6 @@ class TestPipelineHelpers:
     def test_extract_pillar_data_nan_cost_skipped(self):
         """NaN cost_ratio values are excluded."""
 
-        import math
 
         class FakeScore:
             def __init__(self, value):

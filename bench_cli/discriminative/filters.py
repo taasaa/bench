@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def compute_task_discrimination(
-    all_scores: dict["SubjectID", dict[str, float]],
+    all_scores: dict[SubjectID, dict[str, float]],
 ) -> dict[str, float]:
     """Compute discrimination (std) for each task across all subjects.
 

@@ -3,18 +3,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from bench_cli.discriminative.ci import agresti_coull_ci, cluster_ci, c_is_significant
+from bench_cli.discriminative.ci import agresti_coull_ci, c_is_significant
 from bench_cli.discriminative.types import (
+    ClusterDelta,
     ClusterScore,
     CompareResult,
-    ClusterDelta,
     StrengthWeakness,
     SubjectID,
     SubjectProfile,
 )
 
 if TYPE_CHECKING:
-    from bench_cli.discriminative.types import PipelineConfig
+    pass
 
 
 N_SAMPLES = 5  # samples per task in eval
@@ -136,7 +136,7 @@ def compute_strengths(scores: dict[str, float], n: int = 2) -> list[StrengthWeak
 
 def compute_weaknesses(scores: dict[str, float], n: int = 2) -> list[StrengthWeakness]:
     """Return bottom-n lowest-scoring tasks."""
-    items = [(t, s) for t, s in scores.items()]
+    items = list(scores.items())
     items.sort(key=lambda x: x[1])
     return [StrengthWeakness(task_id=t, score=s, is_strength=False) for t, s in items[:n]]
 

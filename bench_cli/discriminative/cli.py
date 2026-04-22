@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 
 from bench_cli.discriminative.pipeline import run_pipeline
-from bench_cli.discriminative.profiles import format_profile, compare_subjects
+from bench_cli.discriminative.profiles import compare_subjects, format_profile
 from bench_cli.discriminative.types import PipelineConfig, SubjectID
 
 
@@ -47,7 +47,7 @@ def recommend(
     agent_mode: str,
     log_dir: str,
     ci_level: float,
-):
+) -> None:
     """Generate a discriminative profile for a model or agent subject.
 
     Examples:
@@ -82,7 +82,7 @@ def recommend(
 
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @click.command("compare-profiles")
@@ -105,7 +105,7 @@ def compare_profiles(
     subject_b: str,
     log_dir: str,
     ci_level: float,
-):
+) -> None:
     """Compare two subjects side-by-side.
 
     Subjects are specified as:
@@ -125,7 +125,7 @@ def compare_profiles(
         profile_b, _ = run_pipeline(log_path, sid_b, config)
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
     result = compare_subjects(profile_a, profile_b)
     _print_compare_result(result)

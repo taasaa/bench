@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bench_cli.discriminative.types import SubjectID, SubjectType
+from bench_cli.discriminative.types import SubjectID
 
 
 def resolve_subject_from_log(log_path: Path) -> SubjectID:
@@ -99,7 +99,6 @@ def get_all_log_paths(
     from inspect_ai.log import list_eval_logs
 
     infos = list_eval_logs(log_dir=str(log_dir), descending=True)
-    paths: list[Path] = []
     # Track (task, normalized_model) seen — per subject to avoid blocking older subject logs
     seen: dict[tuple[str, str], Path] = {}
 

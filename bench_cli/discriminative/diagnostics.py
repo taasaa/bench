@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from bench_cli.discriminative.ci import agresti_coull_ci
 from bench_cli.discriminative.types import DiagnosticReport, TaskDiagnostics
 
 if TYPE_CHECKING:
@@ -25,7 +24,7 @@ DIFFICULTY_FLOOR = 0.10
 
 
 def run_diagnostics(
-    all_scores: dict["SubjectID", dict[str, float]],
+    all_scores: dict[SubjectID, dict[str, float]],
     clusters: dict[str, list[str]],
 ) -> DiagnosticReport:
     """Compute diagnostics for all tasks across all subjects.

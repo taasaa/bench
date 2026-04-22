@@ -10,7 +10,7 @@ for interval estimation of binomial proportions. Statistics in Medicine.
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 # ---------------------------------------------------------------------------
 # z-scores for common confidence levels
