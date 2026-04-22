@@ -152,8 +152,8 @@ def resolve_openrouter_id(alias: str) -> str | None:
     """Resolve a bench model alias to an OpenRouter ID present in the price cache.
 
     Resolution order:
-      1. LiteLLM config → verify slug is in OpenRouter cache (happy path)
-      2. Persistent overrides (human-validated slug corrections)
+      1. Persistent overrides (human-validated slug corrections)
+      2. LiteLLM config → verify slug is in OpenRouter cache (happy path)
       3. If an override exists but the model was dropped from cache → error
 
     Returns:
@@ -167,23 +167,22 @@ def resolve_openrouter_id(alias: str) -> str | None:
     cache = OpenRouterCache()
     all_prices = cache.get_all_prices()
 
-    # 1. Try LiteLLM config resolution — verify against cache
-    litellm_id = _resolve_from_litellm(alias)
-    if litellm_id is not None and litellm_id in all_prices:
-        return litellm_id
-
-    # 2. Try persistent overrides
+    # 1. Try persistent overrides first (e.g. :free → paid variant)
     overrides = _load_overrides()
     override_id = overrides.get(alias)
     if override_id is not None:
         if override_id in all_prices:
             return override_id
-        # Override is stale — model was dropped from OpenRouter
         raise RuntimeError(
             f"Stale override for {alias}: '{override_id}' is no longer in the "
             "OpenRouter price cache. The model may have been delisted. "
             "Update the override or refresh the cache."
         )
+
+    # 2. Try LiteLLM config resolution — verify against cache
+    litellm_id = _resolve_from_litellm(alias)
+    if litellm_id is not None and litellm_id in all_prices:
+        return litellm_id
 
     # LiteLLM resolved but slug not in cache, and no override — return the slug
     # anyway so callers can decide (price gate will block, scorer will NaN)
