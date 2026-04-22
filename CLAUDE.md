@@ -6,10 +6,18 @@ Python — Inspect AI + inspect-swe
 ## Purpose
 Standalone local LLM and AI agent evaluation system. No PAI dependencies.
 
+## Environment
+
+All commands run from the project `.venv`. No system python dependency.
+- **Python:** `.venv/bin/python` — activate with `source .venv/bin/activate` or prefix commands with `.venv/bin/`
+- **inspect-ai:** 0.3.210 (installed in .venv, no site-packages patches needed)
+- **inspect-swe:** 0.2.47 (installed in .venv — provides Docker agent solvers: `claude_code`, `codex_cli`, `gemini_cli`)
+- **pytest:** `.venv/bin/pytest` or `pytest` (if venv activated)
+
 ## CLI Usage
 
 ```bash
-# All commands work via either entry point (no env vars needed — .env auto-loads):
+# All commands use .venv python (no env vars needed — .env auto-loads):
 python -m bench_cli run --tier full --model openai/qwen-local
 python -m bench_cli run --tier quick --model openai/gemma-4-e2-local
 python -m bench_cli run --list-tasks --tier full
