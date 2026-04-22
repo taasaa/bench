@@ -1,5 +1,9 @@
 """Shared pytest helpers for Bench tests."""
 
+from pathlib import Path
+
+collect_ignore: list[str] = [str(Path(__file__).parent.parent / "tasks" / "**" / "fixtures")]
+
 import asyncio
 import os
 import subprocess
