@@ -63,12 +63,10 @@ def recommend(
         raise SystemExit(1)
 
     log_path = Path(log_dir)
-
+    model_alias = model or "openai/default"
     if agent_name:
-        model_alias = model or "openai/default"
         subject_id = SubjectID(model=model_alias, agent=agent_name, agent_mode=agent_mode)
     else:
-        model_alias = model or "openai/default"
         subject_id = SubjectID(model=model_alias)
 
     try:

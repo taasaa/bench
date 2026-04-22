@@ -520,7 +520,7 @@ class TestBuildProfile:
         sid = types.SubjectID(model="test")
         clusters = {"comp": ["t1"]}
         scores = {"t1": 1.0}
-        pillar_data = {"t1": {"token_ratio": 1.5, "time_ratio": 0.8, "cost_ratio": 2.0}}
+        pillar_data = {"t1": {"token_ratio": [1.5], "time_ratio": [0.8], "cost_ratio": [2.0]}}
         profile = profiles.build_profile(
             subject_id=sid,
             scores=scores,

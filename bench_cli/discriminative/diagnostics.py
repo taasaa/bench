@@ -10,6 +10,7 @@ Only NORMAL tasks contribute signal to cluster scores.
 """
 from __future__ import annotations
 
+import statistics
 from typing import TYPE_CHECKING
 
 from bench_cli.discriminative.types import DiagnosticReport, TaskDiagnostics
@@ -24,7 +25,7 @@ DIFFICULTY_FLOOR = 0.10
 
 
 def run_diagnostics(
-    all_scores: dict[SubjectID, dict[str, float]],
+    all_scores: dict["SubjectID", dict[str, float]],
     clusters: dict[str, list[str]],
 ) -> DiagnosticReport:
     """Compute diagnostics for all tasks across all subjects.
@@ -54,7 +55,7 @@ def run_diagnostics(
             continue
 
         difficulty = sum(scores) / len(scores)
-        discrimination = _stdev(scores) if len(scores) >= 2 else 0.0
+        discrimination = statistics.stdev(scores) if len(scores) >= 2 else 0.0
 
         is_ceiling = difficulty > DIFFICULTY_CEILING
         is_floor = difficulty < DIFFICULTY_FLOOR
@@ -82,15 +83,6 @@ def run_diagnostics(
         ceiling_tasks=sorted(ceiling_tasks),
         floor_tasks=sorted(floor_tasks),
     )
-
-
-def _stdev(values: list[float]) -> float:
-    """Standard deviation, 0.0 for < 2 values."""
-    if len(values) < 2:
-        return 0.0
-    mean = sum(values) / len(values)
-    variance = sum((x - mean) ** 2 for x in values) / len(values)
-    return variance ** 0.5
 
 
 def format_diagnostic_summary(report: DiagnosticReport) -> str:

@@ -1,6 +1,7 @@
 """Profile building — multi-dimensional subject profiles with cluster scores."""
 from __future__ import annotations
 
+import statistics
 from typing import TYPE_CHECKING
 
 from bench_cli.discriminative.ci import agresti_coull_ci, c_is_significant
@@ -18,6 +19,12 @@ if TYPE_CHECKING:
 
 
 N_SAMPLES = 5  # samples per task in eval
+_SCORE_LABELS = [
+    (0.90, "EXCELLENT"),
+    (0.80, "GOOD"),
+    (0.70, "FAIR"),
+    (0.60, "POOR"),
+]
 
 
 def build_profile(
@@ -45,8 +52,6 @@ def build_profile(
         tool_calls_avg: average tool calls per sample (agents only)
         ci_level: confidence level for CIs (default 0.90)
     """
-    import statistics
-
     cluster_scores: list[ClusterScore] = []
 
     for cluster_name, task_ids in clusters.items():
@@ -60,12 +65,12 @@ def build_profile(
         if pillar_data:
             for task_id in discriminative_ids:
                 pd = pillar_data.get(task_id, {})
-                if "token_ratio" in pd:
-                    cluster_token_ratios.append(pd["token_ratio"])
-                if "time_ratio" in pd:
-                    cluster_time_ratios.append(pd["time_ratio"])
-                if "cost_ratio" in pd:
-                    cluster_cost_ratios.append(pd["cost_ratio"])
+                if pd.get("token_ratio"):
+                    cluster_token_ratios.append(statistics.mean(pd["token_ratio"]))
+                if pd.get("time_ratio"):
+                    cluster_time_ratios.append(statistics.mean(pd["time_ratio"]))
+                if pd.get("cost_ratio"):
+                    cluster_cost_ratios.append(statistics.mean(pd["cost_ratio"]))
 
         if not cluster_scores_list:
             # No scores for this cluster
@@ -224,14 +229,9 @@ def format_profile(profile: SubjectProfile) -> str:
 
 
 def _score_label(score: float) -> str:
-    if score >= 0.90:
-        return "EXCELLENT"
-    if score >= 0.80:
-        return "GOOD"
-    if score >= 0.70:
-        return "FAIR"
-    if score >= 0.60:
-        return "POOR"
+    for threshold, label in _SCORE_LABELS:
+        if score >= threshold:
+            return label
     return "FAILING"
 
 

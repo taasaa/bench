@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+from bench_cli.compare.core import _recalc_cost
 from bench_cli.discriminative.profiles import (
     build_profile,
 )
@@ -39,7 +40,10 @@ def load_clusters_yaml(path: Path) -> dict[str, list[str]]:
 
 
 def _extract_pillar_data(sample) -> dict[str, float]:
-    """Extract token_ratio, time_ratio, cost_ratio from a sample."""
+    """Extract token_ratio, time_ratio, cost_ratio from a sample.
+
+    Returns per-metric values (single sample's ratios).
+    """
     import math
     result: dict[str, float] = {}
 
@@ -94,7 +98,8 @@ def run_pipeline(
     from inspect_ai.log import read_eval_log
 
     scores: dict[str, float] = {}
-    pillar_data: dict[str, dict[str, float]] = {}
+    pillar_data: dict[str, dict[str, list[float]]] = {}
+    # pillar_data: {task_id: {metric: [sample0_val, sample1_val, ...]}}
     total_cost: float = 0.0
     total_latency: float = 0.0
     total_tool_calls: int = 0
@@ -121,14 +126,13 @@ def run_pipeline(
                 if c is not None:
                     task_correct.append(c)
 
-            # Pillar data
+            # Pillar data — accumulate per-sample values as lists for averaging
             pd = _extract_pillar_data(sample)
             if pd:
                 if task_id not in pillar_data:
-                    pillar_data[task_id] = {}
+                    pillar_data[task_id] = {k: [] for k in pd}
                 for k, v in pd.items():
-                    if k not in pillar_data[task_id]:
-                        pillar_data[task_id][k] = v
+                    pillar_data[task_id].setdefault(k, []).append(v)
 
             # Latency
             if sample.working_time:
@@ -136,7 +140,6 @@ def run_pipeline(
 
             # Cost from model_usage
             if sample.model_usage:
-                from bench_cli.compare.core import _recalc_cost
                 for model_key, usage in sample.model_usage.items():
                     if "judge" in model_key.lower():
                         continue

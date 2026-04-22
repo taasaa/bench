@@ -115,11 +115,12 @@ lint.ignore = [
 "bench_cli/discriminative/*" = [
     "D101",   # dataclasses and enums are self-documenting
     "D102",   # properties are obvious from field names
-    "ANN001", # private helpers take Inspect eval log objects — hard to annotate
+    "ANN001", # private helpers use Inspect eval log objects — hard to annotate
     "RUF001", # sigma symbol is standard in statistics notation
     "RUF002", # sigma in docstrings is intentional
     "RUF003", # multiplication sign is standard in formulas
     "PERF401", # list.extend over simple loops is micro-optimization
+    "UP037",  # quoted SubjectID type needed for TYPE_CHECKING
 ]
 # CLI bootstrap — sys.path.insert() before imports is intentional
 "bench_cli/main.py" = ["E402"]
