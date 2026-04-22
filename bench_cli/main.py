@@ -21,6 +21,7 @@ def cli() -> None:
 # Placed at bottom to avoid circular imports.
 from bench_cli.baseline import baseline
 from bench_cli.compare import compare
+from bench_cli.discriminative.cli import recommend, compare_profiles
 from bench_cli.inspect import inspect
 from bench_cli.prices import prices
 from bench_cli.results import results
@@ -32,6 +33,8 @@ cli.add_command(inspect)
 cli.add_command(baseline)
 cli.add_command(prices)
 cli.add_command(results)
+cli.add_command(recommend)
+cli.add_command(compare_profiles)
 
 
 if __name__ == "__main__":

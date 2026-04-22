@@ -1,0 +1,66 @@
+# Cluster definitions for discriminative eval
+# Each cluster maps 1:1 to a task tier directory under tasks/
+# Verified against filesystem 2026-04-22 (34 tasks total)
+
+competence:
+  name: "Competence"
+  description: >-
+    Core coding skills — verification gates, format compliance,
+    surgical precision, direct answers, scope awareness, safe git ops
+  task_ids:
+    - add-tests
+    - f7-format-compliance
+    - f12-surgical-fix
+    - f18-direct-answer-first
+    - f20-scope-calibration
+    - q1-verification-gate
+    - q2-do-not-touch
+    - q3-answer-the-question
+    - q5-safe-git-operations
+
+execution:
+  name: "Execution"
+  description: >-
+    Delivering working code — dependency audits, multi-constraint edits,
+    workspace setup, bug investigation, config migration, root-cause analysis
+  task_ids:
+    - f4-dependency-version-audit
+    - f5-multi-constraint-edit
+    - f6-partial-impl
+    - f8-negative-constraint
+    - f11-intermittent-bug
+    - f14-insert-dont-replace
+    - f15-workspace-setup
+    - f16-bug-investigation
+    - f17-config-migration
+    - q4-root-cause
+
+analysis:
+  name: "Analysis"
+  description: >-
+    Reasoning about code — multi-file coherence, cascading failures,
+    environment mismatches, epistemic honesty, adversarial traps
+  task_ids:
+    - f1-multi-file-verify
+    - f9-cascading-failure
+    - f10-env-mismatch
+    - f19-admit-uncertainty
+    - f21-liars-codebase
+    - f23-ghost-constraint
+    - f24-honey-trap
+
+universal:
+  name: "Universal"
+  description: >-
+    Cross-cutting failure modes — error spirals, prompt injection,
+    instruction hierarchy, self-verification, git safety, edit reliability,
+    workspace triage, resume-after-failure
+  task_ids:
+    - f22-error-spiral
+    - f25-prompt-injection
+    - f26-instruction-hierarchy
+    - f27-self-verification
+    - u7-git-safety
+    - u8-edit-reliability
+    - u17-dirty-workspace-triage
+    - u18-resume-after-bad-attempt
