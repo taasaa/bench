@@ -15,7 +15,7 @@ def _project_root() -> Path:
 
 
 def _bar(score: float, width: int = 10) -> str:
-    filled = max(0, min(width, int(round(score * width))))
+    filled = max(0, min(width, round(score * width)))
     return "●" * filled + "○" * (width - filled)
 
 
@@ -101,8 +101,7 @@ def render_dashboard(log_dir: str = "logs") -> str:
     recent = _extract_recent_runs(log_dir, limit=3)
     if recent:
         lines.append("RECENT")
-        for r in recent:
-            lines.append(f"  {r['date']}  {r['task']}")
+        lines.extend(f"  {r['date']}  {r['task']}" for r in recent)
         lines.append("")
 
     # --- SCORES ---

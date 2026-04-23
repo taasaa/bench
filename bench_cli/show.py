@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import math
+
 import click
 
 from bench_cli.resolver import resolve_model
+
+
+def _bar(score: float, width: int = 10) -> str:
+    filled = max(0, min(width, round(score * width)))
+    return "●" * filled + "○" * (width - filled)
 
 
 @click.command("show")
@@ -12,7 +19,12 @@ from bench_cli.resolver import resolve_model
 @click.option("--log-dir", default="logs", hidden=True)
 @click.option("-v", "verbosity", count=True, help="Verbosity: -v detail, -vv raw.")
 @click.pass_context
-def show_cmd(ctx: click.Context, what: tuple[str, ...], log_dir: str, verbosity: int) -> None:
+def show_cmd(
+    ctx: click.Context,
+    what: tuple[str, ...],
+    log_dir: str,
+    verbosity: int,
+) -> None:
     """Show information about models, tasks, or eval results."""
     args = list(what)
 
@@ -30,7 +42,13 @@ def show_cmd(ctx: click.Context, what: tuple[str, ...], log_dir: str, verbosity:
         if len(parts) == 2:
             from bench_cli.compare.cli import compare
 
-            ctx.invoke(compare, log_dir=log_dir, latest=None, as_json=False, verbosity=max(verbosity, 1))
+            ctx.invoke(
+                compare,
+                log_dir=log_dir,
+                latest=None,
+                as_json=False,
+                verbosity=max(verbosity, 1),
+            )
             return
 
     # Named keywords
@@ -46,7 +64,12 @@ def show_cmd(ctx: click.Context, what: tuple[str, ...], log_dir: str, verbosity:
     if lower.startswith("tasks "):
         from bench_cli.tasks_browser import tasks_cmd
 
-        ctx.invoke(tasks_cmd, pillar=subject[6:].strip(), show_scores=True, log_dir=log_dir)
+        ctx.invoke(
+            tasks_cmd,
+            pillar=subject[6:].strip(),
+            show_scores=True,
+            log_dir=log_dir,
+        )
         return
     if lower == "prices":
         from bench_cli.prices import prices
@@ -65,15 +88,16 @@ def show_cmd(ctx: click.Context, what: tuple[str, ...], log_dir: str, verbosity:
     except click.BadParameter:
         pass
 
-    click.echo(f"Unknown subject '{subject}'. Try: models, tasks, prices, latest, or a model name.")
+    click.echo(
+        f"Unknown subject '{subject}'. "
+        "Try: models, tasks, prices, latest, or a model name."
+    )
 
 
 def _show_models(log_dir: str) -> None:
     """Show all evaluated models with scores."""
     from bench_cli.compare.core import load_compare_data
     from bench_cli.resolver import bare_name
-
-    import math
 
     try:
         data = load_compare_data(log_dir)
@@ -99,7 +123,7 @@ def _show_models(log_dir: str) -> None:
 
     click.echo(f"Evaluated models ({len(data.models)}):\n")
     for i, (model, score) in enumerate(model_scores, 1):
-        bar = "●" * int(round(score * 10)) + "○" * (10 - int(round(score * 10)))
+        bar = _bar(score)
         click.echo(f"  #{i}  {bare_name(model):<25s} {score:.0%}  {bar}")
 
 
@@ -121,8 +145,6 @@ def _show_model(model: str, log_dir: str, verbosity: int) -> None:
     from bench_cli.compare.core import load_compare_data
     from bench_cli.resolver import bare_name
 
-    import math
-
     try:
         data = load_compare_data(log_dir)
     except Exception:
@@ -133,10 +155,8 @@ def _show_model(model: str, log_dir: str, verbosity: int) -> None:
         click.echo(f"No eval results for {bare_name(model)}.")
         return
 
-    from bench_cli.dashboard import _bar
-
     # Default: 5-line summary
-    vals = []
+    vals: list[float] = []
     task_details: list[tuple[str, float]] = []
     for task in data.tasks:
         ps = data.matrix.get(task, {}).get(model)
