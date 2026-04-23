@@ -520,6 +520,86 @@ def format_pillar_table(
     return "\n".join(lines)
 
 
+def format_summary(data: CompareData) -> str:
+    """3-5 line ranked model summary for default compare output."""
+    if not data.tasks or not data.models:
+        return "No scored eval logs found."
+
+    from bench_cli.resolver import bare_name
+
+    model_scores: list[tuple[str, float]] = []
+    for model in data.models:
+        vals = []
+        for task in data.tasks:
+            ps = data.matrix.get(task, {}).get(model)
+            if ps and not math.isnan(ps.correctness):
+                vals.append(ps.correctness)
+        if vals:
+            model_scores.append((model, sum(vals) / len(vals)))
+
+    model_scores.sort(key=lambda x: x[1], reverse=True)
+
+    lines: list[str] = []
+    lines.append(f"{'━' * 3} BENCHMARK SUMMARY ({len(data.tasks)} tasks, {len(data.models)} models) {'━' * 3}")
+    lines.append("")
+    for i, (model, score) in enumerate(model_scores, 1):
+        bar = "●" * int(round(score * 10)) + "○" * (10 - int(round(score * 10)))
+        lines.append(f"  #{i}  {bare_name(model):<20s} {score:.0%}  {bar}")
+    lines.append("")
+    lines.append("  Use -v for per-task breakdown, -vv for full table.")
+    return "\n".join(lines)
+
+
+def format_compact_table(data: CompareData) -> str:
+    """Per-task correctness grid for -v output."""
+    if not data.tasks or not data.models:
+        return "No scored eval logs found."
+
+    from bench_cli.resolver import bare_name
+
+    model_names = [bare_name(m) for m in data.models]
+    task_col_w = max(len(t) for t in data.tasks) + 2
+    model_col_w = max(max(len(n) for n in model_names), 7)
+
+    lines: list[str] = []
+    lines.append(f"{'━' * 3} PER-TASK CORRECTNESS ({len(data.tasks)} tasks) {'━' * 3}")
+    lines.append("")
+
+    # Header
+    header = " " * task_col_w
+    for name in model_names:
+        header += name.rjust(model_col_w + 2)
+    lines.append(header)
+
+    lines.append("─" * (task_col_w + (model_col_w + 2) * len(model_names)))
+
+    # Rows
+    for task in data.tasks:
+        row = task.ljust(task_col_w)
+        for model in data.models:
+            ps = data.matrix.get(task, {}).get(model)
+            if ps:
+                row += f"  {ps.correctness:.0%}".rjust(model_col_w + 2)
+            else:
+                row += "  —".rjust(model_col_w + 2)
+        lines.append(row)
+
+    # Mean row
+    lines.append("─" * (task_col_w + (model_col_w + 2) * len(model_names)))
+    mean_row = "MEAN".ljust(task_col_w)
+    for model in data.models:
+        vals = []
+        for task in data.tasks:
+            ps = data.matrix.get(task, {}).get(model)
+            if ps and not math.isnan(ps.correctness):
+                vals.append(ps.correctness)
+        avg = sum(vals) / len(vals) if vals else 0.0
+        mean_row += f"  {avg:.0%}".rjust(model_col_w + 2)
+    lines.append(mean_row)
+
+    return "\n".join(lines)
+
+
 def format_json(data: CompareData) -> str:
     """Machine-readable JSON output."""
     import json

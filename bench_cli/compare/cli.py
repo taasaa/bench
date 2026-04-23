@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
-from bench_cli.compare.core import CompareData, load_compare_data, format_pillar_table, format_json
+from bench_cli.compare.core import (
+    CompareData,
+    load_compare_data,
+    format_summary,
+    format_compact_table,
+    format_pillar_table,
+    format_json,
+)
 
 
 @click.command()
@@ -30,11 +35,16 @@ from bench_cli.compare.core import CompareData, load_compare_data, format_pillar
     default=False,
     help="Output results as JSON.",
 )
-def compare(log_dir: str, latest: int | None, as_json: bool) -> None:
+@click.option("-v", "verbosity", count=True, help="Verbosity: -v per-task, -vv full table.")
+def compare(log_dir: str, latest: int | None, as_json: bool, verbosity: int) -> None:
     """Compare evaluation results across models with pillar breakdowns."""
     data = load_compare_data(log_dir, latest)
 
     if as_json:
         click.echo(format_json(data))
-    else:
+    elif verbosity >= 2:
         click.echo(format_pillar_table(data, "BENCHMARK RESULTS"))
+    elif verbosity >= 1:
+        click.echo(format_compact_table(data))
+    else:
+        click.echo(format_summary(data))

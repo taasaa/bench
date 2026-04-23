@@ -14,21 +14,47 @@ class _BenchGroup(click.Group):
     """Override main() so Click handles its own errors gracefully (no tracebacks)."""
 
     def main(self, *args, **kwargs):
-        kwargs.setdefault("standalone_mode", True)
+        kwargs["standalone_mode"] = True
         return super().main(*args, **kwargs)
 
 
-@click.group(cls=_BenchGroup, context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(
+    cls=_BenchGroup,
+    invoke_without_command=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 @click.version_option(version="0.1.0", prog_name="bench")
-def cli() -> None:
+@click.pass_context
+def cli(ctx: click.Context) -> None:
     """Bench — local LLM and AI agent evaluation system."""
-    pass
+    if ctx.invoked_subcommand is None:
+        from bench_cli.dashboard import render_dashboard
+
+        click.echo(render_dashboard())
 
 
-# Import and register subcommands so they attach to the group.
-# Placed at bottom to avoid circular imports.
-from bench_cli.baseline import baseline
+@cli.command("help", hidden=True)
+@click.pass_context
+def _show_help(ctx: click.Context) -> None:
+    """Full command reference."""
+    click.echo(cli.get_help(ctx.parent or ctx))
+
+
+# ── Primary surface ───────────────────────────────────────────────────
+from bench_cli.run import run
+from bench_cli.show import show_cmd
 from bench_cli.compare import compare
+from bench_cli.tasks_browser import tasks_cmd
+from bench_cli.score import score_cmd
+
+cli.add_command(run)
+cli.add_command(show_cmd)
+cli.add_command(compare)
+cli.add_command(tasks_cmd)
+cli.add_command(score_cmd)
+
+# ── Legacy commands (hidden from help) ────────────────────────────────
+from bench_cli.baseline import baseline
 from bench_cli.discriminative.cli import (
     compare_profiles,
     recommend,
@@ -38,18 +64,13 @@ from bench_cli.discriminative.cli import (
 from bench_cli.inspect import inspect
 from bench_cli.prices import prices
 from bench_cli.results import results
-from bench_cli.run import run
+from bench_cli.config_group import config_group
 
-cli.add_command(run)
-cli.add_command(compare)
-cli.add_command(inspect)
-cli.add_command(baseline)
-cli.add_command(prices)
-cli.add_command(results)
-cli.add_command(recommend)
-cli.add_command(compare_profiles)
-cli.add_command(compare_matrix_cmd)
-cli.add_command(task_correlations)
+for cmd in (baseline, inspect, prices, results,
+            recommend, compare_profiles, compare_matrix_cmd, task_correlations):
+    cmd.hidden = True
+    cli.add_command(cmd)
+cli.add_command(config_group)
 
 
 if __name__ == "__main__":
