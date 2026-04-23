@@ -10,11 +10,21 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parent.parent.resolve()
 
 # Ensure project root is on sys.path for all test modules.
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+@pytest.fixture(autouse=True)
+def _clear_pillar_map():
+    """Ensure pillar maps are rebuilt before each test."""
+    import bench_cli.inspect.core as _ic
+    _ic._PILLAR_MAP.clear()
+    _ic._PILLAR_MAP_NORMALIZED.clear()
 
 
 def run_verify_script(

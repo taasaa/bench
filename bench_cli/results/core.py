@@ -13,7 +13,7 @@ from pathlib import Path
 
 import click
 
-from bench_cli.pricing.litellm_config import resolve_openrouter_id, is_managed_model
+from bench_cli.pricing.litellm_config import is_managed_model, resolve_openrouter_id
 from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -23,6 +23,13 @@ _LOGS_DIR = _PROJECT_ROOT / "logs"
 # Regex to extract task name from eval filename:
 # 2026-04-16T23-13-32-00-00_task-name_ID.eval
 _FNAME_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T[\d-]+)_(.+)_([A-Za-z0-9]+)\.eval")
+
+
+def _card_key(model: str, agent: str | None = None, agent_mode: str | None = None) -> str:
+    """Build composite key for card grouping: bare model or model__agent__mode."""
+    if agent:
+        return f"{model}__{agent}__{agent_mode}"
+    return model
 
 
 def _build_pillar_map() -> dict[str, str]:
@@ -82,12 +89,13 @@ def _format_ratio(val: float | None) -> str:
 
 
 def _load_model_data(log_dir: Path | None = None, model_filter: str | None = None) -> dict[str, dict]:
-    """Scan eval logs and return per-model data with latest-run dedup.
+    """Scan eval logs and return per-card data with latest-run dedup.
 
     Args:
         model_filter: If set, only read files for this bench alias (e.g. "openai/qwen-local").
 
-    Returns: {bench_alias: {tasks: {task_name: {...}}, ...}}
+    Returns: {card_key: {tasks: {task_name: {...}}, agent, agent_mode, ...}}
+             card_key is bare model alias for model evals, "model__agent__mode" for agent evals.
     """
     from inspect_ai.log import read_eval_log
 
@@ -111,6 +119,18 @@ def _load_model_data(log_dir: Path | None = None, model_filter: str | None = Non
         # Early skip if filtering for a specific model
         if model_filter and model != model_filter:
             continue
+
+        # Extract agent info from sample metadata (injected at eval time)
+        agent = None
+        agent_mode = None
+        if log.samples:
+            meta = log.samples[0].metadata
+            if meta and isinstance(meta, dict):
+                agent = meta.get("bench_agent")
+                agent_mode = meta.get("bench_agent_mode")
+
+        # Composite key: bare model for model evals, model__agent__mode for agent evals
+        card_key = _card_key(model, agent, agent_mode)
 
         total_input = 0
         total_output = 0
@@ -136,21 +156,24 @@ def _load_model_data(log_dir: Path | None = None, model_filter: str | None = Non
             if numeric:
                 avg_scores[k] = round(sum(numeric) / len(numeric), 4)
 
-        if model not in model_data:
-            model_data[model] = {"tasks": {}, "dates": [], "total_input": 0, "total_output": 0}
+        if card_key not in model_data:
+            model_data[card_key] = {
+                "tasks": {}, "dates": [], "total_input": 0, "total_output": 0,
+                "agent": agent, "agent_mode": agent_mode,
+            }
 
         # Keep latest run per task
-        if task_name not in model_data[model]["tasks"] or date_str >= model_data[model]["tasks"][task_name]["date"]:
-            model_data[model]["tasks"][task_name] = {
+        if task_name not in model_data[card_key]["tasks"] or date_str >= model_data[card_key]["tasks"][task_name]["date"]:
+            model_data[card_key]["tasks"][task_name] = {
                 "date": date_str,
                 "samples": n_samples,
                 "input_tokens": total_input,
                 "output_tokens": total_output,
                 "scores": avg_scores,
             }
-        model_data[model]["dates"].append(date_str)
-        model_data[model]["total_input"] += total_input
-        model_data[model]["total_output"] += total_output
+        model_data[card_key]["dates"].append(date_str)
+        model_data[card_key]["total_input"] += total_input
+        model_data[card_key]["total_output"] += total_output
 
     return model_data
 
@@ -352,8 +375,9 @@ def _get_model_metadata(bench_alias: str) -> dict:
     # Context window from LiteLLM config (cached via _load_litellm_alias_map)
     ctx_window = None
     try:
-        from bench_cli.pricing.litellm_config import _load_litellm_alias_map
         import yaml
+
+        from bench_cli.pricing.litellm_config import _load_litellm_alias_map
         litellm_map = _load_litellm_alias_map()
         if lookup_key in litellm_map:
             litellm_path = Path.home() / "dev" / "litellm" / "config.yaml"
@@ -409,7 +433,11 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
 
     slug = _slug_from_alias(bench_alias)
     real_name = _real_model_name(bench_alias)
-    out_path = _RESULTS_DIR / f"{slug}.md"
+    agent = model_data.get("agent")
+    agent_mode = model_data.get("agent_mode")
+
+    filename = f"{slug}__{agent}__{agent_mode}.md" if agent else f"{slug}.md"
+    out_path = _RESULTS_DIR / filename
 
     # Filter out smoke tasks
     eval_tasks = {k: v for k, v in tasks.items() if k not in ("smoke", "agent-smoke", "agent_smoke")}
@@ -428,10 +456,17 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
 
     # Build card
     lines = []
-    lines.append(f"# {real_name}")
+    if agent:
+        lines.append(f"# {real_name} + {agent} ({agent_mode})")
+    else:
+        lines.append(f"# {real_name}")
     lines.append("")
     status = "FREE" if meta["free"] else "paid"
-    lines.append(f"> `{bench_alias}` | {meta['provider']} | {status} | Evaluated {date_range}")
+    agent_info = f" | agent: {agent}/{agent_mode}" if agent else ""
+    lines.append(
+        f"> `{bench_alias}` | {meta['provider']} | "
+        f"{status}{agent_info} | Evaluated {date_range}"
+    )
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -479,10 +514,11 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     lines.append("| Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |")
     lines.append("|------|--------|--------|-------|-----------|------------|------------|")
 
+    pillar_map = _build_pillar_map()
     for task_name in sorted(eval_tasks.keys()):
         td = eval_tasks[task_name]
         s = td["scores"]
-        pillar = _build_pillar_map().get(task_name, "?")
+        pillar = pillar_map.get(task_name, "?")
 
         # Determine scorer type
         scorer = "--"
@@ -552,9 +588,15 @@ def generate_all_cards(log_dir: Path | None = None) -> list[Path]:
     return generated
 
 
-def generate_card_for_model(bench_alias: str, log_dir: Path | None = None) -> Path | None:
+def generate_card_for_model(
+    bench_alias: str,
+    log_dir: Path | None = None,
+    agent: str | None = None,
+    agent_mode: str | None = None,
+) -> Path | None:
     """Generate/update a model card for a single model after eval run."""
     model_data = _load_model_data(log_dir, model_filter=bench_alias)
-    if bench_alias not in model_data:
+    card_key = _card_key(bench_alias, agent, agent_mode)
+    if card_key not in model_data:
         return None
-    return generate_card(bench_alias, model_data[bench_alias], log_dir)
+    return generate_card(bench_alias, model_data[card_key], log_dir)

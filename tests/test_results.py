@@ -5,16 +5,16 @@ from __future__ import annotations
 from click.testing import CliRunner
 
 from bench_cli.results import (
-    _rating,
-    _format_ratio,
     _compute_pillar_scores,
-    _slug_from_alias,
     _extract_task_scores,
+    _format_ratio,
     _generate_summary,
+    _rating,
+    _slug_from_alias,
     generate_card,
+    generate_card_for_model,
     results,
 )
-
 
 # ---------------------------------------------------------------------------
 # _rating
@@ -138,7 +138,6 @@ class TestExtractTaskScores:
     def test_pillar_mapped(self):
         tasks = {"add-tests": {"scores": {"verify_sh": 1.0}}}
         scores = _extract_task_scores(tasks)
-        # add-tests is in competence pillar
         assert scores[0][2] == "competence"
 
 
@@ -195,10 +194,6 @@ class TestGenerateCard:
 
     def test_generates_card_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
-        # Clear pillar map cache so it rebuilds from real tasks/
-        import bench_cli.inspect.core as _ic
-        _ic._PILLAR_MAP.clear()
-        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data = {
             "tasks": {
@@ -225,13 +220,10 @@ class TestGenerateCard:
         assert "## Token Usage" in content
         assert "## Summary" in content
         assert "add-tests" in content
-        assert "FREE" in content  # qwen-local is free
+        assert "FREE" in content
 
     def test_smoke_tasks_filtered(self, tmp_path, monkeypatch):
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
-        import bench_cli.inspect.core as _ic
-        _ic._PILLAR_MAP.clear()
-        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data = {
             "tasks": {
@@ -250,9 +242,6 @@ class TestGenerateCard:
 
     def test_card_contains_all_sections(self, tmp_path, monkeypatch):
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
-        import bench_cli.inspect.core as _ic
-        _ic._PILLAR_MAP.clear()
-        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data = {
             "tasks": {
@@ -264,15 +253,12 @@ class TestGenerateCard:
         }
         path = generate_card("openai/nvidia-devstral", model_data, tmp_path)
         content = path.read_text()
-        assert "0.850" in content  # correctness score
-        assert "0.460" in content  # tok ratio
-        assert "llm_judge" in content  # scorer type
+        assert "0.850" in content
+        assert "0.460" in content
+        assert "llm_judge" in content
 
     def test_overwrite_on_rerun(self, tmp_path, monkeypatch):
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
-        import bench_cli.inspect.core as _ic
-        _ic._PILLAR_MAP.clear()
-        _ic._PILLAR_MAP_NORMALIZED.clear()
 
         model_data_v1 = {
             "tasks": {"add-tests": {"date": "2026-04-19", "samples": 4, "input_tokens": 500, "output_tokens": 3000, "scores": {"verify_sh": 0.5}}},
@@ -324,3 +310,87 @@ class TestResultsCLI:
         result = runner.invoke(cli, ["results", "--help"])
         assert result.exit_code == 0
         assert "generate" in result.output
+
+    def test_generate_agent_flags_in_help(self):
+        runner = CliRunner()
+        result = runner.invoke(results, ["generate", "--help"])
+        assert result.exit_code == 0
+        assert "--agent" in result.output
+        assert "--agent-mode" in result.output
+        assert "--model" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Agent card naming
+# ---------------------------------------------------------------------------
+
+class TestAgentCardNaming:
+    def _make_model_data(self, **overrides):
+        data = {
+            "tasks": {
+                "add-tests": {
+                    "date": "2026-04-22",
+                    "samples": 4,
+                    "input_tokens": 500,
+                    "output_tokens": 3000,
+                    "scores": {"verify_sh": 1.0, "token_ratio_scorer": 1.5, "time_ratio_scorer": 2.0, "price_ratio_scorer": 1.2},
+                },
+            },
+            "dates": ["2026-04-22"],
+            "total_input": 500,
+            "total_output": 3000,
+            "agent": None,
+            "agent_mode": None,
+        }
+        data.update(overrides)
+        return data
+
+    def test_model_only_card_name(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+
+        data = self._make_model_data()
+        path = generate_card("openai/qwen-local", data, tmp_path)
+        assert path is not None
+        assert "__" not in path.name
+        assert path.name.endswith(".md")
+
+    def test_agent_card_name(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+
+        data = self._make_model_data(agent="claude", agent_mode="docker")
+        path = generate_card("openai/nvidia-nemotron-30b", data, tmp_path)
+        assert path is not None
+        assert path.name == "nvidia-nemotron-3-nano-30b-a3b__claude__docker.md"
+
+    def test_agent_card_title(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+
+        data = self._make_model_data(agent="codex", agent_mode="local")
+        path = generate_card("openai/nvidia-nemotron-30b", data, tmp_path)
+        content = path.read_text()
+        assert "codex (local)" in content
+        assert "agent: codex/local" in content
+
+    def test_model_only_no_agent_in_title(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+
+        data = self._make_model_data()
+        path = generate_card("openai/qwen-local", data, tmp_path)
+        content = path.read_text()
+        assert "agent:" not in content
+
+
+# ---------------------------------------------------------------------------
+# generate_card_for_model with agent params
+# ---------------------------------------------------------------------------
+
+class TestGenerateCardForModel:
+    def test_agent_card_with_params(self, tmp_path, monkeypatch):
+        """generate_card_for_model uses composite key when agent params provided."""
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+
+        path = generate_card_for_model(
+            "openai/qwen-local", tmp_path,
+            agent="claude", agent_mode="docker",
+        )
+        assert path is None

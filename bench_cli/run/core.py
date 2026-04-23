@@ -216,7 +216,7 @@ def _check_price_gate(model_alias: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_task(spec: str) -> Task:
+def _resolve_task(spec: str, agent: str | None = None, agent_mode: str | None = None) -> Task:
     """Load a task spec (path or name) and inject bench_task_dir into its metadata.
 
     The verify_sh scorer runs inside Inspect AI's async event loop where stack
@@ -274,6 +274,10 @@ def _resolve_task(spec: str) -> Task:
         if sample.metadata is None:
             sample.metadata = {}
         sample.metadata["bench_task_dir"] = task_dir
+
+        if agent is not None:
+            sample.metadata["bench_agent"] = agent
+            sample.metadata["bench_agent_mode"] = agent_mode
 
         # Inject fixture path from dataset.json "fixture" field.
         # The fixture field specifies a scenario_id under fixtures/.

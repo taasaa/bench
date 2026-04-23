@@ -196,7 +196,10 @@ def run(
     # inspect_eval runs scorers inside an async event loop where stack introspection
     # fails (no task.py frame visible). Passing via Task metadata lets the scorer
     # find verify.sh without any filesystem gymnastics.
-    tasks_with_metadata = [_resolve_task(spec) for spec in specs]
+    tasks_with_metadata = [
+        _resolve_task(spec, agent=agent, agent_mode=agent_mode)
+        for spec in specs
+    ]
 
     # 3. Execute via Inspect AI's programmatic eval() API.
     #
@@ -279,7 +282,10 @@ def run(
     try:
         from bench_cli.results import generate_card_for_model
 
-        card_path = generate_card_for_model(bench_alias, Path(log_dir))
+        card_path = generate_card_for_model(
+            bench_alias, Path(log_dir),
+            agent=agent, agent_mode=agent_mode,
+        )
         if card_path:
             click.echo(f"\n-- Model card updated: {card_path} --")
     except Exception as exc:
