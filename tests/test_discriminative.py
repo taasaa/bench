@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from bench_cli.discriminative import ci, diagnostics, filters, pipeline, profiles, types
+from bench_cli.discriminative.types import ClusterScore, DiagnosticReport, SubjectID, SubjectProfile
 
 # ---------------------------------------------------------------------------
 # ci.py -- Agresti-Coull confidence intervals
@@ -813,7 +814,7 @@ execution:
   task_ids:
     - task3
 """)
-        clusters = pipeline.load_clusters_yaml(clusters_file)
+        clusters, _warnings = pipeline.load_clusters_yaml(clusters_file)
         assert "competence" in clusters
         assert "execution" in clusters
         assert len(clusters["competence"]) == 2
@@ -829,14 +830,14 @@ comp:
 exec:
   - t3
 """)
-        clusters = pipeline.load_clusters_yaml(clusters_file)
+        clusters, _warnings = pipeline.load_clusters_yaml(clusters_file)
         assert clusters["comp"] == ["t1", "t2"]
         assert clusters["exec"] == ["t3"]
 
     def test_empty_file(self, tmp_path):
         clusters_file = tmp_path / "clusters.yaml"
         clusters_file.write_text("{}")
-        clusters = pipeline.load_clusters_yaml(clusters_file)
+        clusters, _warnings = pipeline.load_clusters_yaml(clusters_file)
         assert clusters == {}
 
 
@@ -1231,3 +1232,307 @@ def _make_profile(correctness: list[float], cost: float | None = None) -> types.
         verdict="Test profile",
         gate_results=[],
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: matrix.py -- compare_matrix
+# ---------------------------------------------------------------------------
+
+class TestCompareMatrix:
+    """compare_matrix builds comparison matrix from 2+ profiles."""
+
+    def test_two_subjects_one_row_per_cluster(self):
+        from bench_cli.discriminative.matrix import compare_matrix
+        from bench_cli.discriminative.types import SubjectProfile, SubjectID, ClusterScore
+
+        sid_a = SubjectID(model="openai/model-a")
+        sid_b = SubjectID(model="openai/model-b")
+
+        profile_a = _make_profile_with_clusters(sid_a, {
+            "competence": (0.80, 0.70, 0.90),
+            "execution": (0.70, 0.60, 0.80),
+        })
+        profile_b = _make_profile_with_clusters(sid_b, {
+            "competence": (0.90, 0.82, 0.96),
+            "execution": (0.60, 0.50, 0.70),
+        })
+
+        matrix = compare_matrix([profile_a, profile_b])
+        assert len(matrix.rows) == 2  # one row per cluster
+        row_names = {r.cluster_name for r in matrix.rows}
+        assert "competence" in row_names
+        assert "execution" in row_names
+
+    def test_three_subjects_scores_in_matrix(self):
+        from bench_cli.discriminative.matrix import compare_matrix
+
+        sid_a = SubjectID(model="openai/model-a")
+        sid_b = SubjectID(model="openai/model-b")
+        sid_c = SubjectID(model="openai/model-c")
+
+        profile_a = _make_profile_with_clusters(sid_a, {"competence": (0.80, 0.7, 0.9)})
+        profile_b = _make_profile_with_clusters(sid_b, {"competence": (0.90, 0.8, 1.0)})
+        profile_c = _make_profile_with_clusters(sid_c, {"competence": (0.60, 0.5, 0.7)})
+
+        matrix = compare_matrix([profile_a, profile_b, profile_c])
+        assert len(matrix.subjects) == 3
+
+        row = matrix.rows[0]
+        assert row.scores["openai/model-a"] == 0.80
+        assert row.scores["openai/model-b"] == 0.90
+        assert row.scores["openai/model-c"] == 0.60
+
+        # Deltas relative to reference (first subject)
+        assert row.deltas["openai/model-a"] == 0.0
+        assert row.deltas["openai/model-b"] == pytest.approx(0.10, abs=0.01)
+        assert row.deltas["openai/model-c"] == pytest.approx(-0.20, abs=0.01)
+
+    def test_empty_profiles_returns_empty_matrix(self):
+        from bench_cli.discriminative.matrix import compare_matrix
+
+        matrix = compare_matrix([])
+        assert matrix.rows == []
+        assert matrix.subjects == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: pipeline -- load_clusters_yaml with custom merging
+# ---------------------------------------------------------------------------
+
+class TestLoadClustersYamlCustom:
+    """load_clusters_yaml merges custom cluster definitions."""
+
+    def test_custom_clusters_override_base(self, tmp_path):
+        base_file = tmp_path / "clusters.yaml"
+        base_file.write_text("""
+competence:
+  name: "Competence"
+  task_ids:
+    - task1
+    - task2
+""")
+        custom_file = tmp_path / "custom.yaml"
+        custom_file.write_text("""
+competence:
+  name: "Custom Competence"
+  description: "My custom cluster"
+  task_ids:
+    - task3
+    - task4
+""")
+        clusters, warnings = pipeline.load_clusters_yaml(base_file, custom_yaml=custom_file)
+        assert "competence" in clusters
+        # Custom overrides base
+        assert clusters["competence"] == ["task3", "task4"]
+        assert any("overrides" in w for w in warnings)
+
+    def test_custom_clusters_add_new_cluster(self, tmp_path):
+        base_file = tmp_path / "clusters.yaml"
+        base_file.write_text("""
+competence:
+  name: "Competence"
+  task_ids:
+    - task1
+""")
+        custom_file = tmp_path / "custom.yaml"
+        custom_file.write_text("""
+my-custom:
+  name: "My Custom"
+  description: "A custom cluster"
+  task_ids:
+    - task2
+    - task3
+""")
+        clusters, warnings = pipeline.load_clusters_yaml(base_file, custom_yaml=custom_file)
+        assert "my-custom" in clusters
+        assert clusters["my-custom"] == ["task2", "task3"]
+
+    def test_unknown_task_ids_produce_warning(self, tmp_path):
+        base_file = tmp_path / "clusters.yaml"
+        base_file.write_text("competence:\n  name: 'C'\n  task_ids: ['task1']")
+        custom_file = tmp_path / "custom.yaml"
+        custom_file.write_text("""
+my-cluster:
+  name: "MC"
+  task_ids:
+    - unknown_task_xyz
+""")
+        known = {"task1"}
+        clusters, warnings = pipeline.load_clusters_yaml(base_file, custom_yaml=custom_file, known_tasks=known)
+        assert "my-cluster" in clusters
+        assert any("unknown_task_xyz" in w for w in warnings)
+        # Custom cluster still loads despite unknown task
+        assert clusters["my-cluster"] == ["unknown_task_xyz"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: correlation.py -- compute_task_correlation
+# ---------------------------------------------------------------------------
+
+class TestComputeTaskCorrelation:
+    """compute_task_correlation finds task pairs with Pearson r >= 0.5."""
+
+    def test_correlated_tasks_detected(self):
+        from bench_cli.discriminative.correlation import compute_task_correlation
+
+        # model-a and model-b both score high on task1, low on task2
+        # -> task1 and task2 are negatively correlated
+        all_scores = {
+            "model-a": {"task1": 1.0, "task2": 0.0, "task3": 0.5},
+            "model-b": {"task1": 1.0, "task2": 0.0, "task3": 0.5},
+            "model-c": {"task1": 0.0, "task2": 1.0, "task3": 0.5},
+            "model-d": {"task1": 0.0, "task2": 1.0, "task3": 0.5},
+        }
+        correlations = compute_task_correlation(all_scores)
+
+        # task1 and task2 are perfectly negatively correlated
+        task1_task2 = next(
+            (c for c in correlations if {c.task_a, c.task_b} == {"task1", "task2"}),
+            None,
+        )
+        assert task1_task2 is not None
+        assert abs(task1_task2.pearson_r) == 1.0
+
+    def test_uncorrelated_tasks_not_returned(self):
+        from bench_cli.discriminative.correlation import compute_task_correlation
+
+        all_scores = {
+            "model-a": {"task1": 0.5, "task2": 0.5, "task3": 0.5},
+            "model-b": {"task1": 0.5, "task2": 0.5, "task3": 0.5},
+            "model-c": {"task1": 0.5, "task2": 0.5, "task3": 0.5},
+        }
+        correlations = compute_task_correlation(all_scores)
+        assert len(correlations) == 0
+
+    def test_less_than_3_tasks_returns_empty(self):
+        from bench_cli.discriminative.correlation import compute_task_correlation
+
+        all_scores = {
+            "model-a": {"task1": 0.5, "task2": 0.5},
+            "model-b": {"task1": 0.5, "task2": 0.5},
+        }
+        correlations = compute_task_correlation(all_scores)
+        assert correlations == []
+
+    def test_fewer_than_2_subjects_returns_empty(self):
+        from bench_cli.discriminative.correlation import compute_task_correlation
+
+        all_scores = {
+            "model-a": {"task1": 1.0, "task2": 0.0},
+        }
+        correlations = compute_task_correlation(all_scores)
+        assert correlations == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: harness.py -- harness_change_report
+# ---------------------------------------------------------------------------
+
+class TestHarnessChangeReport:
+    """harness_change_report builds delta report from before/after profiles."""
+
+    def test_significant_improvement_detected(self):
+        from bench_cli.discriminative.harness import harness_change_report
+
+        sid = SubjectID(model="openai/qwen-local", agent="claude", agent_mode="harness")
+        before = _make_profile_with_clusters(sid, {
+            "competence": (0.60, 0.50, 0.70),
+            "execution": (0.50, 0.40, 0.60),
+        })
+        after = _make_profile_with_clusters(sid, {
+            "competence": (0.90, 0.82, 0.96),
+            "execution": (0.70, 0.60, 0.80),
+        })
+
+        report = harness_change_report(before, after)
+        assert report.subject_id == sid
+        assert len(report.cluster_deltas) == 2
+
+        # Competence delta should be +0.30 (significant)
+        comp_delta = next(d for d in report.cluster_deltas if d.cluster_name == "competence")
+        assert comp_delta.correctness_delta == pytest.approx(0.30, abs=0.01)
+        assert comp_delta.correctness_significant is True
+
+    def test_non_significant_delta_detected(self):
+        from bench_cli.discriminative.harness import harness_change_report
+
+        sid = SubjectID(model="openai/qwen-local")
+        before = _make_profile_with_clusters(sid, {"competence": (0.80, 0.70, 0.90)})
+        after = _make_profile_with_clusters(sid, {"competence": (0.82, 0.72, 0.92)})
+
+        report = harness_change_report(before, after)
+        comp_delta = next(d for d in report.cluster_deltas if d.cluster_name == "competence")
+        assert comp_delta.correctness_significant is False
+
+    def test_subject_id_mismatch_raises(self):
+        from bench_cli.discriminative.harness import harness_change_report
+
+        sid_a = SubjectID(model="openai/model-a")
+        sid_b = SubjectID(model="openai/model-b")
+        before = _make_profile_with_clusters(sid_a, {"competence": (0.80, 0.7, 0.9)})
+        after = _make_profile_with_clusters(sid_b, {"competence": (0.90, 0.8, 1.0)})
+
+        with pytest.raises(ValueError, match="SubjectID mismatch"):
+            harness_change_report(before, after)
+
+    def test_format_harness_report_includes_grid(self):
+        from bench_cli.discriminative.harness import format_harness_report, harness_change_report
+
+        sid = SubjectID(model="openai/qwen-local")
+        before = _make_profile_with_clusters(sid, {"competence": (0.80, 0.7, 0.9)})
+        after = _make_profile_with_clusters(sid, {"competence": (0.90, 0.8, 1.0)})
+
+        report = harness_change_report(before, after)
+        output = format_harness_report(report)
+
+        assert "HARNESS CHANGE REPORT" in output
+        assert "CLUSTER × PILLAR DELTAS" in output
+        assert "(n.s.)" in output or "(*)" in output
+
+
+# ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+def _make_profile_with_clusters(sid, cluster_data):
+    """Create a SubjectProfile with specific per-cluster correctness."""
+    cluster_scores = []
+    for name, (correct, ci_low, ci_high) in cluster_data.items():
+        cluster_scores.append(ClusterScore(
+            name=name, correct=correct, token_ratio=1.0, time_ratio=1.0,
+            cost_ratio=1.0, ci_low=ci_low, ci_high=ci_high, task_count=5,
+        ))
+    return SubjectProfile(
+        subject_id=sid,
+        cluster_scores=cluster_scores,
+        strengths=[], weaknesses=[],
+        non_discriminative_tasks=[],
+        cost_per_sample=0.001,
+        latency_avg=10.0,
+        tool_calls_avg=None,
+        verdict="Test",
+        gate_results=[],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: MultiSubjectReport -- type and pipeline
+# ---------------------------------------------------------------------------
+
+class TestMultiSubjectReport:
+    """MultiSubjectReport type and run_multi_pipeline."""
+
+    def test_multi_subject_report_type(self):
+        from bench_cli.discriminative.phase3_types import MultiSubjectReport
+
+        report = MultiSubjectReport(profiles=[], diagnostic_report=types.DiagnosticReport(tasks=[]))
+        assert report.profiles == []
+        assert len(report.diagnostic_report.tasks) == 0
+
+    def test_run_multi_pipeline_accepts_list_of_subject_ids(self):
+        # run_multi_pipeline exists and accepts list[SubjectID]
+        from bench_cli.discriminative.pipeline import run_multi_pipeline
+        import inspect
+        sig = inspect.signature(run_multi_pipeline)
+        params = list(sig.parameters.keys())
+        assert "subject_ids" in params
