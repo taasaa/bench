@@ -35,3 +35,6 @@ logs/
 baselines/
 MEMORY/
 Plans/
+.claude/settings.local.json
+.claude/worktrees/
+.coverage
