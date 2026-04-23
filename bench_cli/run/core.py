@@ -291,6 +291,14 @@ def _resolve_task(spec: str) -> Task:
                 if sample.files is None:
                     sample.files = {}
                 sample.files["workspace"] = str(fdir)
+        else:
+            # No fixture — ensure workspace dir exists so cwd="workspace"
+            # in the docker agent solver doesn't fail.  Use a data: URI so
+            # Inspect treats it as literal content, not a filesystem path.
+            if sample.files is None:
+                sample.files = {}
+            if "workspace" not in sample.files:
+                sample.files["workspace/.gitkeep"] = "data:text/plain,"
 
     # Merge generous timeout into task config.  Local models behind LiteLLM
     # can be slow -- a single generate() on a complex prompt may take 2-3

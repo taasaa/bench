@@ -32,6 +32,11 @@ def _load_project_instructions() -> str:
 def docker_agent(agent_name: str, harness: bool = False) -> object:
     """Create an inspect-swe Docker agent solver.
 
+    The agent's cwd is set to "workspace" so it starts inside the fixture
+    directory when fixture files are mounted via sample.files.  The workspace
+    directory is created by Inspect's sandbox init when sample.files contains
+    a "workspace" key.
+
     Args:
         agent_name: Agent to use (claude, codex, gemini).
         harness: If True, inject project CLAUDE.md and global instructions
@@ -59,7 +64,7 @@ def docker_agent(agent_name: str, harness: bool = False) -> object:
     if factory is None:
         raise ValueError(f"No Docker solver for agent {agent_name!r}")
 
-    kwargs = {"cwd": "workspace"}
+    kwargs: dict = {"cwd": "workspace"}
     if harness:
         instructions = _load_project_instructions()
         if instructions:
