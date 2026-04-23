@@ -10,7 +10,15 @@ _project_root = Path(__file__).resolve().parent.parent
 load_dotenv(_project_root / ".env", override=True)
 
 
-@click.group()
+class _BenchGroup(click.Group):
+    """Override main() so Click handles its own errors gracefully (no tracebacks)."""
+
+    def main(self, *args, **kwargs):
+        kwargs.setdefault("standalone_mode", True)
+        return super().main(*args, **kwargs)
+
+
+@click.group(cls=_BenchGroup, context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(version="0.1.0", prog_name="bench")
 def cli() -> None:
     """Bench — local LLM and AI agent evaluation system."""
@@ -45,4 +53,4 @@ cli.add_command(task_correlations)
 
 
 if __name__ == "__main__":
-    cli()
+    cli(standalone_mode=True)
