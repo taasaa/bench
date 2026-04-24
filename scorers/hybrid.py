@@ -28,8 +28,8 @@ def hybrid_scorer(
         judge_model: Model string for the judge (default: openai/judge).
     """
     # Import scorers at factory time to avoid circular imports
-    from scorers.verify_sh import verify_sh
     from scorers.llm_judge import llm_judge
+    from scorers.verify_sh import verify_sh
 
     v_scorer = verify_sh()
     j_scorer = llm_judge(judge_model=judge_model)
@@ -53,7 +53,7 @@ def hybrid_scorer(
             value=combined,
             explanation=(
                 f"hybrid_correctness={combined:.2f} "
-                f"(verify={v_val:.2f}×{verify_weight}, judge={j_val:.2f}×{judge_weight})\n"
+                f"(verify={v_val:.2f}x{verify_weight}, judge={j_val:.2f}x{judge_weight})\n"
                 f"--- verify_sh ---\n{v_result.explanation}\n"
                 f"--- llm_judge ---\n{j_result.explanation}"
             ),

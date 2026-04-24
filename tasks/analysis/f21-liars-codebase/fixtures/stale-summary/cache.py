@@ -1,4 +1,5 @@
 """Response cache module."""
+
 import time
 
 _cache = {}

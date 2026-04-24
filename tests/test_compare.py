@@ -10,11 +10,12 @@ from bench_cli.compare import (
     format_json,
     format_pillar_table,
     load_compare_data,
-)  # noqa: E402
+)
 
 # ---------------------------------------------------------------------------
 # Test data fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def empty_data():
@@ -30,18 +31,30 @@ def two_model_data():
     data.matrix = {
         "task_a": {
             "model-x": PillarScores(
-                correctness=0.9, token_ratio=1.5, time_ratio=1.2,
-                avg_tokens=450.0, avg_time=3.5, samples=5,
+                correctness=0.9,
+                token_ratio=1.5,
+                time_ratio=1.2,
+                avg_tokens=450.0,
+                avg_time=3.5,
+                samples=5,
             ),
             "model-y": PillarScores(
-                correctness=0.7, token_ratio=0.8, time_ratio=0.9,
-                avg_tokens=300.0, avg_time=2.1, samples=5,
+                correctness=0.7,
+                token_ratio=0.8,
+                time_ratio=0.9,
+                avg_tokens=300.0,
+                avg_time=2.1,
+                samples=5,
             ),
         },
         "task_b": {
             "model-x": PillarScores(
-                correctness=0.8, token_ratio=1.1, time_ratio=1.0,
-                avg_tokens=500.0, avg_time=4.0, samples=5,
+                correctness=0.8,
+                token_ratio=1.1,
+                time_ratio=1.0,
+                avg_tokens=500.0,
+                avg_time=4.0,
+                samples=5,
             ),
         },
     }
@@ -51,6 +64,7 @@ def two_model_data():
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestCompareData:
     def test_matrix_access(self, two_model_data):
@@ -97,6 +111,7 @@ class TestFormatJson:
     def test_task_model_score(self, two_model_data):
         result = format_json(two_model_data)
         import json
+
         rows = json.loads(result)
         assert len(rows) == 3
         row = next(r for r in rows if r["task"] == "task_a" and r["model"] == "model-x")
@@ -106,10 +121,19 @@ class TestFormatJson:
     def test_all_fields_present(self, two_model_data):
         result = format_json(two_model_data)
         import json
+
         rows = json.loads(result)
         row = rows[0]
-        for key in ("task", "model", "correctness", "token_ratio", "time_ratio",
-                     "avg_tokens", "avg_time", "samples"):
+        for key in (
+            "task",
+            "model",
+            "correctness",
+            "token_ratio",
+            "time_ratio",
+            "avg_tokens",
+            "avg_time",
+            "samples",
+        ):
             assert key in row, f"Missing field: {key}"
 
 
@@ -127,12 +151,20 @@ class TestLoadCompareData:
         data.matrix = {
             "task-x": {
                 "model-a": PillarScores(
-                    correctness=0.6, token_ratio=0.9, time_ratio=1.0,
-                    avg_tokens=150.0, avg_time=2.0, samples=1,
+                    correctness=0.6,
+                    token_ratio=0.9,
+                    time_ratio=1.0,
+                    avg_tokens=150.0,
+                    avg_time=2.0,
+                    samples=1,
                 ),
                 "model-b": PillarScores(
-                    correctness=0.8, token_ratio=1.2, time_ratio=1.1,
-                    avg_tokens=100.0, avg_time=1.5, samples=1,
+                    correctness=0.8,
+                    token_ratio=1.2,
+                    time_ratio=1.1,
+                    avg_tokens=100.0,
+                    avg_time=1.5,
+                    samples=1,
                 ),
             },
         }

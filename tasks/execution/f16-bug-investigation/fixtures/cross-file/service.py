@@ -1,4 +1,5 @@
 """Service module — still imports the old function name."""
+
 from calculator import calculate_total  # Bug: function was renamed to compute_total
 
 

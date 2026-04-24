@@ -24,6 +24,7 @@ def _make_script(content: str, tmpdir: str, name: str = "verify.sh") -> str:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestVerifyShPass:
     def test_pass_full(self, tmp_path):
         """PASS 3/3 → score 1.0"""

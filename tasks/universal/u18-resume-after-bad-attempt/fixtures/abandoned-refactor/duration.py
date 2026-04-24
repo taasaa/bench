@@ -1,4 +1,5 @@
 """Duration parsing and comparison utilities."""
+
 from datetime import datetime, timedelta
 
 

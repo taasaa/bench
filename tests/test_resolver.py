@@ -1,9 +1,9 @@
 """Tests for model name resolver."""
 
-import pytest
 import click
+import pytest
 
-from bench_cli.resolver import resolve_model, bare_name
+from bench_cli.resolver import bare_name, resolve_model
 
 
 class TestResolveModel:

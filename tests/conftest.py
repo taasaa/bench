@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 def _clear_pillar_map():
     """Ensure pillar maps are rebuilt before each test."""
     import bench_cli.inspect.core as _ic
+
     _ic._PILLAR_MAP.clear()
     _ic._PILLAR_MAP_NORMALIZED.clear()
 

@@ -1,4 +1,5 @@
 """Click CLI for bench recommend and bench compare-profiles."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -150,7 +151,10 @@ def compare_profiles(
     try:
         if custom_yaml:
             multi_report = run_multi_pipeline(
-                log_path, [sid_a, sid_b], config, custom_clusters_yaml=custom_yaml,
+                log_path,
+                [sid_a, sid_b],
+                config,
+                custom_clusters_yaml=custom_yaml,
             )
             profile_a = multi_report.profiles[0]
             profile_b = multi_report.profiles[1]
@@ -211,7 +215,10 @@ def compare_matrix_cmd(
 
     try:
         multi_report = run_multi_pipeline(
-            log_path, subject_ids, config, custom_clusters_yaml=custom_yaml,
+            log_path,
+            subject_ids,
+            config,
+            custom_clusters_yaml=custom_yaml,
         )
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
@@ -330,16 +337,13 @@ def _parse_subject(spec: str) -> SubjectID:
 
 def _is_harness_change(a: SubjectID, b: SubjectID) -> bool:
     """Detect harness change: same SubjectID (model + agent + agent_mode)."""
-    return (
-        a.model == b.model
-        and a.agent == b.agent
-        and a.agent_mode == b.agent_mode
-    )
+    return a.model == b.model and a.agent == b.agent and a.agent_mode == b.agent_mode
 
 
 def _get_correctness_for_sample(sample) -> float | None:
     """Extract correctness from sample scores."""
     import math
+
     if not sample.scores:
         return None
     for key in ("hybrid_scorer", "llm_judge", "verify_sh", "exact", "includes"):
@@ -362,9 +366,7 @@ def _get_correctness_for_sample(sample) -> float | None:
 
 def _print_compare_result(result) -> None:
     """Print a CompareResult as formatted text."""
-    click.echo(
-        f"COMPARE: {result.subject_a.display_name} vs {result.subject_b.display_name}"
-    )
+    click.echo(f"COMPARE: {result.subject_a.display_name} vs {result.subject_b.display_name}")
     click.echo("=" * 60)
     click.echo("")
     click.echo("CLUSTER DELTAS:")

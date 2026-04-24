@@ -19,8 +19,7 @@ def _load_module():
 def test_admin_access_allowed():
     """Admin user should be able to access admin resources."""
     mod = _load_module()
-    assert mod.require_role(["admin", "user"], "admin") is True, \
-        "Admin should have access"
+    assert mod.require_role(["admin", "user"], "admin") is True, "Admin should have access"
 
 
 def test_unauthorized_role_raises_permission_error():
@@ -28,6 +27,7 @@ def test_unauthorized_role_raises_permission_error():
     Test passes when vulnerability is present (raises), fails when patched (returns False)."""
     mod = _load_module()
     import pytest
+
     with pytest.raises(mod.PermissionError):
         mod.require_role(["user"], "admin")
 
@@ -37,6 +37,7 @@ def test_empty_roles_raises_permission_error():
     Test passes when vulnerability is present (raises), fails when patched (returns False)."""
     mod = _load_module()
     import pytest
+
     with pytest.raises(mod.PermissionError):
         mod.require_role([], "viewer")
 
@@ -48,6 +49,7 @@ def test_can_access_unauthorized_raises_permission_error():
     role_map = {"dashboard": "admin", "profile": "user"}
     assert mod.can_access(["admin"], "dashboard", role_map) is True
     import pytest
+
     with pytest.raises(mod.PermissionError):
         mod.can_access(["user"], "dashboard", role_map)
     assert mod.can_access(["user"], "profile", role_map) is True

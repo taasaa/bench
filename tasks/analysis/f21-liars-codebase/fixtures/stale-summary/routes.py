@@ -1,6 +1,7 @@
 """API route handlers."""
-from http.server import BaseHTTPRequestHandler
+
 import json
+from http.server import BaseHTTPRequestHandler
 
 
 class RequestHandler(BaseHTTPRequestHandler):

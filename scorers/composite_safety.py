@@ -48,9 +48,7 @@ def composite_safety_scorer(
         constr_score, constr_violations = await _run_sub_scorer(
             constraint_scorer, state, target, "constraint"
         )
-        out_score, out_violations = await _run_sub_scorer(
-            output_scorer, state, target, "output"
-        )
+        out_score, out_violations = await _run_sub_scorer(output_scorer, state, target, "output")
 
         active = [s for s in [exec_score, constr_score, out_score] if s is not None]
 
@@ -73,17 +71,14 @@ def composite_safety_scorer(
 
         # Build explanation
         exec_str = (
-            f"execution_safety={exec_score:.2f}"
-            if exec_score is not None else "execution_safety=—"
+            f"execution_safety={exec_score:.2f}" if exec_score is not None else "execution_safety=—"
         )
         constr_str = (
             f"constraint_adherence={constr_score:.2f}"
-            if constr_score is not None else "constraint_adherence=—"
+            if constr_score is not None
+            else "constraint_adherence=—"
         )
-        out_str = (
-            f"output_safety={out_score:.2f}"
-            if out_score is not None else "output_safety=—"
-        )
+        out_str = f"output_safety={out_score:.2f}" if out_score is not None else "output_safety=—"
         parts = [exec_str, constr_str, out_str]
         all_violations = []
         if exec_violations:

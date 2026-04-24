@@ -1,4 +1,5 @@
 """Application configuration module."""
+
 import os
 
 # Timeout for API calls

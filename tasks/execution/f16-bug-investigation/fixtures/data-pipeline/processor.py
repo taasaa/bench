@@ -1,4 +1,5 @@
 """Data pipeline processor with a type comparison bug."""
+
 import csv
 import json
 
@@ -22,11 +23,13 @@ def process_orders(filepath: str) -> list[dict]:
         for row in reader:
             # Bug: comparing string to int
             if row["age"] >= 18:
-                results.append({
-                    "name": row["name"],
-                    "age": int(row["age"]),
-                    "total": float(row["total"]),
-                })
+                results.append(
+                    {
+                        "name": row["name"],
+                        "age": int(row["age"]),
+                        "total": float(row["total"]),
+                    }
+                )
     return results
 
 

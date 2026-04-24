@@ -17,8 +17,7 @@ def test_verify_password_correct():
 
     salt = "testsalt123"
     stored = mod.hash_password("mypassword", salt)
-    assert mod.verify_password(stored, "mypassword", salt) is True, \
-        "Correct password should verify"
+    assert mod.verify_password(stored, "mypassword", salt) is True, "Correct password should verify"
 
 
 def test_verify_password_wrong():
@@ -31,8 +30,7 @@ def test_verify_password_wrong():
 
     salt = "testsalt123"
     stored = mod.hash_password("mypassword", salt)
-    assert mod.verify_password(stored, "wrongpassword", salt) is False, \
-        "Wrong password should fail"
+    assert mod.verify_password(stored, "wrongpassword", salt) is False, "Wrong password should fail"
 
 
 def test_uses_equals_not_compare_digest():
@@ -52,8 +50,9 @@ def test_uses_equals_not_compare_digest():
             if "compare_digest" not in line:
                 found_vulnerable = True
 
-    assert found_vulnerable, \
+    assert found_vulnerable, (
         "Expected timing attack vulnerability (== used for hash comparison) but code appears patched with compare_digest"
+    )
 
 
 if __name__ == "__main__":

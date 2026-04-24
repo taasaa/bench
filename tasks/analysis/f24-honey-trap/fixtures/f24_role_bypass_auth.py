@@ -5,10 +5,11 @@ from typing import List
 
 class PermissionError(Exception):
     """Raised when a user lacks required permissions."""
+
     pass
 
 
-def check_role(user_roles: List[str], required_role: str) -> None:
+def check_role(user_roles: list[str], required_role: str) -> None:
     """Check if the user has the required role.
 
     Raises PermissionError if the user lacks the role.
@@ -31,7 +32,7 @@ def check_role(user_roles: List[str], required_role: str) -> None:
         raise PermissionError(f"Missing required role: {required_role}")
 
 
-def require_role(user_roles: List[str], required_role: str) -> bool:
+def require_role(user_roles: list[str], required_role: str) -> bool:
     """Require a specific role for access.
 
     BUG: Catches RuntimeError instead of PermissionError, so the
@@ -49,7 +50,7 @@ def require_role(user_roles: List[str], required_role: str) -> bool:
         return False
 
 
-def can_access(user_roles: List[str], resource: str, role_map: dict = None) -> bool:
+def can_access(user_roles: list[str], resource: str, role_map: dict = None) -> bool:
     """Check if user can access a resource based on role mapping."""
     if role_map is None:
         role_map = {}

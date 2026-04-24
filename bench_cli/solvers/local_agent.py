@@ -61,13 +61,9 @@ def local_agent(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
-            state.output = ModelOutput.from_content(
-                model=f"local-{agent_name}", content=""
-            )
+            state.output = ModelOutput.from_content(model=f"local-{agent_name}", content="")
             if state.metadata is None:
                 state.metadata = {}
             state.metadata["local_agent_error"] = f"Timeout after {timeout}s"
@@ -85,9 +81,7 @@ def local_agent(
 
         if proc.returncode != 0:
             err_text = stderr.decode("utf-8", errors="replace")[:500] if stderr else ""
-            state.output = ModelOutput.from_content(
-                model=f"local-{agent_name}", content=""
-            )
+            state.output = ModelOutput.from_content(model=f"local-{agent_name}", content="")
             state.metadata["local_agent_error"] = err_text
             state.metadata["local_agent_rc"] = proc.returncode
             return state
@@ -95,9 +89,7 @@ def local_agent(
         # Parse output using agent-specific parser
         result_text = config.parse_output(stdout)
 
-        state.output = ModelOutput.from_content(
-            model=f"local-{agent_name}", content=result_text
-        )
+        state.output = ModelOutput.from_content(model=f"local-{agent_name}", content=result_text)
         return state
 
     return solve

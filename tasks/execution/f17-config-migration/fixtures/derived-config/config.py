@@ -1,5 +1,7 @@
 """Config module with derived values — builds DATABASE_URL from parts."""
+
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()

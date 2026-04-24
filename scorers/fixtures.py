@@ -63,8 +63,7 @@ def load_fixture(task_file: str | Path, name: str) -> str:
             else "(directory missing)"
         )
         raise FileNotFoundError(
-            f"Fixture file not found: {path}\n"
-            f"Available fixtures in {path.parent}: {available}"
+            f"Fixture file not found: {path}\nAvailable fixtures in {path.parent}: {available}"
         ) from None
 
 
@@ -91,6 +90,5 @@ def load_fixture_bytes(task_file: str | Path, name: str) -> bytes:
             else "(directory missing)"
         )
         raise FileNotFoundError(
-            f"Fixture file not found: {path}\n"
-            f"Available fixtures in {path.parent}: {available}"
+            f"Fixture file not found: {path}\nAvailable fixtures in {path.parent}: {available}"
         ) from None

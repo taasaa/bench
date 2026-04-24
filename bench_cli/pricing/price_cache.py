@@ -9,12 +9,11 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-
-import urllib.request
-import urllib.error
 
 from bench_cli.pricing.model_aliases import PriceInfo
 
@@ -39,6 +38,7 @@ class OpenRouterCache:
 
     @property
     def cache_path(self) -> Path:
+        """Path to the local price cache file."""
         return self._cache_path
 
     def fetch_and_cache_prices(self) -> Path:

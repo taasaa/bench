@@ -32,17 +32,13 @@ BASIC_TASK_SPECS = [
 ]
 
 
-
-
 def _load_task(rel_path: str, func_name: str):
     """Load a task module and return the instantiated Task object."""
     task_dir = os.path.dirname(rel_path)
     orig_cwd = os.getcwd()
     try:
         os.chdir(os.path.join(ROOT, task_dir))
-        spec = importlib.util.spec_from_file_location(
-            "task", os.path.join(ROOT, rel_path)
-        )
+        spec = importlib.util.spec_from_file_location("task", os.path.join(ROOT, rel_path))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return getattr(mod, func_name)()
@@ -68,9 +64,7 @@ class TestCompositeScorerWiring:
         state = make_task_state("hello world", target="hello world")
         result = run_async(scorer(state, state.target))
 
-        assert 0.0 <= result.value <= 1.0, (
-            f"{func_name} scorer value {result.value} outside [0,1]"
-        )
+        assert 0.0 <= result.value <= 1.0, f"{func_name} scorer value {result.value} outside [0,1]"
         assert "correctness=" in result.explanation
         assert "efficiency=" in result.explanation
         assert "safety" in result.explanation
@@ -91,9 +85,7 @@ class TestBasicTasksUseVerifySh:
         state = make_task_state("some model output", target="")
         result = run_async(scorer(state, state.target))
 
-        assert 0.0 <= result.value <= 1.0, (
-            f"{func_name} scorer value {result.value} outside [0,1]"
-        )
+        assert 0.0 <= result.value <= 1.0, f"{func_name} scorer value {result.value} outside [0,1]"
         assert isinstance(result.explanation, str)
         assert len(result.explanation) > 0, f"{func_name} scorer returned empty explanation"
 
@@ -130,9 +122,7 @@ class TestVerificationTasksUnmodified:
         t = _load_task("tasks/verification/agent_smoke/task.py", "agent_smoke")
         scorer = _get_scorer_fn(t)
 
-        state = make_task_state(
-            "I created hello.py with hello world", target="hello world"
-        )
+        state = make_task_state("I created hello.py with hello world", target="hello world")
         result = run_async(scorer(state, state.target))
         assert isinstance(result.value, float)
         assert result.value == 1.0
@@ -159,38 +149,38 @@ class TestTaskCoverage:
     #   test_integration.py (TestCompositeScorerWiring): add-tests (via composite)
     #   Fixture tests (test_tier2_tasks.py + test_fixtures.py): f1, f9, f10, f23, f24
     VERIFY_TASKS_WITH_COVERAGE = {
-        "tasks/analysis/f1-multi-file-verify",      # f24 fixture tests
-        "tasks/analysis/f10-env-mismatch",           # f24 fixture tests
-        "tasks/analysis/f23-ghost-constraint",       # f24 fixture tests
-        "tasks/analysis/f24-honey-trap",             # f24 fixture tests
-        "tasks/analysis/f9-cascading-failure",        # f24 fixture tests
-        "tasks/competence/add-tests",                # TestCompositeScorerWiring
-        "tasks/competence/f12-surgical-fix",         # TestBasicTasksUseVerifySh + test_tier1_tasks.py
-        "tasks/competence/f20-scope-calibration",    # TestBasicTasksUseVerifySh + test_tier1_tasks.py
-        "tasks/competence/f7-format-compliance",      # TestBasicTasksUseVerifySh + test_tier1_tasks.py
-        "tasks/competence/q1-verification-gate",     # TestBasicTasksUseVerifySh + test_tier1_tasks.py
-        "tasks/competence/q2-do-not-touch",          # TestBasicTasksUseVerifySh + test_tier1_tasks.py
-        "tasks/execution/f11-intermittent-bug",      # test_tier2_tasks.py
-        "tasks/execution/f14-insert-dont-replace",   # test_tier2_tasks.py
-        "tasks/execution/f6-partial-impl",           # test_tier2_tasks.py
-        "tasks/execution/f8-negative-constraint",    # test_tier2_tasks.py
-        "tasks/execution/q4-root-cause",              # test_tier2_tasks.py
+        "tasks/analysis/f1-multi-file-verify",  # f24 fixture tests
+        "tasks/analysis/f10-env-mismatch",  # f24 fixture tests
+        "tasks/analysis/f23-ghost-constraint",  # f24 fixture tests
+        "tasks/analysis/f24-honey-trap",  # f24 fixture tests
+        "tasks/analysis/f9-cascading-failure",  # f24 fixture tests
+        "tasks/competence/add-tests",  # TestCompositeScorerWiring
+        "tasks/competence/f12-surgical-fix",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/f20-scope-calibration",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/f7-format-compliance",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/q1-verification-gate",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/competence/q2-do-not-touch",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py
+        "tasks/execution/f11-intermittent-bug",  # test_tier2_tasks.py
+        "tasks/execution/f14-insert-dont-replace",  # test_tier2_tasks.py
+        "tasks/execution/f6-partial-impl",  # test_tier2_tasks.py
+        "tasks/execution/f8-negative-constraint",  # test_tier2_tasks.py
+        "tasks/execution/q4-root-cause",  # test_tier2_tasks.py
         # NOTE: verification/smoke has coverage (test_smoke_task_scorer_behavior)
         # NOTE: verification/agent_smoke has skip + no verify.sh (uses includes() scorer)
         # Session 11 new tasks (2026-04-16)
-        "tasks/competence/q3-answer-the-question",    # quick tier
-        "tasks/competence/q5-safe-git-operations",    # quick tier
-        "tasks/competence/f18-direct-answer-first",   # quick tier
+        "tasks/competence/q3-answer-the-question",  # quick tier
+        "tasks/competence/q5-safe-git-operations",  # quick tier
+        "tasks/competence/f18-direct-answer-first",  # quick tier
         "tasks/execution/f5-multi-constraint-edit",  # test_tier2_tasks.py
-        "tasks/execution/f15-workspace-setup",       # agent-mode task
-        "tasks/execution/f16-bug-investigation",     # agent-mode task
-        "tasks/execution/f17-config-migration",      # agent-mode task
+        "tasks/execution/f15-workspace-setup",  # agent-mode task
+        "tasks/execution/f16-bug-investigation",  # agent-mode task
+        "tasks/execution/f17-config-migration",  # agent-mode task
         # NOTE: f4-dependency-version-audit is llm_judge, no verify.sh
         # NOTE: f19-admit-uncertainty is llm_judge, no verify.sh
         # New hybrid-scored tasks (PRD phases 5-7)
-        "tasks/analysis/f21-liars-codebase",          # hybrid scorer, verify.sh added
+        "tasks/analysis/f21-liars-codebase",  # hybrid scorer, verify.sh added
         "tasks/universal/u17-dirty-workspace-triage",  # new task, hybrid scorer
-        "tasks/universal/u18-resume-after-bad-attempt", # new task, hybrid scorer
+        "tasks/universal/u18-resume-after-bad-attempt",  # new task, hybrid scorer
     }
 
     @staticmethod

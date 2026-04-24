@@ -59,8 +59,8 @@ class PillarScores:
     correctness: float
     token_ratio: float
     time_ratio: float
-    avg_tokens: float      # mean total tokens per sample
-    avg_time: float        # mean working_time per sample in seconds
+    avg_tokens: float  # mean total tokens per sample
+    avg_time: float  # mean working_time per sample in seconds
     samples: int
     price_ratio: float = float("nan")  # geometric mean of cost ratios, NaN if unavailable
     avg_cost_usd: float = float("nan")  # mean cost per sample in USD, NaN if unavailable
@@ -73,6 +73,7 @@ class PillarScores:
 @dataclass
 class CompareData:
     """All comparison data extracted from logs."""
+
     # task_name -> model_name -> PillarScores (best run per pair)
     matrix: dict[str, dict[str, PillarScores]] = field(default_factory=dict)
     tasks: list[str] = field(default_factory=list)
@@ -145,7 +146,11 @@ def _extract_from_scorers(
     # Extract actual_cost_usd from price_ratio_scorer metadata
     actual_cost_usd: float | None = None
     pr_score = sample_scores.get("price_ratio_scorer")
-    if pr_score is not None and hasattr(pr_score, "metadata") and isinstance(pr_score.metadata, dict):
+    if (
+        pr_score is not None
+        and hasattr(pr_score, "metadata")
+        and isinstance(pr_score.metadata, dict)
+    ):
         cost_val = pr_score.metadata.get("actual_cost_usd")
         if isinstance(cost_val, (int, float)):
             actual_cost_usd = float(cost_val)
@@ -194,10 +199,22 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         infos = infos[:latest]
 
     # Accumulate per-sample data per (task, model, run_name)
-    # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens, working_time, token_suppressed, time_suppressed, actual_cost_usd)
+    # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens,
+    # working_time, token_suppressed, time_suppressed, actual_cost_usd)
     run_samples: dict[
         tuple[str, str, str],
-        list[tuple[float | None, float | None, float | None, int, float, bool, bool, float | None]],
+        list[
+            tuple[
+                float | None,
+                float | None,
+                float | None,
+                int,
+                float,
+                bool,
+                bool,
+                float | None,
+            ]
+        ],
     ] = {}
 
     for info in infos:
@@ -213,8 +230,20 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         model = el.eval.model
         run_key = (task, model, info.name)
 
+        # Type: (correctness, token_ratio, time_ratio, total_tokens, working_time,
+        #        token_suppressed, time_suppressed, actual_cost_usd, avg_cost_usd)
         samples_list: list[
-            tuple[float | None, float | None, float | None, int, float, bool, bool, float | None, float | None]
+            tuple[
+                float | None,
+                float | None,
+                float | None,
+                int,
+                float,
+                bool,
+                bool,
+                float | None,
+                float | None,
+            ]
         ] = []
 
         for sample in el.samples:
@@ -235,12 +264,18 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             tok_supp = _is_suppressed(sample.scores.get("token_ratio_scorer"))
             time_supp = _is_suppressed(sample.scores.get("time_ratio_scorer"))
 
-            samples_list.append((
-                correctness, token_ratio, time_ratio,
-                total_tokens, working_time,
-                tok_supp, time_supp,
-                actual_cost_usd,
-            ))
+            samples_list.append(
+                (
+                    correctness,
+                    token_ratio,
+                    time_ratio,
+                    total_tokens,
+                    working_time,
+                    tok_supp,
+                    time_supp,
+                    actual_cost_usd,
+                )
+            )
 
         if samples_list:
             run_samples[run_key] = samples_list
@@ -350,7 +385,7 @@ def _fmt_tokens(tokens: float) -> str:
     if math.isnan(tokens):
         return "  --"
     if tokens >= 1000:
-        return f"{tokens/1000:.1f}k"
+        return f"{tokens / 1000:.1f}k"
     return f"{tokens:.0f}"
 
 
@@ -358,7 +393,7 @@ def _fmt_cost_ratio(val: float) -> str:
     """Format a cost ratio value (higher = cheaper)."""
     if math.isinf(val):
         return "FREE"
-    return _fmt_ratio(val) + "×"
+    return _fmt_ratio(val) + "x"
 
 
 def _fmt_avg_cost(cost: float) -> str:
@@ -382,7 +417,15 @@ def _geometric_mean(vals: list[float]) -> float:
 
 # Columns: TASK | CORRECT | TOK_RATIO | TIME_RATIO | TOKENS | TIME | COST_RATIO | AVG COST
 _COL_HEADERS = ["CORRECT", "TOK_RATIO", "TIME_RATIO", "TOKENS", "TIME", "COST_RATIO", "AVG COST"]
-_COL_KEYS = ["correctness", "token_ratio", "time_ratio", "avg_tokens", "avg_time", "price_ratio", "avg_cost_usd"]
+_COL_KEYS = [
+    "correctness",
+    "token_ratio",
+    "time_ratio",
+    "avg_tokens",
+    "avg_time",
+    "price_ratio",
+    "avg_cost_usd",
+]
 _COL_WIDTHS = [7, 9, 10, 7, 7, 9, 9]
 
 
@@ -416,8 +459,10 @@ def format_pillar_table(
 
     # Cache freshness header — use OpenRouterCache.get_freshness()
     try:
-        from bench_cli.pricing.price_cache import OpenRouterCache
         import datetime
+
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
         cache = OpenRouterCache()
         freshness = cache.get_freshness()
         if freshness:
@@ -450,7 +495,7 @@ def format_pillar_table(
     # Row 2: column headers
     header = " " * task_col_w
     for _ in model_names:
-        for col_name, col_w in zip(_COL_HEADERS, _COL_WIDTHS):
+        for col_name, col_w in zip(_COL_HEADERS, _COL_WIDTHS, strict=True):
             header += " " + col_name.rjust(col_w)
         header += " "
     lines.append(header)
@@ -472,7 +517,7 @@ def format_pillar_table(
                     _fmt_cost_ratio(ps.price_ratio),
                     _fmt_avg_cost(ps.avg_cost_usd),
                 ]
-                for cell, col_w in zip(cells, _COL_WIDTHS):
+                for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
                     row += " " + cell.rjust(col_w)
                 row += " "
             else:
@@ -512,7 +557,7 @@ def format_pillar_table(
             _fmt_cost_ratio(_geometric_mean(cr_vals)) if cr_vals else "  --",
             _fmt_avg_cost(sum(cost_vals) / len(cost_vals)) if cost_vals else "  --",
         ]
-        for cell, col_w in zip(cells, _COL_WIDTHS):
+        for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
             mean_row += " " + cell.rjust(col_w)
         mean_row += " "
     lines.append(mean_row)
@@ -540,10 +585,13 @@ def format_summary(data: CompareData) -> str:
     model_scores.sort(key=lambda x: x[1], reverse=True)
 
     lines: list[str] = []
-    lines.append(f"{'━' * 3} BENCHMARK SUMMARY ({len(data.tasks)} tasks, {len(data.models)} models) {'━' * 3}")
+    n_tasks = len(data.tasks)
+    n_models = len(data.models)
+    lines.append(f"{'━' * 3} BENCHMARK SUMMARY ({n_tasks} tasks, {n_models} models) {'━' * 3}")
     lines.append("")
     for i, (model, score) in enumerate(model_scores, 1):
-        bar = "●" * int(round(score * 10)) + "○" * (10 - int(round(score * 10)))
+        filled = round(score * 10)
+        bar = "●" * filled + "○" * (10 - filled)
         lines.append(f"  #{i}  {bare_name(model):<20s} {score:.0%}  {bar}")
     lines.append("")
     lines.append("  Use -v for per-task breakdown, -vv for full table.")
@@ -609,18 +657,24 @@ def format_json(data: CompareData) -> str:
         for model in data.models:
             ps = data.matrix.get(task, {}).get(model)
             if ps:
-                rows.append({
-                    "task": task,
-                    "model": model,
-                    "correctness": round(ps.correctness, 4),
-                    "token_ratio": round(ps.token_ratio, 4),
-                    "time_ratio": round(ps.time_ratio, 4),
-                    "avg_tokens": round(ps.avg_tokens, 1),
-                    "avg_time": round(ps.avg_time, 2),
-                    "samples": ps.samples,
-                    "token_suppressed": ps.token_suppressed,
-                    "time_suppressed": ps.time_suppressed,
-                    "price_ratio": round(ps.price_ratio, 4) if not math.isnan(ps.price_ratio) else None,
-                    "avg_cost_usd": round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None,
-                })
+                rows.append(
+                    {
+                        "task": task,
+                        "model": model,
+                        "correctness": round(ps.correctness, 4),
+                        "token_ratio": round(ps.token_ratio, 4),
+                        "time_ratio": round(ps.time_ratio, 4),
+                        "avg_tokens": round(ps.avg_tokens, 1),
+                        "avg_time": round(ps.avg_time, 2),
+                        "samples": ps.samples,
+                        "token_suppressed": ps.token_suppressed,
+                        "time_suppressed": ps.time_suppressed,
+                        "price_ratio": (
+                            round(ps.price_ratio, 4) if not math.isnan(ps.price_ratio) else None
+                        ),
+                        "avg_cost_usd": (
+                            round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None
+                        ),
+                    }
+                )
     return json.dumps(rows, indent=2)

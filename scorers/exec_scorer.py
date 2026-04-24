@@ -18,6 +18,7 @@ from scorers.subproc import build_script, run_checks
 # Extraction helpers
 # ---------------------------------------------------------------------------
 
+
 def extract_function(text: str) -> str:
     """Extract a Python function definition from text.
 
@@ -113,6 +114,7 @@ TEST_CASES: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 # Scorer
 # ---------------------------------------------------------------------------
+
 
 def _get_safety(state: TaskState) -> float:
     for msg in state.messages:

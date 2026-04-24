@@ -31,8 +31,7 @@ def suggest_alternatives(openrouter_id: str, max_results: int = 8) -> list[str]:
     candidates = [
         model_id
         for model_id in all_prices
-        if model_id.startswith(f"{provider}/")
-        and model_id != openrouter_id
+        if model_id.startswith(f"{provider}/") and model_id != openrouter_id
     ]
     return candidates[:max_results]
 

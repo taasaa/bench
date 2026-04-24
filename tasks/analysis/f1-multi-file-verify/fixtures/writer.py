@@ -4,7 +4,7 @@ import csv
 from typing import Dict, List
 
 
-def write_tsv(filepath: str, rows: List[Dict[str, str]]) -> None:
+def write_tsv(filepath: str, rows: list[dict[str, str]]) -> None:
     """Write rows to a tab-separated values file.
 
     The output format is TSV (tab-delimited) per the project specification
@@ -28,7 +28,7 @@ def write_tsv(filepath: str, rows: List[Dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
-def write_json(filepath: str, rows: List[Dict[str, str]]) -> None:
+def write_json(filepath: str, rows: list[dict[str, str]]) -> None:
     """Write rows as a JSON array (for debugging)."""
     import json
 

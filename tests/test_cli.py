@@ -170,9 +170,7 @@ class TestRunIntegration:
         call_kwargs = mock_eval.call_args
         # Verify tasks were resolved and passed
         tasks_arg = (
-            call_kwargs.kwargs.get("tasks")
-            or call_kwargs[1].get("tasks")
-            or call_kwargs[0][0]
+            call_kwargs.kwargs.get("tasks") or call_kwargs[1].get("tasks") or call_kwargs[0][0]
         )
         assert len(tasks_arg) == 2
         # Verify model was passed
@@ -219,9 +217,7 @@ class TestRunIntegration:
                 mock_eval.return_value = [fake_log]
                 with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
                     with patch("bench_cli.run.cli._check_price_gate"):
-                        result = runner.invoke(
-                            cli, ["run", "--agent", "claude", "--tier", "quick"]
-                        )
+                        result = runner.invoke(cli, ["run", "--agent", "claude", "--tier", "quick"])
 
         assert result.exit_code == 0, result.output
         mock_solver.assert_called_once_with("claude", "local", cc_model=None)
@@ -294,7 +290,8 @@ class TestPricesAdd:
         isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["prices", "add", "rut-xyz-not-a-real-model", "0.15", "0.60"],
+            cli,
+            ["prices", "add", "rut-xyz-not-a-real-model", "0.15", "0.60"],
             obj={"cache": isolated_cache},
         )
         assert result.exit_code == 1
@@ -307,7 +304,8 @@ class TestPricesAdd:
         isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["prices", "add", "openai/qwen-local", "0.0", "0.0"],
+            cli,
+            ["prices", "add", "openai/qwen-local", "0.0", "0.0"],
             obj={"cache": isolated_cache},
         )
         assert result.exit_code == 1
@@ -320,7 +318,8 @@ class TestPricesAdd:
         isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
         runner = CliRunner()
         result = runner.invoke(
-            cli, ["prices", "add", "openai/nvidia-mistral-small4", "0.15", "0.60"],
+            cli,
+            ["prices", "add", "openai/nvidia-mistral-small4", "0.15", "0.60"],
             obj={"cache": isolated_cache},
         )
         assert result.exit_code == 0, result.output
@@ -345,8 +344,8 @@ class TestPriceGate:
         with patch("inspect_ai.eval") as mock_eval:
             mock_eval.return_value = []
             # Use an empty isolated cache and empty overrides to guarantee price miss
-            from bench_cli.pricing.price_cache import OpenRouterCache
             from bench_cli.pricing import litellm_config
+            from bench_cli.pricing.price_cache import OpenRouterCache
 
             empty_cache_path = tasks_root / "empty-cache.json"
             empty_cache_path.write_text("{}")
@@ -354,10 +353,9 @@ class TestPriceGate:
             empty_overrides_path.write_text("{}")
 
             monkeypatch.setattr(
-                OpenRouterCache, "__init__",
-                lambda self, **kw: self.__dict__.update(
-                    _cache_path=empty_cache_path, _data=None
-                ),
+                OpenRouterCache,
+                "__init__",
+                lambda self, **kw: self.__dict__.update(_cache_path=empty_cache_path, _data=None),
             )
             monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", empty_overrides_path)
             litellm_config._build_reverse_lookup.cache_clear()
@@ -374,9 +372,7 @@ class TestPriceGate:
         runner = CliRunner()
         with patch("inspect_ai.eval") as mock_eval:
             mock_eval.return_value = []
-            result = runner.invoke(
-                cli, ["run", "--tier", "quick", "--model", "openai/qwen-local"]
-            )
+            result = runner.invoke(cli, ["run", "--tier", "quick", "--model", "openai/qwen-local"])
             assert "No price found" not in result.output
 
 
@@ -419,9 +415,7 @@ class TestConcurrencyFlags:
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
                 with patch("bench_cli.run.cli._check_price_gate"):
-                    result = runner.invoke(
-                        cli, ["run", "--tier", "quick", "--concurrency", "4"]
-                    )
+                    result = runner.invoke(cli, ["run", "--tier", "quick", "--concurrency", "4"])
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args[1]
@@ -446,9 +440,7 @@ class TestConcurrencyFlags:
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
                 with patch("bench_cli.run.cli._check_price_gate"):
-                    result = runner.invoke(
-                        cli, ["run", "--tier", "quick", "--sequential"]
-                    )
+                    result = runner.invoke(cli, ["run", "--tier", "quick", "--sequential"])
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args[1]
@@ -510,9 +502,7 @@ class TestConcurrencyFlags:
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
                 with patch("bench_cli.run.cli._check_price_gate"):
-                    result = runner.invoke(
-                        cli, ["run", "--tier", "quick"]
-                    )
+                    result = runner.invoke(cli, ["run", "--tier", "quick"])
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
         call_kwargs = mock_eval.call_args[1]
@@ -538,9 +528,7 @@ class TestConcurrencyFlags:
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
                 with patch("bench_cli.run.cli._check_price_gate"):
-                    result = runner.invoke(
-                        cli, ["run", "--tier", "quick", "--concurrency", "1"]
-                    )
+                    result = runner.invoke(cli, ["run", "--tier", "quick", "--concurrency", "1"])
         assert result.exit_code == 0, result.output
         call_kwargs = mock_eval.call_args[1]
         assert call_kwargs.get("max_tasks") == 1

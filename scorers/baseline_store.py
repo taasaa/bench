@@ -31,7 +31,6 @@ CORRECTNESS_GATE_DEFAULT = 0.8
 
 @dataclass
 class Baseline:
-
     """A single baseline measurement for a (task, model) pair."""
 
     task_id: str
@@ -59,8 +58,8 @@ class Baseline:
 # Store
 # ---------------------------------------------------------------------------
 
-class BaselineStore:
 
+class BaselineStore:
     """Read/write access to the baseline store on disk."""
 
     def __init__(self, baselines_dir: str = BASELINES_DIR) -> None:

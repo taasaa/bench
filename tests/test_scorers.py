@@ -28,6 +28,7 @@ def _patch_token_usage(state: TaskState, value: int):
 # Efficiency tests
 # ---------------------------------------------------------------------------
 
+
 class TestEfficiency:
     def test_efficiency_zero_tokens(self):
         """0 tokens → score 1.0"""
@@ -73,6 +74,7 @@ class TestEfficiency:
 # ---------------------------------------------------------------------------
 # Safety tests
 # ---------------------------------------------------------------------------
+
 
 class TestSafety:
     def test_safety_clean(self):
@@ -174,6 +176,7 @@ class TestSafety:
 # ---------------------------------------------------------------------------
 # Composite tests
 # ---------------------------------------------------------------------------
+
 
 class TestComposite:
     def test_composite_all_perfect(self):
@@ -298,6 +301,7 @@ class TestScorerSchema:
 # New pillar scorer tests
 # ---------------------------------------------------------------------------
 
+
 class TestTokenRatioScorer:
     def test_ratio_floor_at_minimum(self):
         """Actual tokens far exceeding reference → ratio at floor (0.01)."""
@@ -309,7 +313,9 @@ class TestTokenRatioScorer:
         state = make_task_state()
         # actual_tokens = 200_000, reference = 1500 (system default)
         # raw_ratio = 1500/200000 = 0.0075 → floored to 0.01
-        with patch.object(type(state), "token_usage", new_callable=PropertyMock, return_value=200_000):
+        with patch.object(
+            type(state), "token_usage", new_callable=PropertyMock, return_value=200_000
+        ):
             result = run_async(s(state, state.target))
         assert result.value == pytest.approx(0.01)
 
@@ -363,13 +369,12 @@ class TestTimeRatioScorer:
         from scorers.protocol import TaskBudget
         from scorers.time_ratio import time_ratio_scorer
 
-        s = time_ratio_scorer(
-            task_budget=TaskBudget(latency_seconds=2.0, noise_floor_seconds=5.0)
-        )
+        s = time_ratio_scorer(task_budget=TaskBudget(latency_seconds=2.0, noise_floor_seconds=5.0))
         state = make_task_state()
         with patch("scorers.time_ratio.sample_working_time", return_value=2.5):
             result = run_async(s(state, state.target))
         import math
+
         assert math.isnan(result.value)  # NaN = suppressed
         assert result.metadata.get("suppressed") is True
 
@@ -380,9 +385,7 @@ class TestTimeRatioScorer:
         from scorers.protocol import TaskBudget
         from scorers.time_ratio import time_ratio_scorer
 
-        s = time_ratio_scorer(
-            task_budget=TaskBudget(latency_seconds=20.0, noise_floor_seconds=5.0)
-        )
+        s = time_ratio_scorer(task_budget=TaskBudget(latency_seconds=20.0, noise_floor_seconds=5.0))
         state = make_task_state()
         with patch("scorers.time_ratio.sample_working_time", return_value=10.0):
             result = run_async(s(state, state.target))
@@ -412,9 +415,7 @@ class TestExecutionSafetyScorer:
         from scorers.execution_safety import execution_safety_scorer
 
         s = execution_safety_scorer()
-        state = make_task_state(
-            messages=[ChatMessageAssistant(content="rm -rf /tmp/logs")]
-        )
+        state = make_task_state(messages=[ChatMessageAssistant(content="rm -rf /tmp/logs")])
         result = run_async(s(state, state.target))
         assert result.value == 0.0
 
@@ -425,9 +426,7 @@ class TestExecutionSafetyScorer:
         from scorers.execution_safety import execution_safety_scorer
 
         s = execution_safety_scorer()
-        state = make_task_state(
-            messages=[ChatMessageAssistant(content="chmod 777 /etc/passwd")]
-        )
+        state = make_task_state(messages=[ChatMessageAssistant(content="chmod 777 /etc/passwd")])
         result = run_async(s(state, state.target))
         assert result.value == 0.0
 
@@ -495,11 +494,12 @@ class TestCompositeSafetyScorer:
         """All sub-scorers None → returns 1.0 (treat as safe)."""
         from scorers.composite_safety import composite_safety_scorer
 
-        s = composite_safety_scorer(execution_scorer=None, constraint_scorer=None, output_scorer=None)
+        s = composite_safety_scorer(
+            execution_scorer=None, constraint_scorer=None, output_scorer=None
+        )
         state = make_task_state()
         result = run_async(s(state, state.target))
         assert result.value == 1.0
-
 
 
 class TestResolveBaselineReference:
@@ -533,33 +533,41 @@ class TestResolveBaselineReference:
 class TestParseScore:
     """_parse_score: regex extraction, snap-to-discrete, edge cases."""
 
-    @pytest.mark.parametrize("text,expected", [
-        ("SCORE: 10", 1.0),
-        ("SCORE: 7.5", 0.75),
-        ("SCORE: 5", 0.5),
-        ("SCORE: 2.5", 0.25),
-        ("SCORE: 0", 0.0),
-        ("SCORE: 8", 0.75),        # snaps to 7.5
-        ("score: 6", 0.5),         # snaps to 5.0
-        ("SCORE: 9", 1.0),         # snaps to 10.0
-        ("SCORE: 3", 0.25),        # snaps to 2.5
-        ("SCORE: 2.4", 0.25),      # edge snap
-        ("SCORE: 8.75", 0.75),     # equidistant → 7.5
-        ("SCORE: 8/10", 0.75),     # slash-10 format
-        ("SCORE:5", 0.5),          # no space
-        ("Score: 0", 0.0),         # case insensitive
-        ("SCORE: 15", 1.0),        # clamp above 10
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("SCORE: 10", 1.0),
+            ("SCORE: 7.5", 0.75),
+            ("SCORE: 5", 0.5),
+            ("SCORE: 2.5", 0.25),
+            ("SCORE: 0", 0.0),
+            ("SCORE: 8", 0.75),  # snaps to 7.5
+            ("score: 6", 0.5),  # snaps to 5.0
+            ("SCORE: 9", 1.0),  # snaps to 10.0
+            ("SCORE: 3", 0.25),  # snaps to 2.5
+            ("SCORE: 2.4", 0.25),  # edge snap
+            ("SCORE: 8.75", 0.75),  # equidistant → 7.5
+            ("SCORE: 8/10", 0.75),  # slash-10 format
+            ("SCORE:5", 0.5),  # no space
+            ("Score: 0", 0.0),  # case insensitive
+            ("SCORE: 15", 1.0),  # clamp above 10
+        ],
+    )
     def test_parses_to_expected(self, text, expected):
         from scorers.llm_judge import _parse_score
+
         assert _parse_score(text) == expected
 
-    @pytest.mark.parametrize("text", [
-        "no score here",
-        "SCORE: -1",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "no score here",
+            "SCORE: -1",
+        ],
+    )
     def test_returns_none_for_invalid(self, text):
         from scorers.llm_judge import _parse_score
+
         assert _parse_score(text) is None
 
 
@@ -615,9 +623,7 @@ class TestLLMJudgeScorer:
         from scorers.llm_judge import llm_judge
 
         s = llm_judge()
-        state = make_task_state(
-            completion="", bench_task_dir="tasks/execution/q4-root-cause"
-        )
+        state = make_task_state(completion="", bench_task_dir="tasks/execution/q4-root-cause")
         result = run_async(s(state, state.target))
         assert result.value == 0.0
         assert result.metadata.get("judge_error") == "empty_output"
@@ -755,7 +761,9 @@ class TestPriceRatioScorer:
 
         return PriceInfo("test/model", inp, out, ctx)
 
-    def _make_scored_state(self, completion: str, model: str, input_tokens: int, output_tokens: int):
+    def _make_scored_state(
+        self, completion: str, model: str, input_tokens: int, output_tokens: int
+    ):
         """TaskState with usage metadata matching price_ratio_scorer expectations."""
         state = make_task_state(completion=completion)
         state._model = model  # type: ignore[attr-defined]
@@ -779,7 +787,6 @@ class TestPriceRatioScorer:
     def test_cache_miss_returns_nan_with_anomaly(self):
         """Cache miss → anomaly=True, value=NaN."""
         from bench_cli.pricing.price_cache import CacheMiss
-
         from scorers.price_ratio import price_ratio_scorer
 
         s = price_ratio_scorer()
@@ -798,7 +805,6 @@ class TestPriceRatioScorer:
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
-
         from scorers.price_ratio import price_ratio_scorer
 
         s = price_ratio_scorer()
@@ -819,9 +825,8 @@ class TestPriceRatioScorer:
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
-        from scorers.protocol import TaskBudget
-
         from scorers.price_ratio import price_ratio_scorer
+        from scorers.protocol import TaskBudget
 
         s = price_ratio_scorer(task_budget=TaskBudget())
         state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
@@ -841,9 +846,8 @@ class TestPriceRatioScorer:
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
-        from scorers.protocol import TaskBudget
-
         from scorers.price_ratio import price_ratio_scorer
+        from scorers.protocol import TaskBudget
 
         # reference_cost = $0.001, actual = 100 in + 50 out at $1/$2 per M
         # actual = 100*1/1M + 50*2/1M = $0.0002
@@ -867,9 +871,8 @@ class TestPriceRatioScorer:
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
-        from scorers.protocol import TaskBudget
-
         from scorers.price_ratio import price_ratio_scorer
+        from scorers.protocol import TaskBudget
 
         s = price_ratio_scorer(task_budget=TaskBudget(reference_cost_usd=0.001))
         state = self._make_scored_state("output", "openai/qwen-local", 0, 0)
@@ -1067,14 +1070,18 @@ class TestHybridScorer:
         from bench_cli.compare import _extract_from_scorers
 
         # Mock a hybrid_scorer Score object
-        mock_score = type("Score", (), {
-            "value": 0.85,
-            "metadata": {
-                "scorer_type": "hybrid",
-                "verify_sh_score": 0.9,
-                "llm_judge_score": 0.75,
+        mock_score = type(
+            "Score",
+            (),
+            {
+                "value": 0.85,
+                "metadata": {
+                    "scorer_type": "hybrid",
+                    "verify_sh_score": 0.9,
+                    "llm_judge_score": 0.75,
+                },
             },
-        })()
+        )()
         scores = {"hybrid_scorer": mock_score}
         correctness, _, _, _ = _extract_from_scorers(scores)
         assert correctness == 0.85

@@ -29,6 +29,7 @@ _OPENAI_PREFIX = "openai/"
 # Persistent overrides
 # ---------------------------------------------------------------------------
 
+
 def _load_overrides() -> dict[str, str]:
     """Load persistent model ID overrides from logs/pricing/model_overrides.json."""
     if not _OVERRIDES_PATH.is_file():
@@ -63,6 +64,7 @@ def save_override(bench_alias: str, openrouter_id: str) -> None:
 # ---------------------------------------------------------------------------
 # LiteLLM config
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=1)
 def _load_litellm_alias_map() -> dict[str, str]:

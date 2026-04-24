@@ -38,10 +38,7 @@ def sandbox_list(fixture_dir: Path, path: str = ".") -> str:
         return f"Error: path '{path}' escapes workspace boundary"
     if not resolved.is_dir():
         return f"Error: directory '{path}' not found"
-    entries = sorted(
-        (f"{'DIR' if p.is_dir() else 'FILE':4s} {p.name}")
-        for p in resolved.iterdir()
-    )
+    entries = sorted((f"{'DIR' if p.is_dir() else 'FILE':4s} {p.name}") for p in resolved.iterdir())
     return "\n".join(entries) if entries else "(empty directory)"
 
 

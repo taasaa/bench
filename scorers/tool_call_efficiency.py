@@ -33,6 +33,8 @@ from inspect_ai.solver import TaskState
 
 @dataclass
 class ToolCallMetrics:
+    """Metrics for tool call efficiency scoring."""
+
     tool_call_count: int
     unique_tools: list[str]
     tool_name_counts: dict[str, int]
@@ -114,6 +116,7 @@ def tool_call_efficiency(
         reference_tool_count: Optional fixed reference for all samples.
             Prefer setting it per-sample via dataset metadata.
     """
+
     def _score(state: TaskState, target: Target) -> Score:
         metrics = _extract_tool_calls(state)
 
@@ -129,7 +132,11 @@ def tool_call_efficiency(
         tool_summary = ", ".join(
             f"{name}={count}" for name, count in sorted(metrics.tool_name_counts.items())
         )
-        ratio_str = f", ratio={metrics.reference_ratio:.2f}" if metrics.reference_ratio else " (no reference)"
+        ratio_str = (
+            f", ratio={metrics.reference_ratio:.2f}"
+            if metrics.reference_ratio
+            else " (no reference)"
+        )
         explanation = (
             f"efficiency={value:.2f}\n"
             f"tool_calls={metrics.tool_call_count} ({tool_summary})"

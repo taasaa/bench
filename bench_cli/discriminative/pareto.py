@@ -6,6 +6,7 @@ Subject A dominates Subject B if A is >= B on all axes and > B on at least one.
 Free models: separate frontier (cost=$0 anchors them separately).
 Paid models: frontier on (quality, cost) where quality = geometric mean of cluster scores.
 """
+
 from __future__ import annotations
 
 import math
@@ -17,8 +18,8 @@ from bench_cli.discriminative.types import SubjectID, SubjectProfile
 
 @dataclass
 class ParetoPoint:
-
     """A single point on the Pareto frontier."""
+
     subject_id: SubjectID
     display_name: str
     quality: float  # geometric mean of cluster correctness scores
@@ -108,13 +109,15 @@ def compute_pareto_frontier(
     for profile in profiles:
         quality = compute_quality(profile)
         is_free = profile.cost_per_sample is not None and profile.cost_per_sample < 1e-9
-        all_points.append(ParetoPoint(
-            subject_id=profile.subject_id,
-            display_name=profile.subject_id.display_name,
-            quality=quality,
-            cost_per_sample=profile.cost_per_sample,
-            is_free=is_free,
-        ))
+        all_points.append(
+            ParetoPoint(
+                subject_id=profile.subject_id,
+                display_name=profile.subject_id.display_name,
+                quality=quality,
+                cost_per_sample=profile.cost_per_sample,
+                is_free=is_free,
+            )
+        )
 
     # Mark domination for paid models (quality vs cost)
     paid_points = [p for p in all_points if not p.is_free]

@@ -13,7 +13,7 @@ load_dotenv(_project_root / ".env", override=True)
 class _BenchGroup(click.Group):
     """Override main() so Click handles its own errors gracefully (no tracebacks)."""
 
-    def main(self, *args, **kwargs):
+    def main(self, *args: object, **kwargs: object) -> object:
         kwargs["standalone_mode"] = True
         return super().main(*args, **kwargs)
 
@@ -41,11 +41,11 @@ def _show_help(ctx: click.Context) -> None:
 
 
 # ── Primary surface ───────────────────────────────────────────────────
-from bench_cli.run import run
-from bench_cli.show import show_cmd
 from bench_cli.compare import compare
-from bench_cli.tasks_browser import tasks_cmd
+from bench_cli.run import run
 from bench_cli.score import score_cmd
+from bench_cli.show import show_cmd
+from bench_cli.tasks_browser import tasks_cmd
 
 cli.add_command(run)
 cli.add_command(show_cmd)
@@ -55,19 +55,27 @@ cli.add_command(score_cmd)
 
 # ── Legacy commands (hidden from help) ────────────────────────────────
 from bench_cli.baseline import baseline
+from bench_cli.config_group import config_group
 from bench_cli.discriminative.cli import (
+    compare_matrix_cmd,
     compare_profiles,
     recommend,
     task_correlations,
-    compare_matrix_cmd,
 )
 from bench_cli.inspect import inspect
 from bench_cli.prices import prices
 from bench_cli.results import results
-from bench_cli.config_group import config_group
 
-for cmd in (baseline, inspect, prices, results,
-            recommend, compare_profiles, compare_matrix_cmd, task_correlations):
+for cmd in (
+    baseline,
+    inspect,
+    prices,
+    results,
+    recommend,
+    compare_profiles,
+    compare_matrix_cmd,
+    task_correlations,
+):
     cmd.hidden = True
     cli.add_command(cmd)
 cli.add_command(config_group)

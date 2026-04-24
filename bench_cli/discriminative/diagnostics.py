@@ -8,6 +8,7 @@ This module analyzes the eval data to classify tasks as:
 
 Only NORMAL tasks contribute signal to cluster scores.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -61,14 +62,16 @@ def run_diagnostics(
         is_floor = difficulty < DIFFICULTY_FLOOR
         is_non_discriminative = discrimination == 0.0
 
-        tasks.append(TaskDiagnostics(
-            task_id=task_id,
-            difficulty=difficulty,
-            discrimination=discrimination,
-            is_ceiling=is_ceiling,
-            is_floor=is_floor,
-            is_non_discriminative=is_non_discriminative,
-        ))
+        tasks.append(
+            TaskDiagnostics(
+                task_id=task_id,
+                difficulty=difficulty,
+                discrimination=discrimination,
+                is_ceiling=is_ceiling,
+                is_floor=is_floor,
+                is_non_discriminative=is_non_discriminative,
+            )
+        )
 
         if is_non_discriminative:
             non_discriminative_tasks.append(task_id)

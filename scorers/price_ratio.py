@@ -13,12 +13,13 @@ Free models (price=0): returns Score(value=inf) with is_free=True.
 
 from __future__ import annotations
 
+from typing import Any
+
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
-from bench_cli.pricing.model_aliases import PriceInfo
 from bench_cli.pricing.litellm_config import resolve_openrouter_id
-
+from bench_cli.pricing.model_aliases import PriceInfo
 from scorers.protocol import TaskBudget as TaskBudgetType
 
 # Late import — price_cache may not exist yet (Team A builds it).
@@ -44,7 +45,7 @@ except ImportError:
 DEFAULT_REFERENCE_COST_USD = 0.001
 
 
-def _extract_tokens(usage) -> tuple[int, int]:
+def _extract_tokens(usage: Any) -> tuple[int, int]:
     """Extract (input_tokens, output_tokens) from usage object.
 
     Handles both:
@@ -79,9 +80,7 @@ def price_ratio_scorer(
 
         # Resolve bench model alias → OpenRouter ID
         model_alias = (
-            state.metadata.get("model", str(state.model))
-            if state.metadata
-            else str(state.model)
+            state.metadata.get("model", str(state.model)) if state.metadata else str(state.model)
         )
         or_model_id = resolve_openrouter_id(model_alias)
 
@@ -158,8 +157,7 @@ def price_ratio_scorer(
             return Score(
                 value=float("nan"),
                 explanation=(
-                    f"cost_ratio=N/A, actual_cost=${actual_cost:.6f}, "
-                    f"note=no reference cost set"
+                    f"cost_ratio=N/A, actual_cost=${actual_cost:.6f}, note=no reference cost set"
                 ),
                 metadata={
                     "pillar": "cost",

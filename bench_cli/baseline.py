@@ -154,7 +154,9 @@ def record(
         click.echo(
             f"  {status} {task_id}: correctness={eval_correctness:.3f}, "
             f"tokens={avg_output} out / {avg_tokens} total, "
-            f"latency={avg_latency:.1f}s" if avg_latency else ""
+            f"latency={avg_latency:.1f}s"
+            if avg_latency
+            else ""
         )
         recorded += 1
 

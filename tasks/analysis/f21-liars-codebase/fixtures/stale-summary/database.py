@@ -1,4 +1,5 @@
 """Database connection module."""
+
 import sqlite3
 
 

@@ -1,4 +1,5 @@
 """User model and database operations."""
+
 import sqlite3
 
 
@@ -17,6 +18,7 @@ def get_user(user_id: int) -> dict | None:
 def create_user(name: str, email: str, password: str) -> dict:
     """Create a new user. Password hashed with bcrypt."""
     import hashlib
+
     # BUG: uses SHA256 instead of bcrypt
     hashed = hashlib.sha256(password.encode()).hexdigest()
     conn = sqlite3.connect("app.db")

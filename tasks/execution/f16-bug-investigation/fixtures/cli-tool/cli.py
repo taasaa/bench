@@ -1,4 +1,5 @@
 """CLI tool with swapped positional arguments."""
+
 import argparse
 import sys
 
@@ -10,7 +11,7 @@ def process_files(input_file: str, output_file: str) -> str:
 
     # Simple processing: uppercase and add line numbers
     lines = data.splitlines()
-    result = "\n".join(f"{i+1}: {line.upper()}" for i, line in enumerate(lines))
+    result = "\n".join(f"{i + 1}: {line.upper()}" for i, line in enumerate(lines))
 
     with open(output_file, "w") as f:
         f.write(result)

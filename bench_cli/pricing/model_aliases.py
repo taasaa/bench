@@ -101,6 +101,7 @@ def is_free_model(bench_alias: str, price_info: PriceInfo) -> bool:
 # Price data structure
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PriceInfo:
     """Price data for a single model, fetched from KiloCode API."""

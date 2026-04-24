@@ -3,6 +3,7 @@
 Phase 3: given N profiles, produce a matrix showing per-cluster scores
 across all subjects, with deltas and significance markers.
 """
+
 from __future__ import annotations
 
 from bench_cli.discriminative.ci import c_is_significant
@@ -55,13 +56,15 @@ def compare_matrix(profiles: list[SubjectProfile]) -> CompareMatrix:
         for name, score in scores_map.items():
             deltas[name] = score - ref_score
 
-        rows.append(MatrixRow(
-            cluster_name=cluster_name,
-            scores=scores_map,
-            ci_lows=ci_lows,
-            ci_highs=ci_highs,
-            deltas=deltas,
-        ))
+        rows.append(
+            MatrixRow(
+                cluster_name=cluster_name,
+                scores=scores_map,
+                ci_lows=ci_lows,
+                ci_highs=ci_highs,
+                deltas=deltas,
+            )
+        )
 
     return CompareMatrix(
         subjects=subjects,
@@ -124,9 +127,7 @@ def _get_cluster_score(profile: SubjectProfile, cluster_name: str) -> float:
     return 0.0
 
 
-def _get_cluster_ci(
-    profile: SubjectProfile, cluster_name: str, which: str
-) -> float:
+def _get_cluster_ci(profile: SubjectProfile, cluster_name: str, which: str) -> float:
     for cs in profile.cluster_scores:
         if cs.name == cluster_name:
             if which == "low":

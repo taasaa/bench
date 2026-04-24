@@ -54,10 +54,7 @@ def time_ratio_scorer(
         if actual_seconds is None or actual_seconds > 86400:
             return Score(
                 value=1.0,
-                explanation=(
-                    "latency_ratio=1.00, "
-                    "note=sample_working_time unavailable, using 1.0"
-                ),
+                explanation=("latency_ratio=1.00, note=sample_working_time unavailable, using 1.0"),
                 metadata={
                     "pillar": "latency",
                     "ratio": None,

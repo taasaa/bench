@@ -48,9 +48,7 @@ def agent_smoke():
     from inspect_swe import claude_code  # type: ignore[import-untyped]
 
     return Task(
-        dataset=json_dataset(
-            "dataset.json", FieldSpec(input="input", target="target", id="id")
-        ),
+        dataset=json_dataset("dataset.json", FieldSpec(input="input", target="target", id="id")),
         solver=claude_code(),
         scorer=includes_numeric(),
         sandbox="docker",

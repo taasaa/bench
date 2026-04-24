@@ -41,6 +41,8 @@ from inspect_ai.solver import TaskState
 
 @dataclass
 class InstructionOverheadMetrics:
+    """Token metrics for measuring instruction overhead ratio."""
+
     instruction_tokens: int
     completion_tokens: int
     overhead_ratio: float | None  # None if no reference
@@ -144,15 +146,14 @@ def instruction_overhead_scorer(
             Set this via sample.metadata["reference_instruction_tokens"] instead.
         reference_completion_tokens: Fixed reference for completion tokens.
     """
+
     def _score(state: TaskState, target: Target) -> Score:
         metrics = _extract_token_metrics(state)
 
         # Override references if provided at scorer call time
         if reference_instruction_tokens:
             if metrics.instruction_tokens > 0:
-                metrics.overhead_ratio = (
-                    reference_instruction_tokens / metrics.instruction_tokens
-                )
+                metrics.overhead_ratio = reference_instruction_tokens / metrics.instruction_tokens
 
         # Compute score: 1.0 if efficient, <1.0 proportional to overhead
         if metrics.overhead_ratio is not None:

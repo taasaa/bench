@@ -7,6 +7,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from bench_cli.pricing.litellm_config import (
+    _load_litellm_alias_map,
+    is_managed_model,
+    resolve_openrouter_id,
+    save_override,
+)
 from bench_cli.pricing.model_aliases import (
     MODEL_ALIAS_MAP,
     PriceInfo,
@@ -14,17 +20,11 @@ from bench_cli.pricing.model_aliases import (
     resolve_alias,
 )
 from bench_cli.pricing.price_cache import CacheMiss, OpenRouterCache
-from bench_cli.pricing.litellm_config import (
-    _load_litellm_alias_map,
-    is_managed_model,
-    resolve_openrouter_id,
-    save_override,
-)
-
 
 # ---------------------------------------------------------------------------
 # model_aliases
 # ---------------------------------------------------------------------------
+
 
 class TestModelAliases:
     def test_resolve_alias_known(self):
@@ -114,6 +114,7 @@ class TestPriceInfo:
 # ---------------------------------------------------------------------------
 # price_cache
 # ---------------------------------------------------------------------------
+
 
 class TestOpenRouterCache:
     def test_cache_path_default(self, tmp_path):
@@ -260,10 +261,12 @@ class TestOpenRouterCache:
     def test_add_price_updates_existing(self, tmp_path):
         cache_file = tmp_path / "prices.json"
         cache_file.write_text(
-            json.dumps({
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "models": {"model/x": {"input": 0.1, "output": 0.2, "context": 4096}},
-            }),
+            json.dumps(
+                {
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "models": {"model/x": {"input": 0.1, "output": 0.2, "context": 4096}},
+                }
+            ),
             encoding="utf-8",
         )
         cache = OpenRouterCache(cache_path=cache_file)
@@ -286,6 +289,7 @@ class TestOpenRouterCache:
 # ---------------------------------------------------------------------------
 # litellm_config
 # ---------------------------------------------------------------------------
+
 
 class TestLiteLLMConfig:
     """Tests for LiteLLM config parser and resolution."""
@@ -382,29 +386,38 @@ class TestModelOverrides:
 class TestIsManagedModel:
     """Tests for managed/local model exemption logic."""
 
-    @pytest.mark.parametrize("alias", [
-        "openai/qwen-local",
-        "openai/gemma-4-e2-local",
-        "openai/gemma-4-26-local",
-        "openai/glm-local",
-    ])
+    @pytest.mark.parametrize(
+        "alias",
+        [
+            "openai/qwen-local",
+            "openai/gemma-4-e2-local",
+            "openai/gemma-4-26-local",
+            "openai/glm-local",
+        ],
+    )
     def test_local_suffix_is_managed(self, alias):
         assert is_managed_model(alias) is True
 
-    @pytest.mark.parametrize("alias", [
-        "openai/qwen3-coder-plus",
-        "openai/qwen3-max",
-    ])
+    @pytest.mark.parametrize(
+        "alias",
+        [
+            "openai/qwen3-coder-plus",
+            "openai/qwen3-max",
+        ],
+    )
     def test_named_local_models_managed(self, alias):
         assert is_managed_model(alias) is True
 
-    @pytest.mark.parametrize("alias", [
-        "openai/opus",
-        "openai/sonnet",
-        "openai/gpt-4o",
-        "openai/nvidia-mistral-small4",
-        "openai/default",
-    ])
+    @pytest.mark.parametrize(
+        "alias",
+        [
+            "openai/opus",
+            "openai/sonnet",
+            "openai/gpt-4o",
+            "openai/nvidia-mistral-small4",
+            "openai/default",
+        ],
+    )
     def test_regular_aliases_not_managed(self, alias):
         assert is_managed_model(alias) is False
 

@@ -17,10 +17,10 @@ from bench_cli.inspect import (
     _resolve_alias,
 )
 
-
 # ---------------------------------------------------------------------------
 # Mock factories — no file I/O
 # ---------------------------------------------------------------------------
+
 
 def _mock_sample(
     correctness: float | None = 1.0,
@@ -63,6 +63,7 @@ def _mock_sample(
 # _resolve_alias
 # ---------------------------------------------------------------------------
 
+
 class TestResolveAlias:
     def test_full_alias_unchanged(self):
         assert _resolve_alias("openai/nvidia-nemotron-30b") == "openai/nvidia-nemotron-30b"
@@ -78,15 +79,29 @@ class TestResolveAlias:
 # _per_task_stats — pure function, no I/O
 # ---------------------------------------------------------------------------
 
+
 class TestPerTaskStats:
-    def _ss(self, correctness=None, scorer_type="llm_judge", suppressed_tok=False,
-            suppressed_time=False, working_time=5.0, token_ratio=1.0,
-            time_ratio=1.0, price_ratio=1.0, actual_cost_usd=0.001):
+    def _ss(
+        self,
+        correctness=None,
+        scorer_type="llm_judge",
+        suppressed_tok=False,
+        suppressed_time=False,
+        working_time=5.0,
+        token_ratio=1.0,
+        time_ratio=1.0,
+        price_ratio=1.0,
+        actual_cost_usd=0.001,
+    ):
         return _mock_sample(
-            correctness=correctness, scorer_type=scorer_type,
-            suppressed_token=suppressed_tok, suppressed_time=suppressed_time,
-            working_time=working_time, token_ratio=token_ratio,
-            time_ratio=time_ratio, price_ratio=price_ratio,
+            correctness=correctness,
+            scorer_type=scorer_type,
+            suppressed_token=suppressed_tok,
+            suppressed_time=suppressed_time,
+            working_time=working_time,
+            token_ratio=token_ratio,
+            time_ratio=time_ratio,
+            price_ratio=price_ratio,
             actual_cost_usd=actual_cost_usd,
         )
 
@@ -106,15 +121,19 @@ class TestPerTaskStats:
         assert stats["correctness_avg"] is None
 
     def test_suppressed_token_ratio_excluded(self):
-        s = [self._ss(token_ratio=1.0, suppressed_tok=True),
-             self._ss(token_ratio=2.0, suppressed_tok=True)]
+        s = [
+            self._ss(token_ratio=1.0, suppressed_tok=True),
+            self._ss(token_ratio=2.0, suppressed_tok=True),
+        ]
         stats = _per_task_stats(s)
         assert stats["token_ratio_avg"] is None
         assert stats["n_tok_suppressed"] == 2
 
     def test_suppressed_time_ratio_excluded(self):
-        s = [self._ss(time_ratio=1.0, suppressed_time=True),
-             self._ss(time_ratio=2.0, suppressed_time=True)]
+        s = [
+            self._ss(time_ratio=1.0, suppressed_time=True),
+            self._ss(time_ratio=2.0, suppressed_time=True),
+        ]
         stats = _per_task_stats(s)
         assert stats["time_ratio_avg"] is None
         assert stats["n_time_suppressed"] == 2
@@ -138,14 +157,18 @@ class TestPerTaskStats:
         assert stats["all_correctness_one"] is False
 
     def test_all_verify_sh_binary_true(self):
-        s = [self._ss(correctness=1.0, scorer_type="verify_sh"),
-             self._ss(correctness=0.0, scorer_type="verify_sh")]
+        s = [
+            self._ss(correctness=1.0, scorer_type="verify_sh"),
+            self._ss(correctness=0.0, scorer_type="verify_sh"),
+        ]
         stats = _per_task_stats(s)
         assert stats["all_verify_sh_binary"] is True
 
     def test_all_verify_sh_binary_false_on_nonbinary(self):
-        s = [self._ss(correctness=0.75, scorer_type="verify_sh"),
-             self._ss(correctness=0.5, scorer_type="verify_sh")]
+        s = [
+            self._ss(correctness=0.75, scorer_type="verify_sh"),
+            self._ss(correctness=0.5, scorer_type="verify_sh"),
+        ]
         stats = _per_task_stats(s)
         assert stats["all_verify_sh_binary"] is False
 
@@ -163,6 +186,7 @@ class TestPerTaskStats:
 
     def test_nan_token_ratio_counted(self):
         import math
+
         s = [self._ss(token_ratio=1.0), self._ss()]
         s[1].token_ratio = math.nan
         stats = _per_task_stats(s)
@@ -170,6 +194,7 @@ class TestPerTaskStats:
 
     def test_nan_time_ratio_counted(self):
         import math
+
         s = [self._ss(time_ratio=1.0), self._ss()]
         s[1].time_ratio = math.nan
         stats = _per_task_stats(s)
@@ -189,6 +214,7 @@ class TestPerTaskStats:
 # ---------------------------------------------------------------------------
 # _load_pillar_map — uses real tasks/ directory. Integration tests, not mocked.
 # ---------------------------------------------------------------------------
+
 
 class TestLoadPillarMap:
     """Integration tests — hit real tasks/ directory."""
@@ -211,7 +237,9 @@ class TestLoadPillarMap:
 # ---------------------------------------------------------------------------
 
 from unittest.mock import patch
+
 from click.testing import CliRunner
+
 from bench_cli.inspect import inspect
 
 
@@ -239,7 +267,8 @@ def _mock_inspect_sample(ss: SampleScore) -> MagicMock:
     scores["token_ratio_scorer"] = make_score(ss.token_ratio, "token_ratio_scorer")
     scores["time_ratio_scorer"] = make_score(ss.time_ratio, "time_ratio_scorer")
     scores["price_ratio_scorer"] = make_score(
-        ss.price_ratio, "price_ratio_scorer",
+        ss.price_ratio,
+        "price_ratio_scorer",
         metadata={"actual_cost_usd": ss.actual_cost_usd, "is_free": ss.is_free},
     )
 
@@ -316,9 +345,11 @@ class TestInspectCLI:
             with patch("bench_cli.inspect.cli._load_baseline") as mock_b:
                 mock_b.return_value = {"task_a": 0.4}
                 r_tight = self.runner.invoke(
-                    inspect, ["compare", "--model", "openai/test", "--delta-threshold", "0.01"])
+                    inspect, ["compare", "--model", "openai/test", "--delta-threshold", "0.01"]
+                )
                 r_loose = self.runner.invoke(
-                    inspect, ["compare", "--model", "openai/test", "--delta-threshold", "0.50"])
+                    inspect, ["compare", "--model", "openai/test", "--delta-threshold", "0.50"]
+                )
         sig_tight = r_tight.output.count("SIGNIFICANT") + r_tight.output.count("notable")
         sig_loose = r_loose.output.count("SIGNIFICANT") + r_loose.output.count("notable")
         assert sig_tight >= sig_loose
@@ -327,10 +358,16 @@ class TestInspectCLI:
         with patch("bench_cli.inspect.cli._load_samples") as mock:
             mock.return_value = {
                 "f22_error_spiral": [
-                    _mock_sample(0.5, scorer_type="llm_judge",
-                                judge_explanation="Correctly identifies the error path and handles it appropriately."),
-                    _mock_sample(0.9, scorer_type="llm_judge",
-                                 judge_explanation="Excellent multi-step reasoning with proper error spiral detection."),
+                    _mock_sample(
+                        0.5,
+                        scorer_type="llm_judge",
+                        judge_explanation="Correctly identifies the error path and handles it appropriately.",
+                    ),
+                    _mock_sample(
+                        0.9,
+                        scorer_type="llm_judge",
+                        judge_explanation="Excellent multi-step reasoning with proper error spiral detection.",
+                    ),
                 ],
             }
             result = self.runner.invoke(inspect, ["deep-check", "--model", "openai/test"])
@@ -399,7 +436,8 @@ class TestInspectCLI:
             mock.return_value = {
                 "good_task": [
                     _mock_sample(
-                        0.9, scorer_type="llm_judge",
+                        0.9,
+                        scorer_type="llm_judge",
                         judge_explanation="The solution correctly identifies the root cause and provides an accurate fix that properly handles the edge case.",
                     ),
                 ],

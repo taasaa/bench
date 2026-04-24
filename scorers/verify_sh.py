@@ -46,7 +46,6 @@ _NON_CHECK_LINES = re.compile(
 
 @dataclass
 class CheckResult:
-
     """Result of a single check within a verify.sh script."""
 
     name: str
@@ -56,7 +55,6 @@ class CheckResult:
 
 @dataclass
 class VerifyResult:
-
     """Result from verify.sh scorer output parsing."""
 
     passed: int
@@ -78,7 +76,7 @@ def _synthesize_checks_from_stderr(stderr: str, total: int) -> list[CheckResult]
     if not stderr.strip():
         # No stderr content — all checks are unknown; return total empty checks
         return [
-            CheckResult(name=f"check_{i+1}", passed=False, detail="no output")
+            CheckResult(name=f"check_{i + 1}", passed=False, detail="no output")
             for i in range(total)
         ]
 
@@ -113,19 +111,23 @@ def _synthesize_checks_from_stderr(stderr: str, total: int) -> list[CheckResult]
                 if re.search(rf"check[_\s]?{i}\b", line, re.IGNORECASE):
                     detail = line.strip()
                     break
-            checks.append(CheckResult(
-                name=f"check_{i}",
-                passed=passed,
-                detail=detail[:200],  # truncate long details
-            ))
+            checks.append(
+                CheckResult(
+                    name=f"check_{i}",
+                    passed=passed,
+                    detail=detail[:200],  # truncate long details
+                )
+            )
         else:
             # Check not found in stderr — mark as unknown, use total as hint
             passed = check_status.get(0, False)  # heuristic fallback
-            checks.append(CheckResult(
-                name=f"check_{i}",
-                passed=passed,
-                detail="",
-            ))
+            checks.append(
+                CheckResult(
+                    name=f"check_{i}",
+                    passed=passed,
+                    detail="",
+                )
+            )
 
     return checks
 
@@ -159,11 +161,13 @@ def _parse_json_result(stdout: str, stderr: str) -> VerifyResult | None:
     for c in checks_raw:
         if not isinstance(c, dict):
             return None
-        checks.append(CheckResult(
-            name=str(c.get("name", "")),
-            passed=bool(c.get("passed", False)),
-            detail=str(c.get("detail", "")),
-        ))
+        checks.append(
+            CheckResult(
+                name=str(c.get("name", "")),
+                passed=bool(c.get("passed", False)),
+                detail=str(c.get("detail", "")),
+            )
+        )
 
     return VerifyResult(
         passed=passed,
@@ -187,15 +191,23 @@ def _parse_text_result(stdout: str, stderr: str) -> VerifyResult:
         m = int(match.group(2))
         checks = _synthesize_checks_from_stderr(stderr, m)
         return VerifyResult(
-            passed=n, total=m, checks=checks,
-            raw_stdout=stdout, raw_stderr=stderr, format="text",
+            passed=n,
+            total=m,
+            checks=checks,
+            raw_stdout=stdout,
+            raw_stderr=stderr,
+            format="text",
         )
 
     if _PASS_BARE_RE.search(stdout):
         checks = _synthesize_checks_from_stderr(stderr, 1)
         return VerifyResult(
-            passed=1, total=1, checks=checks,
-            raw_stdout=stdout, raw_stderr=stderr, format="text",
+            passed=1,
+            total=1,
+            checks=checks,
+            raw_stdout=stdout,
+            raw_stderr=stderr,
+            format="text",
         )
 
     # FAIL or unrecognised — try to extract check count from stderr
@@ -208,8 +220,12 @@ def _parse_text_result(stdout: str, stderr: str) -> VerifyResult:
 
     checks = _synthesize_checks_from_stderr(stderr, m)
     return VerifyResult(
-        passed=n, total=m, checks=checks,
-        raw_stdout=stdout, raw_stderr=stderr, format="text",
+        passed=n,
+        total=m,
+        checks=checks,
+        raw_stdout=stdout,
+        raw_stderr=stderr,
+        format="text",
     )
 
 
@@ -236,6 +252,7 @@ def verify_sh(
             Resolved relative to the task module's directory.
         timeout: Maximum seconds to wait for the script (default: 30).
     """
+
     async def score(state: TaskState, target: Target) -> Score:
         output_text = state.output.completion if state.output else ""
         if not output_text:
@@ -299,18 +316,13 @@ def verify_sh(
 
         # Build check metadata
         checks_meta = [
-            {"name": c.name, "passed": c.passed, "detail": c.detail}
-            for c in result.checks
+            {"name": c.name, "passed": c.passed, "detail": c.detail} for c in result.checks
         ]
 
         explanation = (
             f"correctness={value:.2f}, efficiency=1.00, safety=1.00\n"
             f"{result.raw_stdout}"
-            + (
-                f"\n--- stderr ---\n{result.raw_stderr}"
-                if result.raw_stderr.strip()
-                else ""
-            )
+            + (f"\n--- stderr ---\n{result.raw_stderr}" if result.raw_stderr.strip() else "")
         )
 
         return Score(

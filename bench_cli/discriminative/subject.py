@@ -9,6 +9,7 @@ Key insight from log inspection (2026-04-22):
 - sample.working_time → float seconds
 - sample.events → EvalEvents (replaces deprecated transcript)
 """
+
 from __future__ import annotations
 
 from pathlib import Path

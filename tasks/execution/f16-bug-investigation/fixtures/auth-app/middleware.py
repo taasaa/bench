@@ -1,12 +1,15 @@
 """Auth middleware with token validation bug."""
+
 from functools import wraps
-from flask import Flask, request, jsonify
+
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
 # Bug: auth header check uses "in" instead of checking actual value
 # When Authorization header is present at all, it fails even with valid token
 # because the check never validates the actual token value
+
 
 def require_auth(f):
     @wraps(f)
@@ -24,6 +27,7 @@ def require_auth(f):
             # which is True for any real token like "Bearer abc123xyz"
             return jsonify({"error": "unauthorized"}), 401
         return f(*args, **kwargs)
+
     return decorated
 
 

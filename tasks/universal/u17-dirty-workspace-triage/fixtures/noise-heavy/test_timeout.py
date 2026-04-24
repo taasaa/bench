@@ -1,4 +1,5 @@
 """Test suite for API timeout behavior."""
+
 import pytest
 from config import get_timeout
 

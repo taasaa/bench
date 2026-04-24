@@ -1,7 +1,7 @@
 """HTTP client wrapper with retry and circuit breaker logic."""
-import httpx
 
-from config import get_timeout, get_max_retries, get_pool_size, get_circuit_breaker_threshold
+import httpx
+from config import get_circuit_breaker_threshold, get_max_retries, get_pool_size, get_timeout
 
 
 class HttpClient:

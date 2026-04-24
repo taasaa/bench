@@ -5,12 +5,11 @@ from __future__ import annotations
 import click
 
 from bench_cli.compare.core import (
-    CompareData,
-    load_compare_data,
-    format_summary,
     format_compact_table,
-    format_pillar_table,
     format_json,
+    format_pillar_table,
+    format_summary,
+    load_compare_data,
 )
 
 

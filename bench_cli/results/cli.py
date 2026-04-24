@@ -54,7 +54,10 @@ def generate_cmd(
     if model:
         click.echo(f"Generating card for {model}...")
         path = generate_card_for_model(
-            model, log_path, agent=agent, agent_mode=agent_mode,
+            model,
+            log_path,
+            agent=agent,
+            agent_mode=agent_mode,
         )
         if path:
             click.echo(f"  {path}")

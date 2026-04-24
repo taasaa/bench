@@ -3,6 +3,7 @@
 Phase 3: given two profiles of the same SubjectID taken at different times,
 compute per-cluster per-pillar deltas with significance markers.
 """
+
 from __future__ import annotations
 
 from bench_cli.discriminative.ci import c_is_significant
@@ -49,24 +50,24 @@ def harness_change_report(
         time_ratio_delta = cs_a.time_ratio - cs_b.time_ratio
         cost_ratio_delta = cs_a.cost_ratio - cs_b.cost_ratio
 
-        correctness_sig = c_is_significant(
-            (cs_b.ci_low, cs_b.ci_high), (cs_a.ci_low, cs_a.ci_high)
-        )
+        correctness_sig = c_is_significant((cs_b.ci_low, cs_b.ci_high), (cs_a.ci_low, cs_a.ci_high))
         token_ratio_sig = False  # No CI on ratio metrics currently
         time_ratio_sig = False
         cost_ratio_sig = False
 
-        cluster_deltas.append(ClusterPillarDelta(
-            cluster_name=cluster_name,
-            correctness_delta=correctness_delta,
-            token_ratio_delta=token_ratio_delta,
-            time_ratio_delta=time_ratio_delta,
-            cost_ratio_delta=cost_ratio_delta,
-            correctness_significant=correctness_sig,
-            token_ratio_significant=token_ratio_sig,
-            time_ratio_significant=time_ratio_sig,
-            cost_ratio_significant=cost_ratio_sig,
-        ))
+        cluster_deltas.append(
+            ClusterPillarDelta(
+                cluster_name=cluster_name,
+                correctness_delta=correctness_delta,
+                token_ratio_delta=token_ratio_delta,
+                time_ratio_delta=time_ratio_delta,
+                cost_ratio_delta=cost_ratio_delta,
+                correctness_significant=correctness_sig,
+                token_ratio_significant=token_ratio_sig,
+                time_ratio_significant=time_ratio_sig,
+                cost_ratio_significant=cost_ratio_sig,
+            )
+        )
 
         # Categorize correctness changes
         if abs(correctness_delta) > 0.01:
@@ -145,10 +146,7 @@ def format_harness_report(report: HarnessChangeReport) -> str:
         tm_str = _delta_str(delta.time_ratio_delta, delta.time_ratio_significant)
         cr_str = _delta_str(delta.cost_ratio_delta, delta.cost_ratio_significant)
 
-        lines.append(
-            f"{delta.cluster_name:<16} {corr_str:>8} {tr_str:>8} "
-            f"{tm_str:>8} {cr_str:>8}"
-        )
+        lines.append(f"{delta.cluster_name:<16} {corr_str:>8} {tr_str:>8} {tm_str:>8} {cr_str:>8}")
 
     lines.append("")
     lines.append("Significance: (*) = significant at 90% CI (no overlap), (n.s.) = not significant")

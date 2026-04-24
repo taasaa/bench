@@ -25,9 +25,7 @@ RUBRIC_FILENAME = "judge.md"
 
 # Regex to extract score from judge response.
 # Matches: SCORE: 8, Score: 7.5, score: 10, SCORE:8/10, etc.
-_SCORE_RE = re.compile(
-    r"(?i)SCORE\s*:\s*(\d+(?:\.\d+)?)\s*(?:/\s*10)?(?!\d)"
-)
+_SCORE_RE = re.compile(r"(?i)SCORE\s*:\s*(\d+(?:\.\d+)?)\s*(?:/\s*10)?(?!\d)")
 
 # Template for judge prompt
 _JUDGE_TEMPLATE = """\

@@ -7,6 +7,7 @@ are mathematically honest for this data.
 Reference: Agresti & Coull (1998). Approximate is better than "exact"
 for interval estimation of binomial proportions. Statistics in Medicine.
 """
+
 from __future__ import annotations
 
 import math

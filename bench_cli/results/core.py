@@ -35,6 +35,7 @@ def _card_key(model: str, agent: str | None = None, agent_mode: str | None = Non
 def _build_pillar_map() -> dict[str, str]:
     """Scan tasks/ directory to build task_name -> pillar mapping."""
     from bench_cli.inspect.core import _load_pillar_map
+
     return _load_pillar_map()
 
 
@@ -88,7 +89,9 @@ def _format_ratio(val: float | None) -> str:
     return f"{val:.3f}"
 
 
-def _load_model_data(log_dir: Path | None = None, model_filter: str | None = None) -> dict[str, dict]:
+def _load_model_data(
+    log_dir: Path | None = None, model_filter: str | None = None
+) -> dict[str, dict]:
     """Scan eval logs and return per-card data with latest-run dedup.
 
     Args:
@@ -152,18 +155,29 @@ def _load_model_data(log_dir: Path | None = None, model_filter: str | None = Non
 
         avg_scores: dict[str, float] = {}
         for k, vals in scores_by_scorer.items():
-            numeric = [v for v in vals if isinstance(v, (int, float)) and not math.isnan(v) and not math.isinf(v)]
+            numeric = [
+                v
+                for v in vals
+                if isinstance(v, (int, float)) and not math.isnan(v) and not math.isinf(v)
+            ]
             if numeric:
                 avg_scores[k] = round(sum(numeric) / len(numeric), 4)
 
         if card_key not in model_data:
             model_data[card_key] = {
-                "tasks": {}, "dates": [], "total_input": 0, "total_output": 0,
-                "agent": agent, "agent_mode": agent_mode,
+                "tasks": {},
+                "dates": [],
+                "total_input": 0,
+                "total_output": 0,
+                "agent": agent,
+                "agent_mode": agent_mode,
             }
 
         # Keep latest run per task
-        if task_name not in model_data[card_key]["tasks"] or date_str >= model_data[card_key]["tasks"][task_name]["date"]:
+        if (
+            task_name not in model_data[card_key]["tasks"]
+            or date_str >= model_data[card_key]["tasks"][task_name]["date"]
+        ):
             model_data[card_key]["tasks"][task_name] = {
                 "date": date_str,
                 "samples": n_samples,
@@ -187,9 +201,7 @@ def _compute_pillar_scores(tasks: dict[str, dict]) -> dict[str, float]:
 
     for task_data in tasks.values():
         s = task_data["scores"]
-        for k in ["verify_sh", "llm_judge"]:
-            if k in s:
-                correct_scores.append(s[k])
+        correct_scores.extend(s[k] for k in ["verify_sh", "llm_judge"] if k in s)
         if "token_ratio_scorer" in s:
             v = s["token_ratio_scorer"]
             if not math.isnan(v) and not math.isinf(v):
@@ -224,7 +236,12 @@ def _extract_task_scores(tasks: dict[str, dict]) -> list[tuple[str, float, str]]
     return task_scores
 
 
-def _generate_summary(model_name: str, pillars: dict[str, float], task_scores: list[tuple[str, float, str]], bench_alias: str) -> str:
+def _generate_summary(
+    model_name: str,
+    pillars: dict[str, float],
+    task_scores: list[tuple[str, float, str]],
+    bench_alias: str,
+) -> str:
     """Generate a mechanical summary of model performance."""
 
     task_scores.sort(key=lambda x: x[1], reverse=True)
@@ -275,20 +292,27 @@ def _generate_summary(model_name: str, pillars: dict[str, float], task_scores: l
         )
     else:
         lines.append(
-            f"Token efficiency is below benchmark (ratio {tok:.2f}), tending toward verbose output. "
+            f"Token efficiency is below benchmark (ratio {tok:.2f}), tending toward verbose output."
         )
 
     # Speed
     if time_r >= 1.0:
-        lines.append(f"Latency is {'fast' if time_r >= 2.0 else 'competitive'} (ratio {time_r:.2f}).")
+        lines.append(
+            f"Latency is {'fast' if time_r >= 2.0 else 'competitive'} (ratio {time_r:.2f})."
+        )
     else:
         lines.append(f"Latency is slower than benchmark (ratio {time_r:.2f}).")
 
     # Cost
     if free:
-        lines.append("This is a **free model** running locally, making it cost-optimal for any use case.")
+        lines.append(
+            "This is a **free model** running locally, making it cost-optimal for any use case."
+        )
     elif price_r >= 1.0:
-        lines.append(f"Cost efficiency is strong (ratio {price_r:.2f}), cheaper than the benchmark reference.")
+        lines.append(
+            f"Cost efficiency is strong (ratio {price_r:.2f}), "
+            f"cheaper than the benchmark reference."
+        )
     else:
         lines.append(f"Cost is above the benchmark reference (ratio {price_r:.2f}).")
 
@@ -299,8 +323,7 @@ def _generate_summary(model_name: str, pillars: dict[str, float], task_scores: l
             top_pillars[pillar] += 1
         strong_area = max(top_pillars, key=top_pillars.get)
         lines.append(
-            f"\n**Strengths:** Excels at {strong_area} tasks"
-            f" ({', '.join(t[0] for t in top[:3])})."
+            f"\n**Strengths:** Excels at {strong_area} tasks ({', '.join(t[0] for t in top[:3])})."
         )
 
     # Weaknesses
@@ -344,11 +367,16 @@ def _get_model_metadata(bench_alias: str) -> dict:
     litellm_map = {}
     try:
         from bench_cli.pricing.litellm_config import _load_litellm_alias_map
+
         litellm_map = _load_litellm_alias_map()
     except Exception:
         pass
 
-    lookup_key = bench_alias.replace("openai/", "").lower() if bench_alias.startswith("openai/") else bench_alias.lower()
+    lookup_key = (
+        bench_alias.replace("openai/", "").lower()
+        if bench_alias.startswith("openai/")
+        else bench_alias.lower()
+    )
     litellm_model = litellm_map.get(lookup_key, "")
 
     # Determine provider/hosting
@@ -378,6 +406,7 @@ def _get_model_metadata(bench_alias: str) -> dict:
         import yaml
 
         from bench_cli.pricing.litellm_config import _load_litellm_alias_map
+
         litellm_map = _load_litellm_alias_map()
         if lookup_key in litellm_map:
             litellm_path = Path.home() / "dev" / "litellm" / "config.yaml"
@@ -399,6 +428,7 @@ def _get_model_metadata(bench_alias: str) -> dict:
         or_id = resolve_openrouter_id(bench_alias)
         if or_id:
             from bench_cli.pricing.price_cache import OpenRouterCache
+
             cache = OpenRouterCache()
             price_info = cache.get_price(or_id)
             input_price = price_info.input_price
@@ -440,7 +470,9 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     out_path = _RESULTS_DIR / filename
 
     # Filter out smoke tasks
-    eval_tasks = {k: v for k, v in tasks.items() if k not in ("smoke", "agent-smoke", "agent_smoke")}
+    eval_tasks = {
+        k: v for k, v in tasks.items() if k not in ("smoke", "agent-smoke", "agent_smoke")
+    }
     smoke_count = len(tasks) - len(eval_tasks)
 
     pillars = _compute_pillar_scores(eval_tasks)
@@ -464,8 +496,7 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     status = "FREE" if meta["free"] else "paid"
     agent_info = f" | agent: {agent}/{agent_mode}" if agent else ""
     lines.append(
-        f"> `{bench_alias}` | {meta['provider']} | "
-        f"{status}{agent_info} | Evaluated {date_range}"
+        f"> `{bench_alias}` | {meta['provider']} | {status}{agent_info} | Evaluated {date_range}"
     )
     lines.append("")
     lines.append("## Summary")
@@ -478,7 +509,9 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     lines.append("|--------|-------|")
     lines.append(f"| **Evaluated** | {date_range} |")
     task_note = f" ({smoke_count} smoke)" if smoke_count else ""
-    lines.append(f"| **Tasks** | {len(eval_tasks)} eval tasks, {total_samples} samples{task_note} |")
+    lines.append(
+        f"| **Tasks** | {len(eval_tasks)} eval tasks, {total_samples} samples{task_note} |"
+    )
     lines.append(f"| **Provider** | {meta['provider']} |")
     lines.append(f"| **Hosting** | {meta['hosting']} |")
     ctx_str = f"{meta['ctx_window']:,}" if meta["ctx_window"] else "N/A"
@@ -486,7 +519,9 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     if meta["free"]:
         lines.append("| **Pricing** | $0.00 (free, local) |")
     elif meta["has_price"]:
-        lines.append(f"| **Pricing** | ${meta['input_price']:.4f}/M in, ${meta['output_price']:.4f}/M out |")
+        lines.append(
+            f"| **Pricing** | ${meta['input_price']:.4f}/M in, ${meta['output_price']:.4f}/M out |"
+        )
     else:
         lines.append("| **Pricing** | N/A |")
     lines.append(f"| **Status** | {status} |")
@@ -497,9 +532,17 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     lines.append("")
     lines.append("| Pillar | Score | Rating |")
     lines.append("|--------|-------|--------|")
-    lines.append(f"| **Correctness** | {pillars['correctness']:.3f} | {_rating(pillars['correctness'])} |")
-    lines.append(f"| **Token Efficiency** | {_format_ratio(pillars['token_ratio'])} | {_rating(pillars['token_ratio'])} |")
-    lines.append(f"| **Latency** | {_format_ratio(pillars['time_ratio'])} | {_rating(pillars['time_ratio'])} |")
+    lines.append(
+        f"| **Correctness** | {pillars['correctness']:.3f} | {_rating(pillars['correctness'])} |"
+    )
+    lines.append(
+        f"| **Token Efficiency** | {_format_ratio(pillars['token_ratio'])} "
+        f"| {_rating(pillars['token_ratio'])} |"
+    )
+    lines.append(
+        f"| **Latency** | {_format_ratio(pillars['time_ratio'])} "
+        f"| {_rating(pillars['time_ratio'])} |"
+    )
     cost_display = "FREE" if meta["free"] else _format_ratio(pillars["price_ratio"])
     cost_rating = "excellent" if meta["free"] else _rating(pillars["price_ratio"])
     lines.append(f"| **Cost Efficiency** | {cost_display} | {cost_rating} |")
@@ -536,7 +579,9 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
         if meta["free"] and "price_ratio_scorer" in s:
             price = "FREE"
 
-        lines.append(f"| {task_name} | {pillar} | {scorer} | {score_val} | {tok} | {time_r} | {price} |")
+        lines.append(
+            f"| {task_name} | {pillar} | {scorer} | {score_val} | {tok} | {time_r} | {price} |"
+        )
 
     lines.append("")
 
@@ -582,7 +627,7 @@ def generate_all_cards(log_dir: Path | None = None) -> list[Path]:
             path = generate_card(bench_alias, model_data[bench_alias], log_dir)
             if path:
                 generated.append(path)
-        except Exception as e:
+        except Exception as e:  # noqa: PERF203
             click.echo(f"Warning: Failed to generate card for {bench_alias}: {e}", err=True)
 
     return generated

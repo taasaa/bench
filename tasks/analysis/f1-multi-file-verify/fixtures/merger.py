@@ -3,7 +3,7 @@
 from typing import Any, Dict
 
 
-def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Deep merge two config dictionaries. Override values take precedence.
 
     BUG: Mutates the base dictionary instead of creating a copy.
@@ -17,18 +17,14 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
         Merged configuration dictionary.
     """
     for key, value in override.items():
-        if (
-            key in base
-            and isinstance(base[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
             deep_merge(base[key], value)  # BUG: mutates base in-place
         else:
             base[key] = value  # BUG: mutates base in-place
     return base
 
 
-def merge_configs(configs: list[Dict[str, Any]]) -> Dict[str, Any]:
+def merge_configs(configs: list[dict[str, Any]]) -> dict[str, Any]:
     """Merge a list of config dictionaries, left to right.
 
     Later configs override earlier ones.
@@ -43,7 +39,7 @@ def merge_configs(configs: list[Dict[str, Any]]) -> Dict[str, Any]:
     return result
 
 
-def get_nested(config: Dict[str, Any], key_path: str, default: Any = None) -> Any:
+def get_nested(config: dict[str, Any], key_path: str, default: Any = None) -> Any:
     """Get a nested config value using dot notation.
 
     Args:

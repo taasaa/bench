@@ -1,5 +1,7 @@
 """Config module with type coercion — int() and bool() wrapping os.environ.get."""
+
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()

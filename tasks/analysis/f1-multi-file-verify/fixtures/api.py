@@ -34,9 +34,7 @@ class APIHandler(BaseHTTPRequestHandler):
         self.send_response(201)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(
-            json.dumps({"short_code": short_code, "url": long_url}).encode()
-        )
+        self.wfile.write(json.dumps({"short_code": short_code, "url": long_url}).encode())
 
     def do_DELETE(self):
         """Delete a short URL."""

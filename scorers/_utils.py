@@ -11,11 +11,11 @@ def message_texts(state: TaskState) -> list[str]:
     Handles both plain str content and list[ContentBlock] content.
     Used by multiple scorers to scan the full message transcript.
     """
-    texts: list[str] = []
-    for msg in state.messages:
-        if hasattr(msg, "content") and isinstance(msg.content, str):
-            texts.append(msg.content)
-    return texts
+    return [
+        msg.content
+        for msg in state.messages
+        if hasattr(msg, "content") and isinstance(msg.content, str)
+    ]
 
 
 def deduplicate_preserve_order(items: list[str]) -> list[str]:

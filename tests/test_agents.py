@@ -62,8 +62,13 @@ class TestBuildCmd:
         cfg = get_agent_config("claude")
         cmd = cfg.build_cmd("fix the bug", bare=True)
         assert cmd == [
-            "claude", "--print", "--output-format", "json",
-            "--bare", "--", "fix the bug",
+            "claude",
+            "--print",
+            "--output-format",
+            "json",
+            "--bare",
+            "--",
+            "fix the bug",
         ]
 
     def test_codex_local(self):

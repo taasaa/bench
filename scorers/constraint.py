@@ -20,9 +20,9 @@ from inspect_ai.solver import TaskState
 # Rule definition
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ConstraintRule:
-
     """A single constraint rule for ConstraintAdherenceScorer.
 
     Attributes:
@@ -80,6 +80,7 @@ def _evaluate_rule(rule: ConstraintRule, message_text: str) -> bool:
 # ---------------------------------------------------------------------------
 # Scorer
 # ---------------------------------------------------------------------------
+
 
 @scorer(metrics=[mean()])
 def constraint_adherence_scorer(rules: list[ConstraintRule] | None = None) -> None:

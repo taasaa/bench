@@ -88,10 +88,7 @@ def show_cmd(
     except click.BadParameter:
         pass
 
-    click.echo(
-        f"Unknown subject '{subject}'. "
-        "Try: models, tasks, prices, latest, or a model name."
-    )
+    click.echo(f"Unknown subject '{subject}'. Try: models, tasks, prices, latest, or a model name.")
 
 
 def _show_models(log_dir: str) -> None:

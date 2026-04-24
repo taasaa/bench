@@ -2,8 +2,8 @@
 This module is kept for backward compatibility but will be removed in v2.
 New code should use redis_cache.py instead.
 """
-import time
 
+import time
 
 _cache = {}
 

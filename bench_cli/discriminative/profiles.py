@@ -1,4 +1,5 @@
 """Profile building — multi-dimensional subject profiles with cluster scores."""
+
 from __future__ import annotations
 
 import statistics
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Cronbach's Alpha — cluster coherence validation
 # ---------------------------------------------------------------------------
+
 
 def cronbach_alpha(item_scores: list[list[float]]) -> float | None:
     """Compute Cronbach's alpha for a set of items (tasks) across subjects (samples).
@@ -130,16 +132,18 @@ def build_profile(
 
         if not cluster_scores_list:
             # No scores for this cluster
-            cluster_scores.append(ClusterScore(
-                name=cluster_name,
-                correct=0.0,
-                token_ratio=0.0,
-                time_ratio=0.0,
-                cost_ratio=0.0,
-                ci_low=0.0,
-                ci_high=0.0,
-                task_count=0,
-            ))
+            cluster_scores.append(
+                ClusterScore(
+                    name=cluster_name,
+                    correct=0.0,
+                    token_ratio=0.0,
+                    time_ratio=0.0,
+                    cost_ratio=0.0,
+                    ci_low=0.0,
+                    ci_high=0.0,
+                    task_count=0,
+                )
+            )
         else:
             correct_mean = statistics.mean(cluster_scores_list)
 
@@ -157,16 +161,18 @@ def build_profile(
             time_ratio = statistics.mean(cluster_time_ratios) if cluster_time_ratios else 0.0
             cost_ratio = statistics.mean(cluster_cost_ratios) if cluster_cost_ratios else 0.0
 
-            cluster_scores.append(ClusterScore(
-                name=cluster_name,
-                correct=correct_mean,
-                token_ratio=token_ratio,
-                time_ratio=time_ratio,
-                cost_ratio=cost_ratio,
-                ci_low=ci_low,
-                ci_high=ci_high,
-                task_count=n_tasks,
-            ))
+            cluster_scores.append(
+                ClusterScore(
+                    name=cluster_name,
+                    correct=correct_mean,
+                    token_ratio=token_ratio,
+                    time_ratio=time_ratio,
+                    cost_ratio=cost_ratio,
+                    ci_low=ci_low,
+                    ci_high=ci_high,
+                    task_count=n_tasks,
+                )
+            )
 
     # Strengths and weaknesses
     strengths = compute_strengths(scores, n=2)
@@ -332,14 +338,16 @@ def compare_subjects(
         # Significance: CI non-overlap
         significant = c_is_significant((ca.ci_low, ca.ci_high), (cb.ci_low, cb.ci_high))
 
-        deltas.append(ClusterDelta(
-            cluster_name=cluster_name,
-            delta=delta_correct,
-            significant=significant,
-            delta_token_ratio=delta_tr,
-            delta_time_ratio=delta_ttr,
-            delta_cost_ratio=delta_cr,
-        ))
+        deltas.append(
+            ClusterDelta(
+                cluster_name=cluster_name,
+                delta=delta_correct,
+                significant=significant,
+                delta_token_ratio=delta_tr,
+                delta_time_ratio=delta_ttr,
+                delta_cost_ratio=delta_cr,
+            )
+        )
 
     cost_delta = None
     if profile_a.cost_per_sample is not None and profile_b.cost_per_sample is not None:

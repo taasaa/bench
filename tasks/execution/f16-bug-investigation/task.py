@@ -4,8 +4,8 @@ from inspect_ai import Task, task
 from inspect_ai.dataset import FieldSpec, json_dataset
 
 from scorers.price_ratio import price_ratio_scorer
-from scorers.time_ratio import time_ratio_scorer
 from scorers.task_budgets import get_task_budget
+from scorers.time_ratio import time_ratio_scorer
 from scorers.token_ratio import token_ratio_scorer
 from scorers.verify_sh import verify_sh
 
@@ -29,5 +29,4 @@ def f16_bug_investigation():
             time_ratio_scorer(task_budget=get_task_budget("f16_bug_investigation")),
             price_ratio_scorer(task_budget=get_task_budget("f16_bug_investigation")),
         ],
-
     )

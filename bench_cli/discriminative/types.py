@@ -1,4 +1,5 @@
 """Type definitions for the discriminative eval module."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,6 +9,7 @@ from typing import TypedDict
 # ---------------------------------------------------------------------------
 # Subject types
 # ---------------------------------------------------------------------------
+
 
 class SubjectType(Enum):
     MODEL = "model"
@@ -46,6 +48,7 @@ class SubjectID:
 # Cluster scores
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ClusterScore:
     name: str
@@ -70,6 +73,7 @@ class StrengthWeakness:
 # Diagnostics
 # ---------------------------------------------------------------------------
 
+
 class TaskDiagnostics(TypedDict):
     task_id: str
     difficulty: float  # mean score across subjects (0..1)
@@ -91,6 +95,7 @@ class DiagnosticReport:
 # Subject profile
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SubjectProfile:
     subject_id: SubjectID
@@ -109,6 +114,7 @@ class SubjectProfile:
 # Gate results
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GateResult:
     name: str
@@ -123,6 +129,7 @@ class GateResult:
 # Pipeline config
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PipelineConfig:
     clusters_yaml: str = "bench_cli/discriminative/config/clusters.yaml"
@@ -134,6 +141,7 @@ class PipelineConfig:
 # ---------------------------------------------------------------------------
 # Comparison result
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ClusterDelta:

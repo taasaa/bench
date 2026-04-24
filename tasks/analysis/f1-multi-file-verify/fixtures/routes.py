@@ -3,7 +3,7 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from auth import register, authenticate
+from auth import authenticate, register
 
 
 class UserRoutes(BaseHTTPRequestHandler):
@@ -50,9 +50,7 @@ class UserRoutes(BaseHTTPRequestHandler):
         self.send_response(201)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(
-            json.dumps({"username": user.username, "email": user.email}).encode()
-        )
+        self.wfile.write(json.dumps({"username": user.username, "email": user.email}).encode())
 
     def _handle_login(self):
         """Authenticate a user."""
@@ -74,9 +72,7 @@ class UserRoutes(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(
-                json.dumps({"username": user.username, "email": user.email}).encode()
-            )
+            self.wfile.write(json.dumps({"username": user.username, "email": user.email}).encode())
         else:
             self.send_response(401)
             self.send_header("Content-Type", "application/json")

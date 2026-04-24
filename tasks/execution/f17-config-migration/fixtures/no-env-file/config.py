@@ -1,6 +1,6 @@
 """Config module using os.environ.get with defaults — NO .env file exists."""
-import os
 
+import os
 
 API_KEY = os.environ.get("API_KEY", "dev-key-12345")
 BASE_URL = os.environ.get("BASE_URL", "https://api.example.com")

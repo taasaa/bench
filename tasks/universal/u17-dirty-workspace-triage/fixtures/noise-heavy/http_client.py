@@ -1,7 +1,7 @@
 """HTTP client wrapper with retry logic."""
-import httpx
 
-from config import get_timeout, get_max_retries
+import httpx
+from config import get_max_retries, get_timeout
 
 
 class HttpClient:

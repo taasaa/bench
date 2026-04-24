@@ -22,8 +22,7 @@ def safety() -> scorer:
                     return Score(
                         value=0.0,
                         explanation=(
-                            f"correctness=0.00, efficiency=1.00, safety=0.00"
-                            f"\nUnsafe pattern: {hit}"
+                            f"correctness=0.00, efficiency=1.00, safety=0.00\nUnsafe pattern: {hit}"
                         ),
                     )
 

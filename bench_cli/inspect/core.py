@@ -14,14 +14,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from inspect_ai.log import read_eval_log, list_eval_logs
+from inspect_ai.log import list_eval_logs, read_eval_log
 
 from bench_cli.compare.core import (
     _extract_from_scorers,
-    _fmt_avg_cost,
-    _fmt_cost_ratio,
     _is_suppressed,
-    _short_model,
 )
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -69,7 +66,9 @@ def _get_task_dir(task_name: str) -> Path | None:
 
 def _resolve_alias(raw: str) -> str:
     """Normalize a user-provided alias to the full openai/ prefix form."""
-    cleaned = raw.strip().removeprefix("models/").removeprefix("openrouter/").removeprefix("openai/")
+    cleaned = (
+        raw.strip().removeprefix("models/").removeprefix("openrouter/").removeprefix("openai/")
+    )
     return f"openai/{cleaned}"
 
 
@@ -77,8 +76,11 @@ def _resolve_alias(raw: str) -> str:
 # Score extraction
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SampleScore:
+    """Aggregated scores for a single sample across all pillars."""
+
     task: str
     sample_id: str
     scorer_type: str  # verify_sh | llm_judge | hybrid_scorer
@@ -123,7 +125,7 @@ def _load_samples(
         try:
             el = read_eval_log(info)
         except Exception as exc:
-            warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}")
+            warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
 
         if el.eval.model != model_alias:
@@ -187,7 +189,11 @@ def _load_samples(
             # Output text
             output_text = None
             if hasattr(s, "output") and s.output:
-                output_text = str(s.output.completion)[:2000] if hasattr(s.output, "completion") else str(s.output)[:2000]
+                output_text = (
+                    str(s.output.completion)[:2000]
+                    if hasattr(s.output, "completion")
+                    else str(s.output)[:2000]
+                )
 
             # Token/time
             input_tokens = 0
@@ -202,27 +208,29 @@ def _load_samples(
             suppressed_token = _is_suppressed(s.scores.get("token_ratio_scorer"))
             suppressed_time = _is_suppressed(s.scores.get("time_ratio_scorer"))
 
-            task_samples[el.eval.task].append(SampleScore(
-                task=el.eval.task,
-                sample_id=s.id if hasattr(s, "id") else "?",
-                scorer_type=scorer_type,
-                correctness=correctness,
-                token_ratio=token_ratio,
-                time_ratio=time_ratio,
-                price_ratio=price_ratio,
-                actual_cost_usd=actual_cost,
-                reference_cost_usd=reference_cost_usd,
-                is_free=is_free,
-                verify_sh_score=verify_sh_score,
-                llm_judge_score=llm_judge_score,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                working_time=working_time,
-                judge_explanation=judge_explanation,
-                output_text=output_text,
-                suppressed_token=suppressed_token,
-                suppressed_time=suppressed_time,
-            ))
+            task_samples[el.eval.task].append(
+                SampleScore(
+                    task=el.eval.task,
+                    sample_id=s.id if hasattr(s, "id") else "?",
+                    scorer_type=scorer_type,
+                    correctness=correctness,
+                    token_ratio=token_ratio,
+                    time_ratio=time_ratio,
+                    price_ratio=price_ratio,
+                    actual_cost_usd=actual_cost,
+                    reference_cost_usd=reference_cost_usd,
+                    is_free=is_free,
+                    verify_sh_score=verify_sh_score,
+                    llm_judge_score=llm_judge_score,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    working_time=working_time,
+                    judge_explanation=judge_explanation,
+                    output_text=output_text,
+                    suppressed_token=suppressed_token,
+                    suppressed_time=suppressed_time,
+                )
+            )
 
     return dict(task_samples)
 
@@ -234,9 +242,17 @@ def _per_task_stats(samples: list[SampleScore]) -> dict:
         return {}
 
     correct_vals = [s.correctness for s in samples if s.correctness is not None]
-    tok_vals = [s.token_ratio for s in samples if s.token_ratio is not None and not s.suppressed_token]
-    time_vals = [s.time_ratio for s in samples if s.time_ratio is not None and not s.suppressed_time]
-    price_vals = [s.price_ratio for s in samples if s.price_ratio is not None and not math.isnan(s.price_ratio)]
+    tok_vals = [
+        s.token_ratio for s in samples if s.token_ratio is not None and not s.suppressed_token
+    ]
+    time_vals = [
+        s.time_ratio for s in samples if s.time_ratio is not None and not s.suppressed_time
+    ]
+    price_vals = [
+        s.price_ratio
+        for s in samples
+        if s.price_ratio is not None and not math.isnan(s.price_ratio)
+    ]
     cost_vals = [s.actual_cost_usd for s in samples if s.actual_cost_usd is not None]
     tok_count_vals = [s.input_tokens + s.output_tokens for s in samples]
     time_abs_vals = [s.working_time for s in samples]
@@ -254,16 +270,36 @@ def _per_task_stats(samples: list[SampleScore]) -> dict:
         "avg_time": sum(time_abs_vals) / n,
         "n_tok_suppressed": sum(1 for s in samples if s.suppressed_token),
         "n_time_suppressed": sum(1 for s in samples if s.suppressed_time),
-        "n_nan_tok": sum(1 for s in samples if s.token_ratio is not None and math.isnan(s.token_ratio)),
-        "n_nan_time": sum(1 for s in samples if s.time_ratio is not None and math.isnan(s.time_ratio)),
+        "n_nan_tok": sum(
+            1 for s in samples if s.token_ratio is not None and math.isnan(s.token_ratio)
+        ),
+        "n_nan_time": sum(
+            1 for s in samples if s.time_ratio is not None and math.isnan(s.time_ratio)
+        ),
         "scorer_type": samples[0].scorer_type,
-        "n_verify_sh_samples": sum(1 for s in samples if s.scorer_type == "verify_sh" and s.correctness in (0.0, 1.0)),
+        "n_verify_sh_samples": sum(
+            1 for s in samples if s.scorer_type == "verify_sh" and s.correctness in (0.0, 1.0)
+        ),
         "n_llm_judge_samples": sum(1 for s in samples if s.scorer_type == "llm_judge"),
-        "all_verify_sh_binary": all(s.correctness in (0.0, 1.0) for s in samples if s.scorer_type == "verify_sh" and s.correctness is not None),
-        "all_correctness_one": all(s.correctness == 1.0 for s in samples if s.correctness is not None),
-        "all_correctness_zero": all(s.correctness == 0.0 for s in samples if s.correctness is not None),
-        "hybrid_verify_sh_avg": sum(s.verify_sh_score for s in samples if s.verify_sh_score is not None) / max(1, sum(1 for s in samples if s.verify_sh_score is not None)),
-        "hybrid_llm_judge_avg": sum(s.llm_judge_score for s in samples if s.llm_judge_score is not None) / max(1, sum(1 for s in samples if s.llm_judge_score is not None)),
+        "all_verify_sh_binary": all(
+            s.correctness in (0.0, 1.0)
+            for s in samples
+            if s.scorer_type == "verify_sh" and s.correctness is not None
+        ),
+        "all_correctness_one": all(
+            s.correctness == 1.0 for s in samples if s.correctness is not None
+        ),
+        "all_correctness_zero": all(
+            s.correctness == 0.0 for s in samples if s.correctness is not None
+        ),
+        "hybrid_verify_sh_avg": sum(
+            s.verify_sh_score for s in samples if s.verify_sh_score is not None
+        )
+        / max(1, sum(1 for s in samples if s.verify_sh_score is not None)),
+        "hybrid_llm_judge_avg": sum(
+            s.llm_judge_score for s in samples if s.llm_judge_score is not None
+        )
+        / max(1, sum(1 for s in samples if s.llm_judge_score is not None)),
     }
 
 
@@ -282,7 +318,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         try:
             el = read_eval_log(info)
         except Exception as exc:
-            warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}")
+            warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
         if el.eval.model != model_alias:
             continue
@@ -296,7 +332,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         return {}
 
     # Store as strings for reliable equality comparison in the second pass.
-    latest_files = set(str(v) for v in latest_file_per_task.values())
+    latest_files = {str(v) for v in latest_file_per_task.values()}
 
     # Second pass: collect samples from all OTHER (older) runs.
     task_correctness: dict[str, list[float]] = defaultdict(list)
@@ -306,7 +342,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         try:
             el = read_eval_log(info)
         except Exception as exc:
-            warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}")
+            warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
         if el.eval.model != model_alias:
             continue
@@ -316,12 +352,10 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         for s in el.samples:
             if not isinstance(s.scores, dict):
                 continue
-            c, _, _, _ = _extract_from_scorers(s.scores, getattr(s, "model_usage", None), model_alias)
+            c, _, _, _ = _extract_from_scorers(
+                s.scores, getattr(s, "model_usage", None), model_alias
+            )
             if c is not None:
                 task_correctness[task].append(c)
 
-    return {
-        task: sum(vals) / len(vals)
-        for task, vals in task_correctness.items()
-        if vals
-    }
+    return {task: sum(vals) / len(vals) for task, vals in task_correctness.items() if vals}

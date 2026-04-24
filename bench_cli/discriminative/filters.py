@@ -7,6 +7,7 @@ zero information for discriminating between subjects.
 This is NOT discrimination weighting (invalid at N=8).
 This is just identifying which tasks add signal vs. noise.
 """
+
 from __future__ import annotations
 
 import statistics

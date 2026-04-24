@@ -10,6 +10,7 @@ Default threshold: 0.60 correctness per cluster.
 Configurable per cluster via gates.yaml.
 Hard block by default, configurable to warning.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,8 +29,8 @@ DEFAULT_COVERAGE_THRESHOLD = 0.80  # must have data for ≥80% of tasks
 
 @dataclass
 class GateDefinition:
-
     """Definition of a safety gate."""
+
     name: str
     clusters: list[str]  # clusters this gate applies to
     threshold: float
@@ -51,34 +52,40 @@ def load_gates_yaml(path: str) -> list[GateDefinition]:
 
     for cluster_name, config in gate_configs.items():
         dflt_thresh = defaults.get("correctness_threshold", DEFAULT_CORRECTNESS_THRESHOLD)
-        gates.append(GateDefinition(
-            name=f"correctness_gate_{cluster_name}",
-            clusters=[cluster_name],
-            threshold=config.get("threshold", dflt_thresh),
-            coverage_threshold=defaults.get("coverage_threshold", DEFAULT_COVERAGE_THRESHOLD),
-            strict=config.get("strict", defaults.get("strict", True)),
-            description=config.get("description", f"Per-cluster gate for {cluster_name}"),
-        ))
+        gates.append(
+            GateDefinition(
+                name=f"correctness_gate_{cluster_name}",
+                clusters=[cluster_name],
+                threshold=config.get("threshold", dflt_thresh),
+                coverage_threshold=defaults.get("coverage_threshold", DEFAULT_COVERAGE_THRESHOLD),
+                strict=config.get("strict", defaults.get("strict", True)),
+                description=config.get("description", f"Per-cluster gate for {cluster_name}"),
+            )
+        )
 
     # Always include overall correctness and coverage gates
     if not gates:
-        gates.append(GateDefinition(
-            name="correctness_gate",
-            clusters=[],
-            threshold=defaults.get("correctness_threshold", DEFAULT_CORRECTNESS_THRESHOLD),
-            coverage_threshold=defaults.get("coverage_threshold", DEFAULT_COVERAGE_THRESHOLD),
-            strict=defaults.get("strict", True),
-            description="Overall correctness gate",
-        ))
+        gates.append(
+            GateDefinition(
+                name="correctness_gate",
+                clusters=[],
+                threshold=defaults.get("correctness_threshold", DEFAULT_CORRECTNESS_THRESHOLD),
+                coverage_threshold=defaults.get("coverage_threshold", DEFAULT_COVERAGE_THRESHOLD),
+                strict=defaults.get("strict", True),
+                description="Overall correctness gate",
+            )
+        )
 
-    gates.append(GateDefinition(
-        name="coverage_gate",
-        clusters=[],
-        threshold=defaults.get("coverage_threshold", DEFAULT_COVERAGE_THRESHOLD),
-        coverage_threshold=0.0,
-        strict=defaults.get("strict", True),
-        description="Coverage gate — all clusters must have eval data",
-    ))
+    gates.append(
+        GateDefinition(
+            name="coverage_gate",
+            clusters=[],
+            threshold=defaults.get("coverage_threshold", DEFAULT_COVERAGE_THRESHOLD),
+            coverage_threshold=0.0,
+            strict=defaults.get("strict", True),
+            description="Coverage gate — all clusters must have eval data",
+        )
+    )
 
     return gates
 
@@ -182,8 +189,7 @@ def _correctness_gate_cluster(
         actual_score = cluster_score.correct
         ci_str = f"[{cluster_score.ci_low:.2f}-{cluster_score.ci_high:.2f}]"
         failed = [
-            f"{cluster_name} (correct={actual_score:.2f}, "
-            f"threshold={threshold}, CI={ci_str})",
+            f"{cluster_name} (correct={actual_score:.2f}, threshold={threshold}, CI={ci_str})",
         ]
         if strict:
             message = (
@@ -243,12 +249,12 @@ def coverage_gate(
         pct = coverage * 100
         if strict:
             message = (
-                f"FAILED: cluster coverage {pct:.0f}% below threshold {threshold*100:.0f}%. "
+                f"FAILED: cluster coverage {pct:.0f}% below threshold {threshold * 100:.0f}%. "
                 f"Clusters without data: {failed_tasks}"
             )
         else:
             message = (
-                f"WARNING: cluster coverage {pct:.0f}% below threshold {threshold*100:.0f}%. "
+                f"WARNING: cluster coverage {pct:.0f}% below threshold {threshold * 100:.0f}%. "
                 f"Clusters without data: {failed_tasks}"
             )
 
@@ -310,7 +316,7 @@ def run_gates(
             results.append(result)
         elif gate_def.name.startswith("correctness_gate_"):
             # Per-cluster gate: check specific cluster only
-            cluster_name = gate_def.name[len("correctness_gate_"):]
+            cluster_name = gate_def.name[len("correctness_gate_") :]
             result = _correctness_gate_cluster(
                 profile,
                 cluster_name=cluster_name,

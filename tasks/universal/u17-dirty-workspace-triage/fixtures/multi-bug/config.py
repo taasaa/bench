@@ -1,6 +1,6 @@
 """Application configuration module."""
-import os
 
+import os
 
 # BUG: timeout is 5 seconds — too short for production API calls
 # Should be 30 seconds.

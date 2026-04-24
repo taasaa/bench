@@ -56,11 +56,13 @@ def _extract_recent_runs(log_dir: str, limit: int = 5) -> list[dict]:
         m = fname_re.search(f.name)
         if not m:
             continue
-        runs.append({
-            "date": m.group(1)[:10],
-            "task": m.group(2),
-            "id": m.group(3),
-        })
+        runs.append(
+            {
+                "date": m.group(1)[:10],
+                "task": m.group(2),
+                "id": m.group(3),
+            }
+        )
         if len(runs) >= limit * 5:  # over-collect, dedup below
             break
 

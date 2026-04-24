@@ -1,4 +1,5 @@
 """Test suite for API timeout behavior."""
+
 import pytest
 from config import get_timeout
 
@@ -18,5 +19,6 @@ def test_timeout_not_excessive():
 def test_max_retries_sensible():
     """Max retries should be between 1 and 5."""
     from config import get_max_retries
+
     retries = get_max_retries()
     assert 1 <= retries <= 5

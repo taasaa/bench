@@ -20,6 +20,7 @@ from bench_cli.results import (
 # _rating
 # ---------------------------------------------------------------------------
 
+
 class TestRating:
     def test_boundaries(self):
         assert _rating(0.90) == "excellent"
@@ -38,6 +39,7 @@ class TestRating:
 # _format_ratio
 # ---------------------------------------------------------------------------
 
+
 class TestFormatRatio:
     def test_special_values(self):
         assert _format_ratio(None) == "--"
@@ -53,6 +55,7 @@ class TestFormatRatio:
 # _compute_pillar_scores
 # ---------------------------------------------------------------------------
 
+
 class TestComputePillarScores:
     def test_empty_tasks(self):
         result = _compute_pillar_scores({})
@@ -63,8 +66,22 @@ class TestComputePillarScores:
 
     def test_verify_sh_tasks(self):
         tasks = {
-            "task-a": {"scores": {"verify_sh": 1.0, "token_ratio_scorer": 1.5, "time_ratio_scorer": 2.0, "price_ratio_scorer": 1.2}},
-            "task-b": {"scores": {"verify_sh": 0.5, "token_ratio_scorer": 0.5, "time_ratio_scorer": 1.0, "price_ratio_scorer": 0.8}},
+            "task-a": {
+                "scores": {
+                    "verify_sh": 1.0,
+                    "token_ratio_scorer": 1.5,
+                    "time_ratio_scorer": 2.0,
+                    "price_ratio_scorer": 1.2,
+                }
+            },
+            "task-b": {
+                "scores": {
+                    "verify_sh": 0.5,
+                    "token_ratio_scorer": 0.5,
+                    "time_ratio_scorer": 1.0,
+                    "price_ratio_scorer": 0.8,
+                }
+            },
         }
         result = _compute_pillar_scores(tasks)
         assert result["correctness"] == 0.75
@@ -82,7 +99,13 @@ class TestComputePillarScores:
 
     def test_nan_scorers_excluded(self):
         tasks = {
-            "task-a": {"scores": {"verify_sh": 1.0, "time_ratio_scorer": float("nan"), "price_ratio_scorer": float("inf")}},
+            "task-a": {
+                "scores": {
+                    "verify_sh": 1.0,
+                    "time_ratio_scorer": float("nan"),
+                    "price_ratio_scorer": float("inf"),
+                }
+            },
         }
         result = _compute_pillar_scores(tasks)
         assert result["correctness"] == 1.0
@@ -103,6 +126,7 @@ class TestComputePillarScores:
 # _slug_from_alias
 # ---------------------------------------------------------------------------
 
+
 class TestSlugFromAlias:
     def test_produces_slug_without_slash(self):
         slug = _slug_from_alias("openai/gemma-4-26-local")
@@ -117,6 +141,7 @@ class TestSlugFromAlias:
 # ---------------------------------------------------------------------------
 # _extract_task_scores
 # ---------------------------------------------------------------------------
+
 
 class TestExtractTaskScores:
     def test_extracts_correctness(self):
@@ -144,6 +169,7 @@ class TestExtractTaskScores:
 # ---------------------------------------------------------------------------
 # _generate_summary
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateSummary:
     def test_high_correctness(self):
@@ -187,6 +213,7 @@ class TestGenerateSummary:
 # generate_card
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateCard:
     def test_returns_none_for_empty_tasks(self, tmp_path):
         result = generate_card("openai/test", {"tasks": {}}, tmp_path)
@@ -202,7 +229,12 @@ class TestGenerateCard:
                     "samples": 4,
                     "input_tokens": 500,
                     "output_tokens": 3000,
-                    "scores": {"verify_sh": 1.0, "token_ratio_scorer": 1.5, "time_ratio_scorer": 2.0, "price_ratio_scorer": 1.2},
+                    "scores": {
+                        "verify_sh": 1.0,
+                        "token_ratio_scorer": 1.5,
+                        "time_ratio_scorer": 2.0,
+                        "price_ratio_scorer": 1.2,
+                    },
                 },
             },
             "dates": ["2026-04-20"],
@@ -227,9 +259,27 @@ class TestGenerateCard:
 
         model_data = {
             "tasks": {
-                "smoke": {"date": "2026-04-20", "samples": 1, "input_tokens": 50, "output_tokens": 50, "scores": {}},
-                "agent-smoke": {"date": "2026-04-20", "samples": 1, "input_tokens": 50, "output_tokens": 50, "scores": {}},
-                "add-tests": {"date": "2026-04-20", "samples": 4, "input_tokens": 500, "output_tokens": 3000, "scores": {"verify_sh": 1.0}},
+                "smoke": {
+                    "date": "2026-04-20",
+                    "samples": 1,
+                    "input_tokens": 50,
+                    "output_tokens": 50,
+                    "scores": {},
+                },
+                "agent-smoke": {
+                    "date": "2026-04-20",
+                    "samples": 1,
+                    "input_tokens": 50,
+                    "output_tokens": 50,
+                    "scores": {},
+                },
+                "add-tests": {
+                    "date": "2026-04-20",
+                    "samples": 4,
+                    "input_tokens": 500,
+                    "output_tokens": 3000,
+                    "scores": {"verify_sh": 1.0},
+                },
             },
             "dates": ["2026-04-20"],
             "total_input": 600,
@@ -245,7 +295,17 @@ class TestGenerateCard:
 
         model_data = {
             "tasks": {
-                "f1-multi-file-verify": {"date": "2026-04-20", "samples": 4, "input_tokens": 12000, "output_tokens": 11000, "scores": {"llm_judge": 0.85, "token_ratio_scorer": 0.46, "time_ratio_scorer": 0.76}},
+                "f1-multi-file-verify": {
+                    "date": "2026-04-20",
+                    "samples": 4,
+                    "input_tokens": 12000,
+                    "output_tokens": 11000,
+                    "scores": {
+                        "llm_judge": 0.85,
+                        "token_ratio_scorer": 0.46,
+                        "time_ratio_scorer": 0.76,
+                    },
+                },
             },
             "dates": ["2026-04-20"],
             "total_input": 12000,
@@ -261,13 +321,29 @@ class TestGenerateCard:
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
 
         model_data_v1 = {
-            "tasks": {"add-tests": {"date": "2026-04-19", "samples": 4, "input_tokens": 500, "output_tokens": 3000, "scores": {"verify_sh": 0.5}}},
+            "tasks": {
+                "add-tests": {
+                    "date": "2026-04-19",
+                    "samples": 4,
+                    "input_tokens": 500,
+                    "output_tokens": 3000,
+                    "scores": {"verify_sh": 0.5},
+                }
+            },
             "dates": ["2026-04-19"],
             "total_input": 500,
             "total_output": 3000,
         }
         model_data_v2 = {
-            "tasks": {"add-tests": {"date": "2026-04-20", "samples": 4, "input_tokens": 500, "output_tokens": 3000, "scores": {"verify_sh": 1.0}}},
+            "tasks": {
+                "add-tests": {
+                    "date": "2026-04-20",
+                    "samples": 4,
+                    "input_tokens": 500,
+                    "output_tokens": 3000,
+                    "scores": {"verify_sh": 1.0},
+                }
+            },
             "dates": ["2026-04-20"],
             "total_input": 500,
             "total_output": 3000,
@@ -284,6 +360,7 @@ class TestGenerateCard:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 class TestResultsCLI:
     def test_results_help(self):
@@ -306,6 +383,7 @@ class TestResultsCLI:
 
     def test_subcommand_registered(self):
         from bench_cli.main import cli
+
         runner = CliRunner()
         result = runner.invoke(cli, ["results", "--help"])
         assert result.exit_code == 0
@@ -324,6 +402,7 @@ class TestResultsCLI:
 # Agent card naming
 # ---------------------------------------------------------------------------
 
+
 class TestAgentCardNaming:
     def _make_model_data(self, **overrides):
         data = {
@@ -333,7 +412,12 @@ class TestAgentCardNaming:
                     "samples": 4,
                     "input_tokens": 500,
                     "output_tokens": 3000,
-                    "scores": {"verify_sh": 1.0, "token_ratio_scorer": 1.5, "time_ratio_scorer": 2.0, "price_ratio_scorer": 1.2},
+                    "scores": {
+                        "verify_sh": 1.0,
+                        "token_ratio_scorer": 1.5,
+                        "time_ratio_scorer": 2.0,
+                        "price_ratio_scorer": 1.2,
+                    },
                 },
             },
             "dates": ["2026-04-22"],
@@ -384,13 +468,16 @@ class TestAgentCardNaming:
 # generate_card_for_model with agent params
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateCardForModel:
     def test_agent_card_with_params(self, tmp_path, monkeypatch):
         """generate_card_for_model uses composite key when agent params provided."""
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
 
         path = generate_card_for_model(
-            "openai/qwen-local", tmp_path,
-            agent="claude", agent_mode="docker",
+            "openai/qwen-local",
+            tmp_path,
+            agent="claude",
+            agent_mode="docker",
         )
         assert path is None

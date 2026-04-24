@@ -1,4 +1,5 @@
 """Authentication module."""
+
 import hashlib
 import os
 import time

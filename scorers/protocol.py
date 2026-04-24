@@ -25,9 +25,9 @@ if TYPE_CHECKING:
 # Protocol
 # ---------------------------------------------------------------------------
 
+
 @runtime_checkable
 class PillarScorer(Protocol):
-
     """Protocol for all pillar scorers in the 4-pillar architecture.
 
     Every pillar scorer must:
@@ -55,8 +55,8 @@ class PillarScorer(Protocol):
 # Enums
 # ---------------------------------------------------------------------------
 
-class RatioSource(Enum):
 
+class RatioSource(Enum):
     """Identifies which reference source was used for a ratio score."""
 
     BASELINE = "baseline"
@@ -101,9 +101,9 @@ so this heuristic proxies for excessive re-reading or looping behavior.
 # Dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TaskBudget:
-
     """Per-task scoring configuration for efficiency and latency pillars.
 
     Used to configure TokenRatioScorer and TimeRatioScorer per task.

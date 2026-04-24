@@ -1,6 +1,7 @@
 """Test suite for configuration and timeout behavior."""
+
 import pytest
-from config import get_timeout, get_pool_size, get_circuit_breaker_threshold
+from config import get_circuit_breaker_threshold, get_pool_size, get_timeout
 
 
 def test_timeout_is_reasonable():

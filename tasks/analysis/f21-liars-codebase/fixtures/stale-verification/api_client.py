@@ -1,5 +1,7 @@
 """API client for external service."""
+
 import os
+
 import httpx
 
 

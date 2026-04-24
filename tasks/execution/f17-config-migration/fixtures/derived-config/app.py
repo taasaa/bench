@@ -1,5 +1,6 @@
 """App using derived config."""
-from config import get_db_url, API_VERSION
+
+from config import API_VERSION, get_db_url
 
 
 def connect():

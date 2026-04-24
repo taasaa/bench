@@ -16,7 +16,7 @@ class URLStore:
         self.urls[short_code] = long_url  # BUG: should be self._urls
         return short_code
 
-    def get(self, short_code: str) -> Optional[str]:
+    def get(self, short_code: str) -> str | None:
         """Look up a URL by its short code."""
         return self.urls.get(short_code)  # BUG: should be self._urls
 

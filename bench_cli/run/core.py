@@ -33,9 +33,7 @@ def _docker_available() -> bool:
     import subprocess
 
     try:
-        result = subprocess.run(
-            ["docker", "info"], capture_output=True, timeout=5
-        )
+        result = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
@@ -43,7 +41,7 @@ def _docker_available() -> bool:
 
 @lru_cache(maxsize=128)
 def _requires_docker(task_py: Path) -> bool:
-    """Heuristic: does task.py declare sandbox='docker'?"""
+    """Heuristic: does task.py declare sandbox='docker'."""
     try:
         content = task_py.read_text()
     except OSError:
@@ -175,7 +173,8 @@ def _check_price_gate(model_alias: str) -> None:
         click.echo(f"  Resolved OpenRouter ID: {or_id}", err=True)
         click.echo("  This model was not found in the OpenRouter price cache.", err=True)
         click.echo(
-            "  The OpenRouter catalog does not have this model -- it may be a private/NIM endpoint.",
+            "  The OpenRouter catalog does not have this model. "
+            "It may be a private or NIM endpoint.",
             err=True,
         )
 
@@ -253,6 +252,7 @@ def _resolve_task(
             continue
         try:
             from inspect_ai._util.registry import registry_info
+
             info = registry_info(attr)
             if info.type == "task":
                 task_factory = attr

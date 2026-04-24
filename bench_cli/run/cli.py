@@ -8,7 +8,6 @@ import click
 
 from bench_cli.run.core import (
     DEFAULT_MODEL,
-    TIER_DIRS,
     _check_price_gate,
     _discover_tasks,
     _resolve_agent_solver,
@@ -167,7 +166,7 @@ def run(
             click.echo(f"Override saved: {bench_alias} -> {or_override}")
         except ValueError as exc:
             click.echo(f"Error: {exc}", err=True)
-            raise SystemExit(1)
+            raise SystemExit(1) from None
 
     # 1. Discover task specs.
     if list_tasks:
@@ -208,8 +207,7 @@ def run(
     # fails (no task.py frame visible). Passing via Task metadata lets the scorer
     # find verify.sh without any filesystem gymnastics.
     tasks_with_metadata = [
-        _resolve_task(spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model)
-        for spec in specs
+        _resolve_task(spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model) for spec in specs
     ]
 
     # 3. Execute via Inspect AI's programmatic eval() API.
@@ -294,8 +292,10 @@ def run(
         from bench_cli.results import generate_card_for_model
 
         card_path = generate_card_for_model(
-            bench_alias, Path(log_dir),
-            agent=agent, agent_mode=agent_mode,
+            bench_alias,
+            Path(log_dir),
+            agent=agent,
+            agent_mode=agent_mode,
         )
         if card_path:
             click.echo(f"\n-- Model card updated: {card_path} --")

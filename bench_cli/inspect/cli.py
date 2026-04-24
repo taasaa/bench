@@ -6,18 +6,17 @@ from pathlib import Path
 
 import click
 
+from bench_cli.compare.core import _fmt_avg_cost, _fmt_cost_ratio, _short_model
 from bench_cli.inspect.core import (
-    SampleScore,
+    _LOG_DIR,
+    _PILLAR_MAP_NORMALIZED,
+    _get_task_dir,
     _load_baseline,
     _load_pillar_map,
     _load_samples,
     _per_task_stats,
     _resolve_alias,
-    _PILLAR_MAP_NORMALIZED,
-    _get_task_dir,
-    _LOG_DIR,
 )
-from bench_cli.compare.core import _fmt_avg_cost, _fmt_cost_ratio, _short_model
 
 
 @click.group("inspect")
@@ -29,6 +28,7 @@ def inspect() -> None:
 # ---------------------------------------------------------------------------
 # inspect stats
 # ---------------------------------------------------------------------------
+
 
 @inspect.command("stats")
 @click.option(
@@ -56,12 +56,16 @@ def stats(model_alias: str, log_dir: str) -> None:
         click.echo(f"No eval logs found for {model_alias}.", err=True)
         raise SystemExit(1)
 
-    click.echo(f"{'─'*100}")
+    click.echo(f"{'─' * 100}")
     click.echo(f" MODEL: {_short_model(model_alias)}")
     click.echo(f" TASKS: {len(task_samples)}")
-    click.echo(f"{'─'*100}")
-    click.echo(f" {'Task':<35} {'Pillar':<12} {'Scorer':<14} {'N':>3}  {'Correct':>8}  {'TokRatio':>9}  {'TimeRatio':>10}  {'CostRatio':>10}  {'Cost/sample':>12}")
-    click.echo(f" {'-'*35} {'-'*12} {'-'*14} {'-'*3}  {'-'*8}  {'-'*9}  {'-'*10}  {'-'*10}  {'-'*12}")
+    click.echo(f"{'─' * 100}")
+    click.echo(
+        f" {'Task':<35} {'Pillar':<12} {'Scorer':<14} {'N':>3}  {'Correct':>8}  {'TokRatio':>9}  {'TimeRatio':>10}  {'CostRatio':>10}  {'Cost/sample':>12}"
+    )
+    click.echo(
+        f" {'-' * 35} {'-' * 12} {'-' * 14} {'-' * 3}  {'-' * 8}  {'-' * 9}  {'-' * 10}  {'-' * 10}  {'-' * 12}"
+    )
 
     task_list = sorted(task_samples.keys())
     for task in task_list:
@@ -97,14 +101,17 @@ def stats(model_alias: str, log_dir: str) -> None:
             flags.append(f"timeSup={stats_['n_time_suppressed']}")
         flag_str = f" [{', '.join(flags)}]" if flags else ""
 
-        click.echo(f" {task:<35} {pillar:<12} {scorer:<14} {n:>3}  {corr_str:>8}  {tr_str:>9}  {lr_str:>10}  {pr_str:>10}  {cost_str:>12}{flag_str}")
+        click.echo(
+            f" {task:<35} {pillar:<12} {scorer:<14} {n:>3}  {corr_str:>8}  {tr_str:>9}  {lr_str:>10}  {pr_str:>10}  {cost_str:>12}{flag_str}"
+        )
 
-    click.echo(f"{'─'*100}")
+    click.echo(f"{'─' * 100}")
 
 
 # ---------------------------------------------------------------------------
 # inspect compare
 # ---------------------------------------------------------------------------
+
 
 @inspect.command("compare")
 @click.option(
@@ -146,12 +153,12 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
     # Load baseline (all runs except today)
     baseline = _load_baseline(model_alias, log_path)
 
-    click.echo(f"{'─'*90}")
+    click.echo(f"{'─' * 90}")
     click.echo(f" MODEL: {_short_model(model_alias)}  |  Delta threshold: {delta_threshold}")
     click.echo(f" BASELINE: {len(baseline)} tasks  |  CURRENT: {len(task_samples)} tasks")
-    click.echo(f"{'─'*90}")
+    click.echo(f"{'─' * 90}")
     click.echo(f" {'Task':<35} {'Old':>8}  {'New':>8}  {'Delta':>8}  {'Flag':<15} Notes")
-    click.echo(f" {'-'*35} {'-'*8}  {'-'*8}  {'-'*8}  {'-'*15} {'-'*30}")
+    click.echo(f" {'-' * 35} {'-' * 8}  {'-' * 8}  {'-' * 8}  {'-' * 15} {'-' * 30}")
 
     new_tasks = set(task_samples.keys()) - set(baseline.keys())
     gone_tasks = set(baseline.keys()) - set(task_samples.keys())
@@ -179,13 +186,14 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
 
     # Sort: significant first, then notable, then rest
     def sort_key(item: tuple) -> tuple[int, float]:
-        _, old, new, delta, flag, _ = item
+        _, _old, _new, delta, flag, _ = item
         priority = 0 if "SIGNIFICANT" in flag else (1 if "* notable" in flag else 2)
         return (priority, -abs(delta))
+
     deltas.sort(key=sort_key)
 
     has_issues = False
-    for task, old_avg, new_avg, delta, flag, notes in deltas:
+    for task, old_avg, new_avg, delta, flag, _notes in deltas:
         old_str = f"{old_avg:.3f}" if old_avg is not None else "N/A"
         new_str = f"{new_avg:.3f}" if new_avg is not None else "N/A"
         delta_str = f"{delta:+.3f}" if new_avg is not None and old_avg is not None else "N/A"
@@ -199,7 +207,7 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
     if gone_tasks:
         click.echo(f"\n GONE TASKS (in baseline, not in current): {', '.join(sorted(gone_tasks))}")
 
-    click.echo(f"{'─'*90}")
+    click.echo(f"{'─' * 90}")
     if has_issues:
         click.echo(" ⚠ Some tasks have notable deltas — run deep-check to investigate.")
 
@@ -207,6 +215,7 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
 # ---------------------------------------------------------------------------
 # inspect deep-check
 # ---------------------------------------------------------------------------
+
 
 @inspect.command("deep-check")
 @click.option(
@@ -261,7 +270,9 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         if stats_.get("all_correctness_zero"):
             anomalies.append(f"{task}: ALL-ZERO correctness — scorer bug or model failure")
         if stats_.get("n_nan_tok") == n and n > 0:
-            anomalies.append(f"{task}: ALL NaN token_ratio — missing reference budget in task_budgets.py")
+            anomalies.append(
+                f"{task}: ALL NaN token_ratio — missing reference budget in task_budgets.py"
+            )
         if stats_.get("n_nan_time") == n and n > 0:
             anomalies.append(f"{task}: ALL NaN time_ratio — noise floor triggering incorrectly")
 
@@ -274,13 +285,14 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         for s in samples:
             if s.scorer_type in ("llm_judge", "hybrid_scorer") and s.judge_explanation:
                 if len(s.judge_explanation) < 30:
-                    anomalies.append(f"{task}/{s.sample_id}: judge explanation too short (<30 chars)")
+                    anomalies.append(
+                        f"{task}/{s.sample_id}: judge explanation too short (<30 chars)"
+                    )
                     break
 
     if anomalies:
         lines.append("## Anomalies")
-        for a in anomalies:
-            lines.append(f"- {a}")
+        lines.extend(f"- {a}" for a in anomalies)
         lines.append("")
 
     # ── Per-task deep check ───────────────────────────────────────────────────
@@ -301,23 +313,20 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         # Read task files
         task_dir = _get_task_dir(task)
         task_py = ""
-        scorer_file = ""
-        scorer_content = ""
 
         if task_dir:
-            task_py = (task_dir / "task.py").read_text()[:800] if (task_dir / "task.py").is_file() else ""
+            task_py = (
+                (task_dir / "task.py").read_text()[:800] if (task_dir / "task.py").is_file() else ""
+            )
             if scorer_type == "llm_judge" or scorer_type == "hybrid_scorer":
                 for f in ("judge.md", "judge.yaml"):
                     p = task_dir / f
                     if p.is_file():
-                        scorer_file = f
-                        scorer_content = p.read_text()[:600]
                         break
             elif scorer_type == "verify_sh":
                 verify_script = task_dir / "verify.sh"
                 if verify_script.is_file():
-                    scorer_file = "verify.sh"
-                    scorer_content = verify_script.read_text()[:600]
+                    _scorer_preview = verify_script.read_text()[:600]
 
         # Judge quality analysis
         judge_quality = "N/A"
@@ -339,7 +348,9 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
                     judge_notes = "All explanations identical — rubber stamping"
                 elif unique <= 2 and len(explanations) > 4:
                     judge_quality = "WEAK"
-                    judge_notes = f"Only {unique} unique explanations for {len(explanations)} samples"
+                    judge_notes = (
+                        f"Only {unique} unique explanations for {len(explanations)} samples"
+                    )
                 else:
                     judge_quality = "SOUND"
                     judge_notes = f"Avg explanation length: {avg_len:.0f} chars, {unique} unique"
@@ -352,9 +363,13 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
             for s in samples:
                 if s.judge_explanation and s.correctness is not None:
                     text_lower = s.judge_explanation.lower()
-                    if s.correctness >= 0.75 and not any(w in text_lower for w in ["good", "correct", "pass", "acceptable", "well"]):
+                    if s.correctness >= 0.75 and not any(
+                        w in text_lower for w in ["good", "correct", "pass", "acceptable", "well"]
+                    ):
                         mismatches += 1
-                    elif s.correctness < 0.5 and not any(w in text_lower for w in ["incorrect", "wrong", "fail", "poor", "bad"]):
+                    elif s.correctness < 0.5 and not any(
+                        w in text_lower for w in ["incorrect", "wrong", "fail", "poor", "bad"]
+                    ):
                         mismatches += 1
             if mismatches > len(samples) * 0.5:
                 score_sound = "UNCERTAIN"
@@ -367,7 +382,11 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         hybrid_notes = ""
         if scorer_type == "hybrid_scorer":
             for s in samples:
-                if s.verify_sh_score is not None and s.llm_judge_score is not None and s.correctness is not None:
+                if (
+                    s.verify_sh_score is not None
+                    and s.llm_judge_score is not None
+                    and s.correctness is not None
+                ):
                     expected = s.verify_sh_score * 0.7 + s.llm_judge_score * 0.3
                     if abs(expected - s.correctness) > 0.01:
                         hybrid_ok = False
@@ -379,7 +398,9 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         # Task design
         task_design = "REASONABLE"
         design_notes = ""
-        prompt_lines = [l for l in task_py.split("\n") if l.strip() and not l.strip().startswith("#")]
+        prompt_lines = [
+            ln for ln in task_py.split("\n") if ln.strip() and not ln.strip().startswith("#")
+        ]
         if not prompt_lines:
             task_design = "UNCERTAIN"
             design_notes = "Could not read task prompt"
@@ -393,14 +414,18 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         # Overall verdict
         if judge_quality == "BROKEN" or score_sound == "FLAWED":
             verdict = "FLAWED"
-        elif judge_quality == "WEAK" or score_sound == "UNCERTAIN" or task_design in ("TOO EASY", "TOO HARD"):
+        elif (
+            judge_quality == "WEAK"
+            or score_sound == "UNCERTAIN"
+            or task_design in ("TOO EASY", "TOO HARD")
+        ):
             verdict = "UNCERTAIN"
         else:
             verdict = "SOUND"
 
         lines.append(f"### {task} (`{pillar}`)")
-        lines.append(f"| Field | Value |")
-        lines.append(f"|-------|-------|")
+        lines.append("| Field | Value |")
+        lines.append("|-------|-------|")
         lines.append(f"| **Scorer** | {scorer_type} |")
         lines.append(f"| **Samples** | {n} |")
         corr_str = f"{corr_avg:.3f}" if corr_avg is not None else "N/A"
@@ -422,34 +447,41 @@ def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
         # Sample outputs (first 2)
         lines.append(f"**Sample outputs** (first 2 of {n}):")
         for s in samples[:2]:
-            lines.append(f"```")
-            lines.append(f"  Sample: {s.sample_id}  correctness={s.correctness}  working_time={s.working_time:.1f}s")
+            lines.append("```")
+            lines.append(
+                f"  Sample: {s.sample_id}  correctness={s.correctness}  working_time={s.working_time:.1f}s"
+            )
             if s.output_text:
                 out_snippet = s.output_text[:400].replace("\n", "\n  ")
                 lines.append(f"  Output:\n  {out_snippet}")
             else:
-                lines.append(f"  Output: (empty)")
+                lines.append("  Output: (empty)")
             if s.judge_explanation:
                 lines.append(f"  Judge:\n  {s.judge_explanation[:300]}")
-            lines.append(f"```")
+            lines.append("```")
             lines.append("")
 
-        task_verdicts.append({
-            "task": task,
-            "pillar": pillar,
-            "verdict": verdict,
-            "judge_quality": judge_quality,
-            "score_sound": score_sound,
-            "task_design": task_design,
-        })
+        task_verdicts.append(
+            {
+                "task": task,
+                "pillar": pillar,
+                "verdict": verdict,
+                "judge_quality": judge_quality,
+                "score_sound": score_sound,
+                "task_design": task_design,
+            }
+        )
 
     # ── Summary table ─────────────────────────────────────────────────────────
     lines.append("## Verdict Summary")
     lines.append("")
-    lines.append(f"| Task | Pillar | Judge Quality | Score Sound | Task Design | Verdict |")
-    lines.append(f"|------|--------|--------------|-------------|-------------|---------|")
-    for v in task_verdicts:
-        lines.append(f"| {v['task']} | {v['pillar']} | {v['judge_quality']} | {v['score_sound']} | {v['task_design']} | {v['verdict']} |")
+    lines.append("| Task | Pillar | Judge Quality | Score Sound | Task Design | Verdict |")
+    lines.append("|------|--------|--------------|-------------|-------------|---------|")
+    lines.extend(
+        f"| {v['task']} | {v['pillar']} | {v['judge_quality']} | "
+        f"{v['score_sound']} | {v['task_design']} | {v['verdict']} |"
+        for v in task_verdicts
+    )
 
     report = "\n".join(lines)
 

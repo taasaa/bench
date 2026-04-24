@@ -2,7 +2,6 @@
 
 from typing import Any, Dict, List
 
-
 # Schema definition: each entry describes an expected field.
 # The "kind" field specifies the expected type.
 CONFIG_SCHEMA = {
@@ -41,12 +40,12 @@ def validate_type(value: Any, expected_kind: str) -> bool:
     return isinstance(value, expected_type)
 
 
-def validate_config(config: Dict[str, Any]) -> List[str]:
+def validate_config(config: dict[str, Any]) -> list[str]:
     """Validate a config dictionary against the schema.
 
     Returns a list of error messages. Empty list means valid.
     """
-    errors: List[str] = []
+    errors: list[str] = []
 
     for section_key, section_schema in CONFIG_SCHEMA.items():
         # BUG: checks "type" field but schema uses "kind"
@@ -61,9 +60,7 @@ def validate_config(config: Dict[str, Any]) -> List[str]:
         section_value = config[section_key]
 
         if section_kind and not validate_type(section_value, section_kind):
-            errors.append(
-                f"Section '{section_key}' has wrong type: expected {section_kind}"
-            )
+            errors.append(f"Section '{section_key}' has wrong type: expected {section_kind}")
 
         # Validate sub-properties
         if "properties" in section_schema:
@@ -73,16 +70,10 @@ def validate_config(config: Dict[str, Any]) -> List[str]:
 
                 if prop_key not in section_value:
                     if prop_required:
-                        errors.append(
-                            f"Missing required property: {section_key}.{prop_key}"
-                        )
+                        errors.append(f"Missing required property: {section_key}.{prop_key}")
                     continue
 
-                if prop_kind and not validate_type(
-                    section_value[prop_key], prop_kind
-                ):
-                    errors.append(
-                        f"Property '{section_key}.{prop_key}' has wrong type"
-                    )
+                if prop_kind and not validate_type(section_value[prop_key], prop_kind):
+                    errors.append(f"Property '{section_key}.{prop_key}' has wrong type")
 
     return errors

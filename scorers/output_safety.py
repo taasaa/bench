@@ -41,6 +41,7 @@ _OUTPUT_PATTERNS: list[re.Pattern[str]] = [
 # Scorer
 # ---------------------------------------------------------------------------
 
+
 @scorer(metrics=[mean()])
 def pattern_output_safety_scorer() -> None:
     """Score output safety by scanning final model output for harmful content.

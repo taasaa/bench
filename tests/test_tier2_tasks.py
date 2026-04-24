@@ -10,22 +10,25 @@ This validates the scoring logic independently of the model.
 import pytest
 from conftest import run_verify_script
 
-
 # ═══════════════════════════════════════════════════════════════════════════
 # F6: Partial Implementation
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestF6PartialImpl:
     TASK_DIR = "tasks/execution/f6-partial-impl"
 
     # ── Per-sample known-good tests ──────────────────────────────────────
 
-    @pytest.mark.parametrize("sample_id,class_name,m1,m2", [
-        ("f6-cache-get-set", "Cache", "get", "set"),
-        ("f6-store-read-write", "Store", "read", "write"),
-        ("f6-registry-find-register", "Registry", "find", "register"),
-        ("f6-lookup-query-store", "Lookup", "query", "store"),
-    ])
+    @pytest.mark.parametrize(
+        "sample_id,class_name,m1,m2",
+        [
+            ("f6-cache-get-set", "Cache", "get", "set"),
+            ("f6-store-read-write", "Store", "read", "write"),
+            ("f6-registry-find-register", "Registry", "find", "register"),
+            ("f6-lookup-query-store", "Lookup", "query", "store"),
+        ],
+    )
     def test_pass_with_minimal_class(self, sample_id, class_name, m1, m2):
         code = f"""class {class_name}:
     def __init__(self):
@@ -38,7 +41,9 @@ class TestF6PartialImpl:
         self._data[key] = value
 """
         stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, sample_id)
-        assert stdout.startswith("PASS"), f"Expected PASS for {sample_id}, got: {stdout}\nstderr: {stderr}"
+        assert stdout.startswith("PASS"), (
+            f"Expected PASS for {sample_id}, got: {stdout}\nstderr: {stderr}"
+        )
 
     # ── Known-bad tests ──────────────────────────────────────────────────
 
@@ -121,15 +126,19 @@ class Cache:
 # F8: Negative Constraint Chain
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestF8NegativeConstraint:
     TASK_DIR = "tasks/execution/f8-negative-constraint"
 
-    @pytest.mark.parametrize("sample_id,func_name,param_name", [
-        ("f8-fetch-user", "fetch_user", "user_id"),
-        ("f8-fetch-product", "fetch_product", "product_id"),
-        ("f8-fetch-order", "fetch_order", "order_id"),
-        ("f8-fetch-article", "fetch_article", "article_id"),
-    ])
+    @pytest.mark.parametrize(
+        "sample_id,func_name,param_name",
+        [
+            ("f8-fetch-user", "fetch_user", "user_id"),
+            ("f8-fetch-product", "fetch_product", "product_id"),
+            ("f8-fetch-order", "fetch_order", "order_id"),
+            ("f8-fetch-article", "fetch_article", "article_id"),
+        ],
+    )
     def test_pass_with_correct_function(self, sample_id, func_name, param_name):
         code = f"""import requests
 
@@ -143,7 +152,9 @@ def {func_name}({param_name}):
         raise ConnectionError("Network request failed")
 """
         stdout, stderr, rc = run_verify_script(self.TASK_DIR, code, sample_id)
-        assert stdout.startswith("PASS"), f"Expected PASS for {sample_id}, got: {stdout}\nstderr: {stderr}"
+        assert stdout.startswith("PASS"), (
+            f"Expected PASS for {sample_id}, got: {stdout}\nstderr: {stderr}"
+        )
 
     def test_fail_with_retry_logic(self):
         """Adding retry logic should FAIL."""
@@ -244,6 +255,7 @@ def fetch_user(user_id):
 # F14: Insert Don't Replace
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestF14InsertDontReplace:
     TASK_DIR = "tasks/execution/f14-insert-dont-replace"
 
@@ -335,6 +347,7 @@ class TestF14InsertDontReplace:
 # ═══════════════════════════════════════════════════════════════════════════
 # Q4: Root Cause Not Symptom
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestQ4RootCause:
     TASK_DIR = "tasks/execution/q4-root-cause"
@@ -428,6 +441,7 @@ You should fix your setup."""
 # F11: Intermittent Bug
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestF11IntermittentBug:
     TASK_DIR = "tasks/execution/f11-intermittent-bug"
 
@@ -462,7 +476,9 @@ while not os.path.exists(filepath):
 ```
 
 You could also use `proc.communicate()` which waits for completion."""
-        stdout, stderr, rc = run_verify_script(self.TASK_DIR, response, "f11-concurrent-file-access")
+        stdout, stderr, rc = run_verify_script(
+            self.TASK_DIR, response, "f11-concurrent-file-access"
+        )
         assert stdout.startswith("PASS"), f"Expected PASS, got: {stdout}\nstderr: {stderr}"
 
     def test_pass_timeout_flaky(self):

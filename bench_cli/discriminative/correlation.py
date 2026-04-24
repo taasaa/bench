@@ -4,6 +4,7 @@ Phase 3: given multi-subject scores, compute pairwise task correlations.
 Tasks that are highly correlated (r >= 0.5) likely tap the same underlying capability,
 revealing natural clusters beyond the manual 4-tier taxonomy.
 """
+
 from __future__ import annotations
 
 import math
@@ -59,7 +60,7 @@ def compute_task_correlation(
     correlations: list[TaskCorrelation] = []
 
     for i, task_a in enumerate(shared_tasks):
-        for task_b in shared_tasks[i + 1:]:
+        for task_b in shared_tasks[i + 1 :]:
             vec_a = task_vectors[task_a]
             vec_b = task_vectors[task_b]
 
@@ -70,11 +71,13 @@ def compute_task_correlation(
             r = _pearson_r(vec_a, vec_b)
 
             if r is not None and abs(r) >= _MIN_CORRELATION:
-                correlations.append(TaskCorrelation(
-                    task_a=task_a,
-                    task_b=task_b,
-                    pearson_r=r,
-                ))
+                correlations.append(
+                    TaskCorrelation(
+                        task_a=task_a,
+                        task_b=task_b,
+                        pearson_r=r,
+                    )
+                )
 
     # Sort by absolute r descending
     correlations.sort(key=lambda c: abs(c.pearson_r), reverse=True)
@@ -126,8 +129,7 @@ def format_correlation_table(correlations: list[TaskCorrelation]) -> str:
 
     for corr in correlations:
         lines.append(
-            f"{corr.task_a:<25} {corr.task_b:<25} {corr.pearson_r:>6.3f}  "
-            f"{corr.interpretation}"
+            f"{corr.task_a:<25} {corr.task_b:<25} {corr.pearson_r:>6.3f}  {corr.interpretation}"
         )
 
     lines.append("")

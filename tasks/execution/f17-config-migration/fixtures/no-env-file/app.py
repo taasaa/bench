@@ -1,4 +1,5 @@
 """App using config — no .env file exists."""
+
 from config import get_settings
 
 

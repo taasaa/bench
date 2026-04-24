@@ -1,4 +1,5 @@
 """Extended type definitions for Phase 3: matrix, correlation, harness change."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,6 +14,7 @@ from bench_cli.discriminative.types import (
 # Phase 3: Multi-subject pipeline
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MultiSubjectReport:
     profiles: list[SubjectProfile]
@@ -23,10 +25,11 @@ class MultiSubjectReport:
 # Phase 3: Comparison matrix
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MatrixRow:
-
     """One row of the comparison matrix (one cluster, across all subjects)."""
+
     cluster_name: str
     scores: dict[str, float]  # {subject_display: correct_score}
     ci_lows: dict[str, float]
@@ -45,6 +48,7 @@ class CompareMatrix:
 # ---------------------------------------------------------------------------
 # Phase 3: Task correlation
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class TaskCorrelation:
@@ -70,10 +74,11 @@ class TaskCorrelation:
 # Phase 3: Harness change report
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ClusterPillarDelta:
-
     """Per-pillar delta for a single cluster in a harness change report."""
+
     cluster_name: str
     correctness_delta: float
     token_ratio_delta: float
@@ -87,8 +92,8 @@ class ClusterPillarDelta:
 
 @dataclass
 class HarnessChangeReport:
-
     """Structured report for a harness change (before/after of same SubjectID)."""
+
     subject_id: SubjectID
     before_profile: SubjectProfile
     after_profile: SubjectProfile

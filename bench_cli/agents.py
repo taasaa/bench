@@ -18,7 +18,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class AgentConfig:
-
     """Configuration for a CLI agent."""
 
     name: str
@@ -32,9 +31,7 @@ class AgentConfig:
         """Check if the agent CLI is installed."""
         return shutil.which(self.binary) is not None
 
-    def build_cmd(
-        self, prompt: str, bare: bool = False, model: str | None = None
-    ) -> list[str]:
+    def build_cmd(self, prompt: str, bare: bool = False, model: str | None = None) -> list[str]:
         """Build the full subprocess command.
 
         Args:
@@ -150,9 +147,7 @@ def get_agent_config(name: str) -> AgentConfig:
     """Look up agent config by name."""
     config = AGENT_REGISTRY.get(name)
     if config is None:
-        raise ValueError(
-            f"Unknown agent {name!r}. Available: {', '.join(AGENT_REGISTRY)}"
-        )
+        raise ValueError(f"Unknown agent {name!r}. Available: {', '.join(AGENT_REGISTRY)}")
     return config
 
 

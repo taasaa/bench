@@ -1,8 +1,8 @@
 """User model for authentication system."""
 
-from dataclasses import dataclass, field
 import hashlib
 import os
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -16,15 +16,11 @@ class User:
 
     def set_password(self, raw_password: str) -> None:
         """Hash and store the password."""
-        self.password_hash = hashlib.sha256(
-            f"{self.salt}{raw_password}".encode()
-        ).hexdigest()
+        self.password_hash = hashlib.sha256(f"{self.salt}{raw_password}".encode()).hexdigest()
 
     def check_password(self, raw_password: str) -> bool:
         """Verify a password against the stored hash."""
-        candidate = hashlib.sha256(
-            f"{self.salt}{raw_password}".encode()
-        ).hexdigest()
+        candidate = hashlib.sha256(f"{self.salt}{raw_password}".encode()).hexdigest()
         return candidate == self.password_hash
 
 

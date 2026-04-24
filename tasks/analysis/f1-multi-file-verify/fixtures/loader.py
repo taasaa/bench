@@ -4,7 +4,7 @@ import json
 from typing import Any, Dict
 
 
-def load_config(filepath: str) -> Dict[str, Any]:
+def load_config(filepath: str) -> dict[str, Any]:
     """Load a JSON configuration file.
 
     Args:
@@ -17,11 +17,11 @@ def load_config(filepath: str) -> Dict[str, Any]:
         FileNotFoundError: If the file doesn't exist.
         json.JSONDecodeError: If the file is not valid JSON.
     """
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         return json.load(f)
 
 
-def load_default_config() -> Dict[str, Any]:
+def load_default_config() -> dict[str, Any]:
     """Load the built-in default configuration."""
     return {
         "server": {
@@ -36,9 +36,7 @@ def load_default_config() -> Dict[str, Any]:
     }
 
 
-def merge_with_defaults(
-    user_config: Dict[str, Any], defaults: Dict[str, Any]
-) -> Dict[str, Any]:
+def merge_with_defaults(user_config: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
     """Merge user config on top of defaults (user values take precedence)."""
     result = defaults.copy()
     for key, value in user_config.items():

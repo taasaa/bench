@@ -6,7 +6,7 @@ from pathlib import Path
 
 import click
 
-from bench_cli.pricing.litellm_config import resolve_openrouter_id, _load_litellm_alias_map
+from bench_cli.pricing.litellm_config import _load_litellm_alias_map, resolve_openrouter_id
 from bench_cli.pricing.price_cache import OpenRouterCache
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -38,7 +38,7 @@ def refresh(ctx: click.Context) -> None:
         click.echo(f"Price cache refreshed: {path}")
     except RuntimeError as exc:
         click.echo(f"Error: {exc}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
 
 @prices.command("list")
@@ -105,7 +105,9 @@ def add_price(ctx: click.Context, alias: str, input_price: float, output_price: 
     from bench_cli.pricing.litellm_config import is_managed_model
 
     if is_managed_model(alias):
-        click.echo(f"Error: {alias} is a managed/local model — not in OpenRouter catalog.", err=True)
+        click.echo(
+            f"Error: {alias} is a managed/local model — not in OpenRouter catalog.", err=True
+        )
         raise SystemExit(1)
 
     or_id = resolve_openrouter_id(alias)

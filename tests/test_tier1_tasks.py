@@ -9,8 +9,8 @@ This validates the scoring logic independently of the model.
 
 from conftest import run_verify_script
 
-
 # ── Q1: Verification Gate ────────────────────────────────────────────────
+
 
 class TestQ1VerificationGate:
     TASK_DIR = "tasks/competence/q1-verification-gate"
@@ -31,6 +31,7 @@ The failing tests are:
 
 
 # ── Q2: Do Not Touch ─────────────────────────────────────────────────────
+
 
 class TestQ2DoNotTouch:
     TASK_DIR = "tasks/competence/q2-do-not-touch"
@@ -94,6 +95,7 @@ def process_data(data):
 
 # ── F7: Format Compliance ────────────────────────────────────────────────
 
+
 class TestF7FormatCompliance:
     TASK_DIR = "tasks/competence/f7-format-compliance"
 
@@ -113,7 +115,7 @@ class TestF7FormatCompliance:
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
     def test_fail_with_invalid_json(self):
-        bad = 'not json at all'
+        bad = "not json at all"
         stdout, stderr, rc = run_verify_script(self.TASK_DIR, bad)
         assert stdout.startswith("FAIL"), f"Expected FAIL, got: {stdout}"
 
@@ -124,6 +126,7 @@ class TestF7FormatCompliance:
 
 
 # ── F12: Surgical Fix ───────────────────────────────────────────────────
+
 
 class TestF12SurgicalFix:
     TASK_DIR = "tasks/competence/f12-surgical-fix"
@@ -173,6 +176,7 @@ class TestF12SurgicalFix:
 
 
 # ── F20: Scope Calibration ──────────────────────────────────────────────
+
 
 class TestF20ScopeCalibration:
     TASK_DIR = "tasks/competence/f20-scope-calibration"

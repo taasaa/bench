@@ -1,4 +1,5 @@
 """App using config module."""
+
 from config import get_config
 
 

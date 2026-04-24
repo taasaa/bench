@@ -1,10 +1,10 @@
 """Data reader module for the ETL pipeline."""
 
 import csv
-from typing import List, Dict
+from typing import Dict, List
 
 
-def read_csv(filepath: str, limit: int = 100) -> List[Dict[str, str]]:
+def read_csv(filepath: str, limit: int = 100) -> list[dict[str, str]]:
     """Read up to `limit` rows from a CSV file.
 
     Args:
@@ -14,7 +14,7 @@ def read_csv(filepath: str, limit: int = 100) -> List[Dict[str, str]]:
     Returns:
         List of dictionaries, one per row, keyed by column headers.
     """
-    with open(filepath, "r", newline="") as f:
+    with open(filepath, newline="") as f:
         reader = csv.DictReader(f)
         data = list(reader)
 
@@ -27,6 +27,6 @@ def read_csv(filepath: str, limit: int = 100) -> List[Dict[str, str]]:
 
 def count_rows(filepath: str) -> int:
     """Count the number of data rows in a CSV file."""
-    with open(filepath, "r", newline="") as f:
+    with open(filepath, newline="") as f:
         reader = csv.DictReader(f)
         return sum(1 for _ in reader)

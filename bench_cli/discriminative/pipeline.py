@@ -1,4 +1,5 @@
 """Pipeline — wire diagnostics + profiles into a run_pipeline() function."""
+
 from __future__ import annotations
 
 import math
@@ -63,9 +64,7 @@ def load_clusters_yaml(
 
         for key, value in custom_data.items():
             if key in clusters:
-                warnings.append(
-                    f"Custom cluster '{key}' overrides base cluster of same name."
-                )
+                warnings.append(f"Custom cluster '{key}' overrides base cluster of same name.")
 
             if isinstance(value, dict):
                 task_ids = value.get("task_ids", [])

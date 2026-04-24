@@ -17,21 +17,13 @@ def _bar(score: float, width: int = 10) -> str:
 
 def _composite_score(ps_list: list) -> float:
     """Compute composite score from PillarScores list."""
-    c_vals = [
-        p.correctness for p in ps_list
-        if not math.isnan(p.correctness)
-    ]
+    c_vals = [p.correctness for p in ps_list if not math.isnan(p.correctness)]
     tr_vals = [
-        p.token_ratio for p in ps_list
-        if not math.isnan(p.token_ratio) and p.token_ratio > 0
+        p.token_ratio for p in ps_list if not math.isnan(p.token_ratio) and p.token_ratio > 0
     ]
-    lr_vals = [
-        p.time_ratio for p in ps_list
-        if not math.isnan(p.time_ratio) and p.time_ratio > 0
-    ]
+    lr_vals = [p.time_ratio for p in ps_list if not math.isnan(p.time_ratio) and p.time_ratio > 0]
     pr_vals = [
-        p.price_ratio for p in ps_list
-        if not math.isnan(p.price_ratio) and p.price_ratio > 0
+        p.price_ratio for p in ps_list if not math.isnan(p.price_ratio) and p.price_ratio > 0
     ]
 
     parts = []
@@ -94,11 +86,7 @@ def _score_ranking(data: CompareData) -> None:
     """Ranked model list with composite scores."""
     model_scores: list[tuple[str, float]] = []
     for model in data.models:
-        ps_list = [
-            data.matrix[t][model]
-            for t in data.tasks
-            if model in data.matrix.get(t, {})
-        ]
+        ps_list = [data.matrix[t][model] for t in data.tasks if model in data.matrix.get(t, {})]
         if ps_list:
             model_scores.append((model, _composite_score(ps_list)))
 
@@ -115,11 +103,7 @@ def _score_single(data: CompareData, model: str) -> None:
         click.echo(f"No eval results for {bare_name(model)}.")
         return
 
-    ps_list = [
-        data.matrix[t][model]
-        for t in data.tasks
-        if model in data.matrix.get(t, {})
-    ]
+    ps_list = [data.matrix[t][model] for t in data.tasks if model in data.matrix.get(t, {})]
     if not ps_list:
         click.echo(f"No scored tasks for {bare_name(model)}.")
         return
@@ -143,11 +127,7 @@ def _score_breakdown(data: CompareData) -> None:
     """Table with composite + per-pillar for all models."""
     model_scores: list[tuple[str, float, float, float, float, float]] = []
     for model in data.models:
-        ps_list = [
-            data.matrix[t][model]
-            for t in data.tasks
-            if model in data.matrix.get(t, {})
-        ]
+        ps_list = [data.matrix[t][model] for t in data.tasks if model in data.matrix.get(t, {})]
         if not ps_list:
             continue
         comp = _composite_score(ps_list)
@@ -160,12 +140,10 @@ def _score_breakdown(data: CompareData) -> None:
     model_scores.sort(key=lambda x: x[1], reverse=True)
 
     click.echo(
-        f"  {'model':<25s} {'overall':>7s} "
-        f"{'corr':>6s} {'eff':>6s} {'spd':>6s} {'cost':>6s}"
+        f"  {'model':<25s} {'overall':>7s} {'corr':>6s} {'eff':>6s} {'spd':>6s} {'cost':>6s}"
     )
     click.echo("  " + "─" * 58)
     for model, comp, corr, eff, spd, cost in model_scores:
         click.echo(
-            f"  {bare_name(model):<25s} {comp:6.0f} "
-            f"{corr:6.0f} {eff:6.0f} {spd:6.0f} {cost:6.0f}"
+            f"  {bare_name(model):<25s} {comp:6.0f} {corr:6.0f} {eff:6.0f} {spd:6.0f} {cost:6.0f}"
         )
