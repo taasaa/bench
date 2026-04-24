@@ -62,7 +62,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **LiteLLM proxy config:** `~/dev/litellm/config.yaml` — edit this to add/remove models, set RPM limits (`rpm:` per deployment), or change `enforce_model_rate_limits`. This path is required constantly.
 
 ## Current Focus
-Multi-dimensional discriminative evaluation (Phases 1-3 complete): per-cluster profiles, safety gates, Pareto frontier, correlation matrix, harness regression. 4-pillar scoring: correctness + token efficiency + latency + cost. Multi-shot solver with hybrid scoring (verify_sh + llm_judge) for qualitative tasks. Discriminative eval commands: `bench recommend`, `bench compare-profiles`, `bench compare-matrix`, `bench task-correlations`.
+Multi-dimensional discriminative evaluation: per-cluster profiles, safety gates, Pareto frontier, correlation matrix, harness regression. 4-pillar scoring: correctness + token efficiency + latency + cost. Multi-shot solver with hybrid scoring (verify_sh + llm_judge) for qualitative tasks. Discriminative eval commands: `bench recommend`, `bench compare-profiles`, `bench compare-matrix`, `bench task-correlations`.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
@@ -71,7 +71,7 @@ Multi-dimensional discriminative evaluation (Phases 1-3 complete): per-cluster p
 - **Agent config registry:** `bench_cli/agents.py` — per-agent CLI settings, output parsers, Docker solver mapping
 - **Agent solvers:** `bench_cli/solvers/local_agent.py` (subprocess) and `docker_agent.py` (inspect-swe wrapper)
 - **Agent bridge:** `sandbox_agent_bridge()` proxies CLI agent API calls, captures every token/tool call
-- **Sandboxing:** Inspect native — Docker, K8s, local. Phase 1: local. Phase 2+: Docker.
+- **Sandboxing:** Inspect native — Docker, K8s, local.
 - **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh` — each command is a Python package (`bench_cli/{run,compare,inspect,results}/`) with `cli.py` (Click adapters) + `core.py` (business logic)
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format

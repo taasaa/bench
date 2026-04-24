@@ -54,7 +54,7 @@ bench run --sequential --tier full
 # Compare
 bench compare
 
-# Discriminative profiles (Phases 1-3 shipped)
+# Discriminative profiles
 bench recommend --model openai/qwen-local
 bench compare-profiles openai/qwen-local openai/gemma-4-26-local
 bench compare-matrix openai/qwen-local openai/nvidia-mistral-small4
