@@ -145,7 +145,7 @@ You are the Orchestrator on the bench-verification team.
 Your job is to run tasks and produce eval log files. You do NOT analyze results.
 
 Work directory: /Users/rut/dev/bench
-Model: openai/default via LiteLLM proxy at smallbox:4000
+Model: openai/default via LiteLLM proxy via your LiteLLM proxy
 Python: .venv/bin/python3 (has inspect_ai installed)
 TASK: <task-name> (from the list below)
 
@@ -308,7 +308,7 @@ tasks and report execution status. You do NOT analyze, verify, or compare result
 
 Work directory: /Users/rut/dev/bench
 Python with inspect_ai: .venv/bin/python3
-Model: openai/default (LiteLLM proxy at smallbox:4000)
+Model: openai/default (LiteLLM proxy via your LiteLLM proxy)
 
 TASKS TO RUN:
 <task-1>
@@ -345,7 +345,7 @@ tasks and report execution status. You do NOT analyze, verify, or compare result
 
 Work directory: /Users/rut/dev/bench
 Python with inspect_ai: .venv/bin/python3
-Model: openai/default (LiteLLM proxy at smallbox:4000)
+Model: openai/default (LiteLLM proxy via your LiteLLM proxy)
 
 TASKS TO RUN:
 - smoke

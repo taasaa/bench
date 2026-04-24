@@ -166,7 +166,7 @@ Every task produces four independent scores. No composite formula.
 2. **`SAMPLE_ID` env var** — verify.sh uses it to branch on per-sample patterns. Pass via `env["SAMPLE_ID"]`.
 3. **POSIX regex only in verify.sh** — use `grep -E`, not `grep -P`. Use `[[:space:]]` not `\s`.
 4. **Inspect EvalLog is binary ZIP** — decode with `zipfile`, not `json.loads()`. Contains `header.json`, `samples/`, `_journal/`.
-5. **Model routing via LiteLLM** — models route through `OPENAI_BASE_URL=http://smallbox:4000/v1`.
+5. **Model routing via LiteLLM** — models route through `OPENAI_BASE_URL` set in your `.env`.
 6. **Stack introspection for task dir** — `_find_task_dir()` uses `inspect.getouterframes()` to find `/tasks/` in frame paths.
 7. **`sample.model_usage` is a dict** keyed by model name, not an object — use `isinstance(x, dict)` before accessing.
 8. **`bench_cli/run/` is a package** — `from bench_cli.run.core import _discover_tasks`. Not `from bench_cli.run import ...`

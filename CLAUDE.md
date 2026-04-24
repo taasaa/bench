@@ -47,19 +47,18 @@ python -m bench_cli run --agent gemini --agent-mode docker --tier full
 
 ## Model Routing
 
-All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API calls.
+All models route through a **LiteLLM proxy** via `openai/<model-alias>` format. No direct API calls.
 
-- **Format:** `openai/<model-alias>` — Inspect's OpenAI adapter sends everything to the proxy
 - **Credentials:** Stored in project-root `.env` (gitignored). Auto-loaded by `bench_cli/main.py` via `python-dotenv` on import — no manual env exports needed
 - **`.env` contents:**
   ```
-  OPENAI_BASE_URL=http://smallbox:4000/v1
-  OPENAI_API_KEY=<litellm-proxy-token>
-  OPENROUTER_API_KEY=<openrouter-key>
+  OPENAI_BASE_URL=http://your-litellm-proxy:4000/v1
+  OPENAI_API_KEY=<your-api-key>
+  OPENROUTER_API_KEY=<your-openrouter-key>
   ```
-- **Available models** (check with `curl -s http://smallbox:4000/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`): qwen-local, gemma-4-e2-local, gemma-4-26-local, glm-local, qwen3-coder-plus, qwen3-max, opus, pro, and more
+- **Available models** (check with `curl -s http://your-litellm-proxy:4000/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`): depends on your LiteLLM config
 - **Default model:** `openai/default` (maps to whatever LiteLLM configures as default)
-- **LiteLLM proxy config:** `~/dev/litellm/config.yaml` — edit this to add/remove models, set RPM limits (`rpm:` per deployment), or change `enforce_model_rate_limits`. This path is required constantly.
+- **LiteLLM proxy config:** Edit `~/dev/litellm/config.yaml` to add/remove models, set RPM limits per deployment, or configure `enforce_model_rate_limits`.
 
 ## Current Focus
 Multi-dimensional discriminative evaluation: per-cluster profiles, safety gates, Pareto frontier, correlation matrix, harness regression. 4-pillar scoring: correctness + token efficiency + latency + cost. Multi-shot solver with hybrid scoring (verify_sh + llm_judge) for qualitative tasks. Discriminative eval commands: `bench recommend`, `bench compare-profiles`, `bench compare-matrix`, `bench task-correlations`.
@@ -74,7 +73,7 @@ Multi-dimensional discriminative evaluation: per-cluster profiles, safety gates,
 - **Sandboxing:** Inspect native — Docker, K8s, local.
 - **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh` — each command is a Python package (`bench_cli/{run,compare,inspect,results}/`) with `cli.py` (Click adapters) + `core.py` (business logic)
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
-- **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
+- **Models:** LiteLLM proxy — all models via `openai/<alias>` format
 - **Tiers:** quick (verification: smoke + agent_smoke) + full (all tasks: competence + execution + analysis + universal)
 - **Scoring:** 4 independent pillars per task — correctness (verify_sh, llm_judge, or hybrid) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency) + price_ratio_scorer (cost)
 - **Correctness:** verify_sh for deterministic tasks, llm_judge for open-ended tasks, hybrid_scorer for tasks benefiting from both (verify_sh 0.7 + llm_judge 0.3 weighted); judge model: `openai/judge` → GLM-5.1

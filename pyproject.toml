@@ -3,6 +3,25 @@ name = "bench"
 version = "0.1.0"
 description = "Local LLM and AI agent evaluation system"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Michael Mazyar" },
+]
+keywords = ["llm", "evaluation", "benchmark", "ai", "inspect-ai", "cli"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Benchmark",
+]
+
 dependencies = [
     "inspect-ai>=0.3.205",
     "openai>=1.0",

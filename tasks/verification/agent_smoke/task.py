@@ -39,7 +39,7 @@ def agent_smoke():
     Prerequisites:
       - Docker must be running
       - OPENAI_API_KEY must be set to the LiteLLM proxy key (e.g. sk-1234)
-      - OPENAI_BASE_URL must be set to the LiteLLM proxy (e.g. http://smallbox:4000/v1)
+      - OPENAI_BASE_URL must be set to your LiteLLM proxy (e.g. http://localhost:4000/v1)
       - anthropic package must be installed (pip install anthropic)
 
     Run example:

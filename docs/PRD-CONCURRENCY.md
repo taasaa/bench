@@ -9,7 +9,7 @@
 
 ## Problem Statement
 
-Bench currently runs all Inspect tasks concurrently with no way to limit in-flight requests. The LiteLLM proxy at `smallbox:4000` serves multiple model deployments — minimax m2.7 (default, rpm=120) and four NVIDIA models (rpm=60 each) — and these are hard rate limits on the provider side. Without bench-level concurrency control, tasks can burst past RPM limits causing 429 errors that fail evals, even though LiteLLM's `enforce_model_rate_limits: true` would otherwise queue requests gracefully if we didn't oversaturate the proxy connection pool. Additionally, retry logic on HTTP errors is absent, causing flaky eval runs with no visibility into retry attempts.
+Bench currently runs all Inspect tasks concurrently with no way to limit in-flight requests. The LiteLLM proxy serves multiple model deployments with rate limits, and without bench-level concurrency control, tasks can burst past RPM limits causing 429 errors that fail evals, even though LiteLLM's `enforce_model_rate_limits: true` would otherwise queue requests gracefully if we didn't oversaturate the proxy connection pool. Additionally, retry logic on HTTP errors is absent, causing flaky eval runs with no visibility into retry attempts.
 
 ## Success Criteria
 
@@ -88,6 +88,6 @@ Bench currently runs all Inspect tasks concurrently with no way to limit in-flig
 
 ## Open Questions
 
-- What is the exact path to the LiteLLM proxy config on smallbox? → Need to confirm `~/smallbox/litellm_config.yaml` or equivalent before writing config changes
+- What is the exact path to the LiteLLM proxy config? → Configure in your `~/dev/litellm/config.yaml`
 - Should `--concurrency` validate against the proxy's rpm limits (e.g., warn if N > rpm)? → Not in v1; the proxy queues requests, so the only cost is latency. Add a warning if use case emerges.
 - Is there an existing `httpx` retry pattern in the codebase I should integrate with rather than duplicate? → No known precedent from review; retry.py is new. Confirm no shared retry utility exists before finalizing.

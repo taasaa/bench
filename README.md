@@ -44,4 +44,4 @@ pytest
 - **Scoring:** 4 independent pillars per task — correctness, token efficiency, latency, cost
 - **Judge model:** `openai/judge` → GLM-5.1 for qualitative tasks
 - **Storage:** Inspect EvalLog binary `.eval` format + SQLite index
-- **Model routing:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
+- **Model routing:** All models via `openai/<model-alias>` format through a LiteLLM proxy. Set `OPENAI_BASE_URL` and `OPENAI_API_KEY` in `.env`.

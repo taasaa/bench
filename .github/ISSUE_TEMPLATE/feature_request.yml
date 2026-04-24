@@ -1,0 +1,27 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature. Please fill out the template below.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem You Want to Solve
+      description: What is the specific issue or gap this feature addresses?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the feature and how it solves the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What else have you tried or considered?
