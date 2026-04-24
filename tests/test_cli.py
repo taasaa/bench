@@ -224,7 +224,7 @@ class TestRunIntegration:
                         )
 
         assert result.exit_code == 0, result.output
-        mock_solver.assert_called_once_with("claude", "local")
+        mock_solver.assert_called_once_with("claude", "local", cc_model=None)
         # Verify solver was passed to eval
         call_kwargs = mock_eval.call_args
         solver_arg = call_kwargs.kwargs.get("solver")

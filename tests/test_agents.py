@@ -183,7 +183,7 @@ class TestResolveAgentSolver:
         with patch("bench_cli.solvers.local_agent.local_agent") as mock:
             mock.return_value = "local_solver"
             result = _resolve_agent_solver("claude", "local")
-            mock.assert_called_once_with("claude", bare=False)
+            mock.assert_called_once_with("claude", bare=False, model=None)
             assert result == "local_solver"
 
     def test_bare_mode_routes_to_local_agent_bare(self):
@@ -192,7 +192,7 @@ class TestResolveAgentSolver:
         with patch("bench_cli.solvers.local_agent.local_agent") as mock:
             mock.return_value = "bare_solver"
             _resolve_agent_solver("claude", "bare")
-            mock.assert_called_once_with("claude", bare=True)
+            mock.assert_called_once_with("claude", bare=True, model=None)
 
     def test_docker_mode_routes_to_docker_agent(self):
         from bench_cli.run import _resolve_agent_solver

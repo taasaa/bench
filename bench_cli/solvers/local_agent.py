@@ -25,13 +25,21 @@ DEFAULT_TIMEOUT = 300  # 5 minutes per task
 
 
 @solver
-def local_agent(agent_name: str, bare: bool = False, timeout: int = DEFAULT_TIMEOUT) -> Solver:
+def local_agent(
+    agent_name: str,
+    bare: bool = False,
+    timeout: int = DEFAULT_TIMEOUT,
+    model: str | None = None,
+) -> Solver:
     """Solver that runs a CLI agent as a local subprocess.
 
     Args:
         agent_name: Agent to use (claude, codex, gemini).
         bare: If True, run in bare mode (skip hooks, CLAUDE.md, etc.).
         timeout: Maximum seconds to wait for agent output.
+        model: CCR-style model override for Claude Code (e.g. "litellm,thinking",
+            "kilocode,opus"). Only supported for claude agent. Passed as
+            --model flag to claude CLI. None means use CCR's default.
     """
     config = get_agent_config(agent_name)
 
@@ -44,7 +52,7 @@ def local_agent(agent_name: str, bare: bool = False, timeout: int = DEFAULT_TIME
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         prompt = state.input_text
-        cmd = config.build_cmd(prompt, bare=bare)
+        cmd = config.build_cmd(prompt, bare=bare, model=model)
 
         start = time.monotonic()
         try:

@@ -32,11 +32,22 @@ class AgentConfig:
         """Check if the agent CLI is installed."""
         return shutil.which(self.binary) is not None
 
-    def build_cmd(self, prompt: str, bare: bool = False) -> list[str]:
-        """Build the full subprocess command."""
+    def build_cmd(
+        self, prompt: str, bare: bool = False, model: str | None = None
+    ) -> list[str]:
+        """Build the full subprocess command.
+
+        Args:
+            prompt: The prompt to send to the agent.
+            bare: If True, run in bare mode (skip hooks/CLAUDE.md).
+            model: CCR-style model name to pass via --model flag.
+                E.g. 'litellm,thinking', 'kilocode,opus'. Only used for claude agent.
+        """
         cmd = self.local_cmd.copy()
         if bare and self.bare_flag:
             cmd.extend(self.bare_flag)
+        if model and self.name == "claude":
+            cmd.extend(["--model", model])
         cmd.extend(self.prompt_separator)
         cmd.append(prompt)
         return cmd

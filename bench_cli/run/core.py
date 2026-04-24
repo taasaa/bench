@@ -216,7 +216,12 @@ def _check_price_gate(model_alias: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_task(spec: str, agent: str | None = None, agent_mode: str | None = None) -> Task:
+def _resolve_task(
+    spec: str,
+    agent: str | None = None,
+    agent_mode: str | None = None,
+    cc_model: str | None = None,
+) -> Task:
     """Load a task spec (path or name) and inject bench_task_dir into its metadata.
 
     The verify_sh scorer runs inside Inspect AI's async event loop where stack
@@ -278,6 +283,7 @@ def _resolve_task(spec: str, agent: str | None = None, agent_mode: str | None = 
         if agent is not None:
             sample.metadata["bench_agent"] = agent
             sample.metadata["bench_agent_mode"] = agent_mode
+            sample.metadata["bench_cc_model"] = cc_model
 
         # Inject fixture path from dataset.json "fixture" field.
         # The fixture field specifies a scenario_id under fixtures/.
@@ -348,7 +354,7 @@ def _resolve_task(spec: str, agent: str | None = None, agent_mode: str | None = 
     )
 
 
-def _resolve_agent_solver(agent: str, agent_mode: str) -> object:
+def _resolve_agent_solver(agent: str, agent_mode: str, cc_model: str | None = None) -> object:
     """Route (agent, mode) to the correct Inspect solver.
 
     Modes:
@@ -358,7 +364,7 @@ def _resolve_agent_solver(agent: str, agent_mode: str) -> object:
     if agent_mode in ("local", "bare"):
         from bench_cli.solvers.local_agent import local_agent
 
-        return local_agent(agent, bare=(agent_mode == "bare"))
+        return local_agent(agent, bare=(agent_mode == "bare"), model=cc_model)
 
     # docker / harness
     from bench_cli.solvers.docker_agent import docker_agent

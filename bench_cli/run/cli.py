@@ -49,6 +49,16 @@ from bench_cli.run.core import (
     ),
 )
 @click.option(
+    "--cc-model",
+    default=None,
+    help=(
+        "Override the model passed to Claude Code's --model flag. "
+        "Use CCR-style names like 'litellm,thinking' or 'kilocode,opus'. "
+        "Only applies to --agent-mode local/bare. "
+        "Has no effect on scoring model (use --model for that)."
+    ),
+)
+@click.option(
     "--task",
     "task_filter",
     default=None,
@@ -116,6 +126,7 @@ def run(
     tier: str,
     agent: str | None,
     agent_mode: str,
+    cc_model: str | None,
     task_filter: str | None,
     list_tasks: bool,
     max_tasks: int | None,
@@ -186,7 +197,7 @@ def run(
     solver = None
     eval_sandbox = None
     if agent is not None:
-        solver = _resolve_agent_solver(agent, agent_mode)
+        solver = _resolve_agent_solver(agent, agent_mode, cc_model=cc_model)
         # Docker agent modes require sandbox="docker" on eval() so inspect-swe
         # can inject tools and manage container lifecycle for every task.
         if agent_mode in ("docker", "harness"):
@@ -197,7 +208,7 @@ def run(
     # fails (no task.py frame visible). Passing via Task metadata lets the scorer
     # find verify.sh without any filesystem gymnastics.
     tasks_with_metadata = [
-        _resolve_task(spec, agent=agent, agent_mode=agent_mode)
+        _resolve_task(spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model)
         for spec in specs
     ]
 
