@@ -1,7 +1,10 @@
 # PRD: OpenRouter Direct Pricing + Pre-flight Price Gate
 
+**Status:** complete
+**Completed:** 2026-04-17
+**Project:** Bench
+**Owner:** Michael Mazyar
 **Scope:** feature
-**Date:** 2026-04-17
 **Tier:** standard
 
 ## Problem Statement

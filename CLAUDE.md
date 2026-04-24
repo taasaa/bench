@@ -62,7 +62,7 @@ All models route through a **LiteLLM proxy** at `smallbox:4000`. No direct API c
 - **LiteLLM proxy config:** `~/dev/litellm/config.yaml` — edit this to add/remove models, set RPM limits (`rpm:` per deployment), or change `enforce_model_rate_limits`. This path is required constantly.
 
 ## Current Focus
-PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, analysis, universal). 4-pillar scoring: correctness + token efficiency + latency + cost. minimax m2.7 is the cost benchmark reference. Multi-shot solver + hybrid scoring (verify_sh + llm_judge) for 10 tasks. Rich fixtures for u17, u18, f23 extensions, f21 extensions. 405 tests passing. f15/f16/f17 expanded from 2 to 5 samples each.
+Multi-dimensional discriminative evaluation (Phases 1-3 complete): per-cluster profiles, safety gates, Pareto frontier, correlation matrix, harness regression. 4-pillar scoring: correctness + token efficiency + latency + cost. Multi-shot solver with hybrid scoring (verify_sh + llm_judge) for qualitative tasks. Discriminative eval commands: `bench recommend`, `bench compare-profiles`, `bench compare-matrix`, `bench task-correlations`.
 
 ## Architecture
 - **Core:** Python + Inspect AI + inspect-swe
@@ -75,8 +75,8 @@ PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, 
 - **CLI:** `bench run`, `bench compare`, `bench baseline record/list`, `bench prices refresh` — each command is a Python package (`bench_cli/{run,compare,inspect,results}/`) with `cli.py` (Click adapters) + `core.py` (business logic)
 - **Storage:** Inspect EvalLog binary `.eval` format (8x smaller than JSON) + SQLite index
 - **Models:** LiteLLM proxy at `smallbox:4000` — all models via `openai/<alias>` format
-- **Tiers:** quick (verification: smoke + agent_smoke) + full (36 tasks: 9 competence / 10 execution / 7 analysis / 8 universal / 2 smoke)
-- **Scoring:** 4 independent scorers per task — verify_sh, llm_judge, or hybrid_scorer (correctness) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency) + price_ratio_scorer (cost)
+- **Tiers:** quick (verification: smoke + agent_smoke) + full (all tasks: competence + execution + analysis + universal)
+- **Scoring:** 4 independent pillars per task — correctness (verify_sh, llm_judge, or hybrid) + token_ratio_scorer (efficiency) + time_ratio_scorer (latency) + price_ratio_scorer (cost)
 - **Correctness:** verify_sh for deterministic tasks, llm_judge for open-ended tasks, hybrid_scorer for tasks benefiting from both (verify_sh 0.7 + llm_judge 0.3 weighted); judge model: `openai/judge` → GLM-5.1
 - **Task format:** Directory with task.py + dataset.json + verify.sh or judge.md + fixtures/ (optional, for multi-shot tasks)
 - **Viewer:** `inspect view` (localhost:7575) for interactive log inspection
@@ -112,7 +112,7 @@ PRD phases 1-8 complete. 36 tasks scored across 4 tiers (competence, execution, 
 
 ## Next Steps
 - Storage rework — separate eval logs from baseline JSONs (logs/ vs baselines/)
-- ~~F2, F13, U9, U10 — REDUNDANT, not building~~ (F2: Q1+F7 cover it; F13: F20+U17 cover it; U9: F23 covers it; U10: same as F13)
+- ~~F2, F13, U9, U10 — REDUNDANT, not building~~
 - More model baselines for ratio scoring
 - LLM judge calibration (Cohen's Kappa ≥ 0.61)
-- Agent evals across all combinations (agent x mode) and compare via `bench compare`
+- Agent evals across all combinations (agent x mode)

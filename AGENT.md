@@ -5,63 +5,82 @@
 
 ## What Bench Is
 
-**Standalone local LLM and AI agent evaluation system.** No PAI or external dependencies. Run eval tasks against models or agents, compare scores in a pivot table.
+**Standalone local LLM and AI agent evaluation system.** No PAI or external dependencies. Run eval tasks against models or agents, compare scores across a 4-pillar rubric (correctness, token efficiency, latency, cost).
 
-**Core problem it solves:** You have several local LLMs (gemma, qwen, your own fine-tunes) and want to know which one actually performs better on your real work — not on benchmarks, but on your actual code, your actual bugs, your actual patterns.
+**Core problem it solves:** You have several local LLMs and want to know which one actually performs better on your real work — not on benchmarks, but on your actual code, bugs, and patterns.
 
 ## Architecture
 
 ```
-bench/                      # Python package
-├── bench_cli/              # CLI entry points
-│   ├── __main__.py         # bench run, bench compare (via __main__)
-│   ├── main.py             # Click CLI root + shared config
-│   ├── run.py              # bench run implementation
-│   └── compare.py          # bench compare pivot-table formatter
-├── scorers/                # Custom Inspect AI scorers
-│   ├── verify_sh.py         # Runs verify.sh per sample → PASS N/M or FAIL
-│   ├── fixtures.py          # load_fixture(), fixtures_dir() helpers
-│   ├── composite.py        # (correctness * 0.67 + efficiency * 0.33) * safety_gate
-│   ├── efficiency.py       # Score from EvalLog model_usage data
-│   ├── safety.py            # Safety gate scorer
-│   └── subproc.py           # Subprocess execution scorer
-├── tasks/                  # Eval task definitions
-│   ├── competence/         # Tier 1: found correct, write tests, format check, surgical fix
-│   ├── execution/          # Tier 2: partial impl, negative constraint, intermittent bug, etc.
-│   ├── analysis/           # Tier 3: multi-file verify, cascading failure, env mismatch, etc.
-│   └── verification/       # Smoke tests (smoke, agent_smoke)
-├── templates/              # verify.sh reference scripts
-│   ├── byte-identical.sh    # Byte-for-byte output comparison
-│   ├── forbidden-string.sh  # Check output doesn't contain forbidden patterns
-│   ├── json-parse.sh        # Validate output is valid JSON with expected fields
-│   └── line-count-delta.sh  # Check output line count matches expected delta
-├── logs/                   # EvalLog .eval files (binary ZIP format)
-│   └── *.eval              # One per task run, contains scores + model output
-└── tests/                  # pytest test suite
-    ├── test_cli.py          # Task discovery, tier config
-    ├── test_compare.py       # Pivot table formatting
-    ├── test_fixtures.py     # Fixture loading
-    ├── test_integration.py  # End-to-end scorer wiring
-    ├── test_scorers.py      # Scorer unit tests
-    ├── test_verify_patterns.py # verify.sh script tests
-    ├── test_verify_sh_scorer.py # verify_sh scorer tests
-    ├── test_tier1_tasks.py   # Competence task tests
-    └── test_tier2_tasks.py   # Execution task tests
+bench/                      # Project root
+├── bench_cli/             # CLI entry points
+│   ├── main.py           # Click CLI root
+│   ├── run/               # bench run (package: cli.py + core.py)
+│   ├── compare/           # bench compare pivot table
+│   ├── inspect/           # bench inspect stats/compare/deep-check
+│   ├── results/           # bench results generate (model cards)
+│   ├── prices.py          # bench prices refresh/list/add
+│   ├── discriminative/     # bench recommend, compare-profiles, compare-matrix
+│   ├── agents.py          # AgentConfig registry (claude, codex, gemini)
+│   ├── solvers/           # Agent solvers: local_agent.py, docker_agent.py
+│   └── pricing/           # OpenRouter cache, LiteLLM config parser
+├── scorers/               # Custom Inspect AI scorers
+│   ├── verify_sh.py       # Runs verify.sh per sample → PASS N/M or FAIL
+│   ├── llm_judge.py       # LLM judge with per-task rubric from judge.md
+│   ├── hybrid.py          # Weighted combo: verify_sh (0.7) + llm_judge (0.3)
+│   ├── token_ratio.py     # Token efficiency pillar
+│   ├── time_ratio.py      # Latency pillar
+│   ├── price_ratio.py     # Cost pillar
+│   ├── task_budgets.py    # Reference costs per task
+│   └── fixtures.py        # load_fixture(), fixtures_dir() helpers
+├── tasks/                 # Eval task definitions
+│   ├── verification/      # Smoke tests (smoke, agent_smoke)
+│   ├── competence/       # Foundational skills
+│   ├── execution/         # Reliable execution under constraints
+│   ├── analysis/          # Deep reasoning and diagnosis
+│   └── universal/         # Agent failure modes
+└── tests/                 # pytest suite
+```
+
+## CLI Commands
+
+```bash
+# Run eval
+bench run --tier full --model openai/qwen-local
+bench run --tier quick --model openai/qwen-local
+bench run --concurrency 4 --tier full
+bench run --sequential --tier full
+
+# Compare
+bench compare
+
+# Discriminative profiles (Phases 1-3 shipped)
+bench recommend --model openai/qwen-local
+bench compare-profiles openai/qwen-local openai/gemma-4-26-local
+bench compare-matrix openai/qwen-local openai/nvidia-mistral-small4
+bench task-correlations --model openai/qwen-local
+
+# Model cards and pricing
+bench results generate
+bench prices refresh
+bench prices list
+bench prices add MODEL --input 0.0001 --output 0.0003
+
+# Agent eval
+bench run --agent claude --agent-mode local --tier full
+bench run --agent claude --agent-mode bare --tier full
+bench run --agent codex --agent-mode docker --tier full
 ```
 
 ## How It Works
 
 ### Bench Run
 
-```bash
-bench run --tier full --model openai/gemma-4-e2-local
-```
-
-1. `_discover_tasks(tier)` scans `tasks/[TIER_DIRS[tier]]/` for `task.py` files
+1. `_discover_tasks(tier)` scans `tasks/[tier]/` for `task.py` files
 2. `_build_eval_spec()` creates an Inspect `EvalSpec` with task + model + scorer
 3. Inspect runs each task's `dataset.json` samples through the solver
 4. For each sample, the scorer receives `TaskState` (model output + sample metadata)
-5. Results written to `logs/*.eval` (binary ZIP, 8x smaller than JSON)
+5. Results written to `logs/*.eval` (binary ZIP)
 
 ### Task Format
 
@@ -69,6 +88,7 @@ Each task is a directory with:
 - `task.py` — Inspect `@task` decorated function
 - `dataset.json` — samples with `input`, `target`, `id` fields
 - `verify.sh` — scoring script (for verify_sh tasks)
+- `judge.md` — rubric for llm_judge tasks
 - `fixtures/` — optional helper files (loaded via `scorers.fixtures`)
 
 ```python
@@ -85,150 +105,69 @@ def my_task():
     )
 ```
 
-### verify.sh Scorer
+## The Four Scoring Pillars
 
-The `verify_sh` scorer is the workhorse for most tasks. It:
+Every task produces four independent scores. No composite formula.
 
-1. Receives model output on stdin
-2. Resolves `verify.sh` via **call-stack introspection** (walks frames to find `/tasks/` in path)
-3. Runs `verify.sh` with `SAMPLE_ID` in environment
-4. Parses `PASS N/M` or `FAIL` from stdout
-5. Returns `Score(value=N/M, explanation=stdout)`
+| Pillar | Scorer | What it measures |
+|--------|--------|-----------------|
+| **Correctness** | `verify_sh`, `llm_judge`, or `hybrid` | Did the model produce the right answer? |
+| **Token Efficiency** | `token_ratio_scorer` | `reference_tokens / actual_tokens` — higher = fewer tokens |
+| **Latency** | `time_ratio_scorer` | `reference_seconds / actual_seconds` — higher = faster |
+| **Cost** | `price_ratio_scorer` | `reference_cost / actual_cost` — higher = cheaper |
 
-**Critical:** `verify.sh` must be **executable** (`chmod +x`).
+### Correctness Scorers
 
-### Bench Compare
+| Scorer | When used |
+|--------|-----------|
+| `verify_sh` | Deterministic tasks with scriptable checks |
+| `llm_judge` | Qualitative tasks requiring reasoning evaluation |
+| `hybrid_scorer` | Tasks benefiting from both (verify_sh 0.7 + llm_judge 0.3) |
 
-```bash
-bench compare
-```
+**Judge scale:** Discrete 5-point (0, 2.5, 5, 7.5, 10), normalized to 0-1. Reduces judge variance from ±0.15 on continuous scales.
 
-Reads all `logs/*.eval` files, builds a `CompareData` matrix:
-- Rows: tasks
-- Columns: models
-- Cells: `PillarScores` (composite, correctness, avg_time, avg_tokens, tokens/sec)
+## Agent Eval
 
-Output format:
-```
-━━━ COMPOSITE  (correctness×0.67 + efficiency×0.33) × safety ━━━
-                         gemma-4-26-local  gemma-4-e2-local     qwen-local   
-───────────────────────────────────────────────────────────────────────────────
-add_tests                      0.76              0.73              0.82      
-...
-MEAN                           0.76              0.04              0.82      
-```
+**Agent config registry:** `bench_cli/agents.py` — `AgentConfig` dataclass per agent.
 
-Also supports `--json` for programmatic access.
+**4 agent modes:**
+- `local` — full harness on host
+- `bare` — no hooks/CLAUDE.md
+- `docker` — pristine container via inspect-swe
+- `harness` — Docker + injected CLAUDE.md
 
-## Task Tiers
+**3 agents:** claude, codex, gemini.
 
-```python
-TIER_DIRS = {
-    "quick": ["verification"],   # 2 tasks: smoke, agent_smoke
-    "full": ["competence", "execution", "analysis"],  # 16 tasks
-}
-```
+**Local solver:** `bench_cli/solvers/local_agent.py` — async subprocess, agent-specific output parsing.
+**Docker solver:** `bench_cli/solvers/docker_agent.py` — wraps inspect-swe solvers with optional harness injection.
 
-| Tier | Directory | Count | Description |
-|------|----------|-------|-------------|
-| Competence | `tasks/competence/` | 6 | Foundational skills: QA, test-writing, format compliance, surgical fixes |
-| Execution | `tasks/execution/` | 5 | Reliable execution: partial impl, negative constraint, root cause |
-| Analysis | `tasks/analysis/` | 5 | Deep analysis: multi-file verify, cascading failure, honey trap |
-| Verification | `tasks/verification/` | 2 | Smoke tests |
-
-## The verify_sh Bug (Fixed in 99adecd)
-
-**Problem:** `verify_sh()` looked up `verify.sh` at `os.getcwd()` (project root) instead of the task's directory. All 15 tasks scored 0.0 with "script not found: /Users/rut/dev/bench/verify.sh".
-
-**Fix:** `_find_task_dir()` walks the call stack (via `inspect.getouterframes()`) looking for a frame whose filename contains `/tasks/`. Caches result per scorer instance since all samples in the same task share the same directory.
-
-```python
-def _find_task_dir() -> str:
-    for frame_info in inspect.getouterframes(...):
-        if "/tasks/" in path:
-            return os.path.dirname(path)
-    return os.getcwd()
-```
-
-## Scorer Package
-
-```python
-from scorers import verify_sh, fixtures_dir, load_fixture, load_fixture_bytes
-from scorers.composite import composite
-from scorers.efficiency import efficiency
-from scorers.safety import safety
-```
-
-| Scorer | Used by | What it measures |
-|--------|---------|-----------------|
-| `verify_sh()` | Most tasks | Custom scoring via `verify.sh` script |
-| `composite()` | add-tests | correctness×0.67 + efficiency×0.33, with safety gate |
-| `efficiency()` | Internal | Token count + latency from EvalLog |
-| `safety()` | Internal | Safety gate |
+**--cc-model flag:** Passes CCR-style model names to Claude Code's `--model` flag. Only for local/bare modes.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `bench_cli/run.py` | Task discovery, Inspect eval invocation |
-| `bench_cli/compare.py` | Pivot table: load, format, display EvalLogs |
-| `bench_cli/main.py` | CLI root + entry point |
-| `scorers/verify_sh.py` | Main verify_sh scorer + call-stack task-dir resolution |
+| `bench_cli/run/core.py` | Task discovery, Inspect eval invocation |
+| `bench_cli/compare/core.py` | Pivot table: load, format, display EvalLogs |
+| `bench_cli/discriminative/pipeline.py` | Discriminative eval: diagnostics → profiles → gates |
+| `bench_cli/discriminative/profiles.py` | Per-cluster scores, strengths/weaknesses |
+| `scorers/verify_sh.py` | verify_sh scorer + call-stack task-dir resolution |
+| `scorers/llm_judge.py` | LLM judge scorer + rubric caching |
+| `scorers/hybrid.py` | hybrid_scorer (verify_sh + llm_judge weighted) |
 | `scorers/fixtures.py` | `fixtures_dir()`, `load_fixture()` helpers |
-| `tasks/*/task.py` | Task definitions (one per directory) |
+| `tasks/*/task.py` | Task definitions |
 | `tasks/*/dataset.json` | Sample definitions per task |
-| `tasks/*/verify.sh` | Per-task scoring logic |
-| `templates/*.sh` | Reusable verify.sh patterns |
-
-## CLI Commands
-
-```bash
-bench run --help          # Discover and run tasks
-bench run --tier full --max-tasks 5  # Cap to 5 tasks
-bench run --model openai/gemma-4-e2-local
-bench run --agent claude  # Agent eval via inspect-swe
-
-bench compare --help      # Compare eval results
-bench compare            # Pivot table
-bench compare --json    # JSON output
-bench compare --latest 1 # Only most recent log per task
-```
-
-## Testing
-
-```bash
-python3 -m pytest tests/ -v           # All tests
-python3 -m pytest tests/test_cli.py -v # CLI tests
-python3 -m pytest tests/test_verify_patterns.py -v # verify.sh pattern tests
-```
-
-Current: **181 passing, 1 expected failure** (agent_smoke: inspect_swe not installed).
-
-## Dependencies
-
-```
-inspect_ai>=0.3.205
-click>=8
-rich>=13
-```
+| `tasks/*/verify.sh` | Per-task scoring logic (verify_sh tasks) |
+| `tasks/*/judge.md` | Per-task rubric (llm_judge tasks) |
 
 ## Common Gotchas
 
 1. **`verify.sh` must be executable** — scorer checks `os.access(script_path, os.X_OK)`
 2. **`SAMPLE_ID` env var** — verify.sh uses it to branch on per-sample patterns. Pass via `env["SAMPLE_ID"]`.
 3. **POSIX regex only in verify.sh** — use `grep -E`, not `grep -P`. Use `[[:space:]]` not `\s`.
-4. **Inspect EvalLog is binary ZIP** — decode with `zipfile`, not `json.loads()` directly. Contains `header.json`, `samples/`, `_journal/`.
-5. **Model routing via LiteLLM** — models route through `OPENAI_BASE_URL=http://smallbox:4000/v1` with `OPENAI_API_KEY`.
+4. **Inspect EvalLog is binary ZIP** — decode with `zipfile`, not `json.loads()`. Contains `header.json`, `samples/`, `_journal/`.
+5. **Model routing via LiteLLM** — models route through `OPENAI_BASE_URL=http://smallbox:4000/v1`.
 6. **Stack introspection for task dir** — `_find_task_dir()` uses `inspect.getouterframes()` to find `/tasks/` in frame paths.
-
-## Milestones
-
-- **M001 (feat/Phase-1-MVP):** Core infrastructure — task format, CLI, scorers, composite scoring, LiteLLM integration
-- **M002 (feat/M002-Real-Tasks):** 15 real eval tasks derived from actual work/failures, verify_sh scorer, fixtures infrastructure, organized by cognitive tier
-
-## What's Next
-
-- Re-run eval with configured model after verify_sh fix
-- LLM judge (Phase 2, requires Cohen's Kappa >= 0.61 calibration first)
-- Bootstrap CI + Cohen's d statistics (Phase 2+, requires 30+ tasks)
-- Real task derivation from actual work sessions
+7. **`sample.model_usage` is a dict** keyed by model name, not an object — use `isinstance(x, dict)` before accessing.
+8. **`bench_cli/run/` is a package** — `from bench_cli.run.core import _discover_tasks`. Not `from bench_cli.run import ...`
+9. **`bench_cli/scorers/` does not exist** — scorers are in `scorers/` at project root, imported as `from scorers import ...`

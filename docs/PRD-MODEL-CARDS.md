@@ -1,6 +1,11 @@
-**Status:** draft
+# PRD: Auto-Generated Model Cards
+
+**Status:** complete
+**Completed:** 2026-04-20
 **Project:** Bench
 **Owner:** Michael Mazyar
+**Scope:** feature
+**Tier:** standard
 
 ## Problem Statement
 

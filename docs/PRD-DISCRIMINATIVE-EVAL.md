@@ -1,6 +1,7 @@
 # PRD: Discriminative Bench Evaluation — Decision-Support Architecture
 
-**Status:** draft
+**Status:** complete
+**Completed:** 2026-04-22
 **Project:** Bench
 **Owner:** Michael Mazyar (Rut)
 **Scope:** feature (new discriminative module, existing code may be refactored where it improves the system)

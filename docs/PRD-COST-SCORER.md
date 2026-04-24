@@ -1,7 +1,11 @@
 # PRD: Cost-Aware Bench Scoring
 
+**Status:** complete
+**Completed:** 2026-04-16
+**Project:** Bench
+**Owner:** Michael Mazyar
 **Scope:** feature
-**Date:** 2026-04-16
+**Tier:** standard
 
 ## Problem Statement
 
