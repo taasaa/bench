@@ -123,8 +123,7 @@ class TestTaskCoverage:
     # Coverage sources:
     #   test_tier1_tasks.py: q1, q2, f7, f12, f20
     #   test_tier2_tasks.py: f6, f8, f11, f14, q4
-    #   test_integration.py (TestBasicTasksUseVerifySh): q1, q2, f7, f12, f20
-    #   test_integration.py: add-tests (via exec_scorer)
+    #   test_integration.py: add-tests
     #   Fixture tests (test_tier2_tasks.py + test_fixtures.py): f1, f9, f10, f23, f24
     VERIFY_TASKS_WITH_COVERAGE = {
         "tasks/analysis/f1-multi-file-verify",  # f24 fixture tests

@@ -1,8 +1,7 @@
 """Execution scorer: extract function + checks, run in subprocess, score.
 
-Single parameterized scorer used by add-tests and write-function:
-- add-tests:        exec_scorer(func_source="input", checks_source="asserts")
-- write-function:   exec_scorer(func_source="output", checks_source="testcases")
+Single parameterized scorer used by add-tests:
+- add-tests:  exec_scorer(func_source="input", checks_source="asserts")
 """
 
 import re
@@ -78,47 +77,6 @@ def _extract_asserts(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Test case table for write-function
-# ---------------------------------------------------------------------------
-
-TEST_CASES: dict[str, list[str]] = {
-    "sum_evens": [
-        "sum_evens([1, 2, 3, 4, 5]) == 6",
-        "sum_evens([2, 4, 6]) == 12",
-        "sum_evens([1, 3, 5]) == 0",
-        "sum_evens([]) == 0",
-        "sum_evens([-2, -1, 0, 1, 2]) == 0",
-    ],
-    "reverse_string": [
-        "reverse_string('hello') == 'olleh'",
-        "reverse_string('a') == 'a'",
-        "reverse_string('') == ''",
-        "reverse_string('ab') == 'ba'",
-    ],
-    "is_palindrome": [
-        "is_palindrome('racecar') == True",
-        "is_palindrome('hello') == False",
-        "is_palindrome('A man, a plan, a canal: Panama') == True",
-        "is_palindrome('') == True",
-        "is_palindrome('a') == True",
-    ],
-    "flatten": [
-        "flatten([1, [2, [3, 4], 5]]) == [1, 2, 3, 4, 5]",
-        "flatten([1, 2, 3]) == [1, 2, 3]",
-        "flatten([]) == []",
-        "flatten([[1], [2, [3]]]) == [1, 2, 3]",
-    ],
-    "longest_common_prefix": [
-        "longest_common_prefix(['flower', 'flow', 'flight']) == 'fl'",
-        "longest_common_prefix(['dog', 'cat', 'bird']) == ''",
-        "longest_common_prefix([]) == ''",
-        "longest_common_prefix(['same']) == 'same'",
-        "longest_common_prefix(['interspecies', 'interstellar', 'interstate']) == 'inters'",
-    ],
-}
-
-
-# ---------------------------------------------------------------------------
 # Scorer
 # ---------------------------------------------------------------------------
 
@@ -174,7 +132,7 @@ def exec_scorer(
             checks = _extract_asserts(output_text)
         else:
             func_name = re.match(r"def (\w+)\s*\(", func_code).group(1) if func_code else None
-            checks = TEST_CASES.get(func_name, []) if func_name else []
+            checks = []
 
         # --- Run ---
         if not func_code:

@@ -1,8 +1,4 @@
-"""Shared unsafe-pattern definitions for all safety scorers.
-
-Reviewed quarterly: doc/SCORER_EXPLANATION_SCHEMA.md § Safety Patterns.
-Next review: 2026-07-12
-"""
+"""Shared unsafe-pattern definitions for all safety scorers."""
 
 from __future__ import annotations
 
