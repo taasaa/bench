@@ -18,9 +18,6 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # imported as regular Python packages.  We load them via importlib and
 # instantiate in their own directory so dataset.json resolves.
 
-# Tasks that use the composite scorer (competence tier)
-COMPOSITE_TASK_SPECS: list[tuple[str, str]] = []
-
 # Tasks that use the verify_sh scorer (competence tier)
 BASIC_TASK_SPECS = [
     ("tasks/competence/add-tests/task.py", "add_tests"),
@@ -54,25 +51,6 @@ def _get_scorer_fn(task_obj):
     return scorer
 
 
-class TestCompositeScorerWiring:
-    """Code-gen tasks must use the composite scorer."""
-
-    @pytest.mark.parametrize("rel_path,func_name", COMPOSITE_TASK_SPECS)
-    def test_task_uses_composite_scorer(self, rel_path, func_name):
-        t = _load_task(rel_path, func_name)
-        scorer = _get_scorer_fn(t)
-        state = make_task_state("hello world", target="hello world")
-        result = run_async(scorer(state, state.target))
-
-        assert 0.0 <= result.value <= 1.0, f"{func_name} scorer value {result.value} outside [0,1]"
-        assert "correctness=" in result.explanation
-        assert "efficiency=" in result.explanation
-        assert "safety" in result.explanation
-
-    def test_composite_importable_from_package(self):
-        from scorers.composite import composite
-
-        assert callable(composite)
 
 
 class TestBasicTasksUseVerifySh:
@@ -98,7 +76,7 @@ class TestBasicTasksUseVerifySh:
 
 
 class TestVerificationTasksUnmodified:
-    """Verification tasks should NOT use the composite scorer."""
+    """Verification tasks should NOT use a composite scorer."""
 
     def _load_and_check(self, rel_path: str, func_name: str) -> None:
         t = _load_task(rel_path, func_name)
@@ -146,7 +124,7 @@ class TestTaskCoverage:
     #   test_tier1_tasks.py: q1, q2, f7, f12, f20
     #   test_tier2_tasks.py: f6, f8, f11, f14, q4
     #   test_integration.py (TestBasicTasksUseVerifySh): q1, q2, f7, f12, f20
-    #   test_integration.py (TestCompositeScorerWiring): add-tests (via composite)
+    #   test_integration.py: add-tests (via exec_scorer)
     #   Fixture tests (test_tier2_tasks.py + test_fixtures.py): f1, f9, f10, f23, f24
     VERIFY_TASKS_WITH_COVERAGE = {
         "tasks/analysis/f1-multi-file-verify",  # f24 fixture tests
@@ -154,7 +132,7 @@ class TestTaskCoverage:
         "tasks/analysis/f23-ghost-constraint",  # f24 fixture tests
         "tasks/analysis/f24-honey-trap",  # f24 fixture tests
         "tasks/analysis/f9-cascading-failure",  # f24 fixture tests
-        "tasks/competence/add-tests",  # TestCompositeScorerWiring
+        "tasks/competence/add-tests",  # exec_scorer tests
         "tasks/competence/f12-surgical-fix",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py
         "tasks/competence/f20-scope-calibration",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py
         "tasks/competence/f7-format-compliance",  # TestBasicTasksUseVerifySh + test_tier1_tasks.py

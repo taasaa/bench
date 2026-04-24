@@ -5,11 +5,9 @@ Exports:
   - Individual pillar scorers (token, time, execution_safety, constraint,
     output_safety, composite_safety, verify_sh)
   - Baseline store
-  - Legacy scorers (composite, efficiency, safety) — kept for backward compat
 """
 
 from scorers.baseline_store import Baseline, BaselineStore
-from scorers.composite import composite
 from scorers.composite_safety import composite_safety_scorer
 from scorers.constraint import ConstraintRule, constraint_adherence_scorer
 from scorers.efficiency import efficiency
@@ -46,7 +44,6 @@ __all__ = [
     "PillarScorer",
     "RatioSource",
     "TaskBudget",
-    "composite",
     "composite_safety_scorer",
     "constraint_adherence_scorer",
     "efficiency",
