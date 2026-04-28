@@ -785,7 +785,7 @@ class TestHybridScorer:
             },
         )()
         scores = {"hybrid_scorer": mock_score}
-        correctness, _, _, _ = _extract_from_scorers(scores)
+        correctness, _, _, _, _ = _extract_from_scorers(scores)
         assert correctness == 0.85
 
     def test_compare_prefers_hybrid_over_judge(self):
@@ -795,5 +795,188 @@ class TestHybridScorer:
         mock_hybrid = type("Score", (), {"value": 0.7, "metadata": {}})()
         mock_judge = type("Score", (), {"value": 0.5, "metadata": {}})()
         scores = {"hybrid_scorer": mock_hybrid, "llm_judge": mock_judge}
-        correctness, _, _, _ = _extract_from_scorers(scores)
+        correctness, _, _, _, _ = _extract_from_scorers(scores)
         assert correctness == 0.7
+
+
+# ---------------------------------------------------------------------------
+# Smart-router tier_breakdown tests
+# ---------------------------------------------------------------------------
+
+
+class TestResolveAndPriceTierBreakdown:
+    """Tests for _resolve_and_price() tier_breakdown return value."""
+
+    def test_single_model_returns_none_tier_breakdown(self):
+        """Non-router ModelUsage → tier_breakdown is None."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+        from scorers.price_ratio import _resolve_and_price
+
+        usage = type("U", (), {"input_tokens": 100, "output_tokens": 50})()
+        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+
+        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+            cost, or_id, is_free, tb = _resolve_and_price("openai/qwen-local", usage)
+
+        assert tb is None
+        assert cost is not None
+
+    def test_old_dict_format_returns_none_tier_breakdown(self):
+        """Old single-model dict format (prompt/completion_tokens) → None."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+        from scorers.price_ratio import _resolve_and_price
+
+        usage = {"prompt_tokens": 100, "completion_tokens": 50}
+        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+
+        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+            cost, or_id, is_free, tb = _resolve_and_price("openai/qwen-local", usage)
+
+        assert tb is None
+
+    def test_smart_router_dict_returns_tier_breakdown(self):
+        """Smart-router dict {tier: ModelUsage} → tier_breakdown populated."""
+        from unittest.mock import patch
+
+        from bench_cli.pricing.model_aliases import PriceInfo
+        from scorers.price_ratio import _resolve_and_price
+
+        default_usage = type("U", (), {"input_tokens": 200, "output_tokens": 100})()
+        background_usage = type("U", (), {"input_tokens": 50, "output_tokens": 25})()
+        usage = {"default": default_usage, "background": background_usage}
+
+        paid_info = PriceInfo("test/model", 1.0, 2.0, 4096)
+
+        with patch("scorers.price_ratio.resolve_openrouter_id", return_value="test/model"):
+            with patch("scorers.price_ratio._price_info", return_value=paid_info):
+                cost, or_id, is_free, tb = _resolve_and_price("openai/smart-router", usage)
+
+        assert tb is not None
+        assert "default" in tb
+        assert "background" in tb
+        assert tb["default"]["model"] == "test/model"
+        assert tb["default"]["input_tokens"] == 200
+        assert tb["default"]["output_tokens"] == 100
+        assert isinstance(tb["default"]["cost_usd"], float)
+        assert cost is not None
+
+    def test_none_usage_returns_none_tier_breakdown(self):
+        """None usage → cost is None, tier_breakdown is None."""
+        from unittest.mock import patch
+
+        from scorers.price_ratio import _resolve_and_price
+
+        with patch("scorers.price_ratio.resolve_openrouter_id", return_value=None):
+            cost, or_id, is_free, tb = _resolve_and_price("openai/nonexistent", None)
+        assert cost is None
+        assert or_id is None
+        assert is_free is False
+        assert tb is None
+
+
+class TestExtractTierBreakdown:
+    """Tests for _extract_from_scorers() tier_breakdown extraction."""
+
+    def test_no_price_ratio_scorer_returns_none(self):
+        """No price_ratio_scorer → tier_breakdown is None."""
+        from bench_cli.compare import _extract_from_scorers
+
+        mock_judge = type("Score", (), {"value": 0.8, "metadata": {}})()
+        scores = {"llm_judge": mock_judge}
+        _, _, _, _, tb = _extract_from_scorers(scores)
+        assert tb is None
+
+    def test_price_ratio_without_tier_breakdown_returns_none(self):
+        """price_ratio_scorer without tier_breakdown metadata → None."""
+        from bench_cli.compare import _extract_from_scorers
+
+        mock_pr = type(
+            "Score",
+            (),
+            {"value": 1.5, "metadata": {"actual_cost_usd": 0.001, "pillar": "cost"}},
+        )()
+        scores = {"price_ratio_scorer": mock_pr}
+        _, _, _, _, tb = _extract_from_scorers(scores)
+        assert tb is None
+
+    def test_price_ratio_with_tier_breakdown_extracts_it(self):
+        """price_ratio_scorer with tier_breakdown → extracted correctly."""
+        from bench_cli.compare import _extract_from_scorers
+
+        tier_data = {
+            "default": {
+                "model": "qwen/qwen3-235b",
+                "input_tokens": 200,
+                "output_tokens": 100,
+                "cost_usd": 0.001,
+            }
+        }
+        mock_pr = type(
+            "Score",
+            (),
+            {
+                "value": 1.5,
+                "metadata": {"actual_cost_usd": 0.001, "tier_breakdown": tier_data},
+            },
+        )()
+        scores = {"price_ratio_scorer": mock_pr}
+        _, _, _, _, tb = _extract_from_scorers(scores)
+        assert tb == tier_data
+
+
+class TestFormatTierBreakdown:
+    """Tests for format_tier_breakdown() rendering."""
+
+    def test_no_tier_data_returns_none(self):
+        """No models with tier data → returns None."""
+        from bench_cli.compare import PillarScores, format_tier_breakdown
+
+        data = type("CompareData", (), {"models": ["openai/qwen-local"], "tasks": ["smoke"], "matrix": {}})()
+        assert format_tier_breakdown(data) is None
+
+    def test_renders_tier_distribution(self):
+        """Renders tier distribution and per-task mapping."""
+        from bench_cli.compare import PillarScores, format_tier_breakdown
+
+        tier_bd = {
+            "default": {
+                "model": "qwen/qwen3-235b",
+                "input_tokens": 200,
+                "output_tokens": 100,
+                "cost_usd": 0.001,
+            }
+        }
+        ps = PillarScores(
+            correctness=1.0,
+            token_ratio=1.0,
+            time_ratio=1.0,
+            avg_tokens=300,
+            avg_time=1.0,
+            samples=1,
+            avg_cost_usd=0.001,
+            tier_breakdown=tier_bd,
+        )
+        data = type(
+            "CompareData",
+            (),
+            {
+                "models": ["openai/smart-router"],
+                "tasks": ["smoke", "sort-array"],
+                "matrix": {
+                    "smoke": {"openai/smart-router": ps},
+                    "sort-array": {"openai/smart-router": ps},
+                },
+            },
+        )()
+
+        result = format_tier_breakdown(data)
+        assert result is not None
+        assert "TIER USAGE" in result
+        assert "default" in result
+        assert "qwen3-235b" in result
+        assert "smoke" in result
+        assert "sort-array" in result
