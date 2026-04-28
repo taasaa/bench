@@ -139,6 +139,7 @@ def _load_model_data(
         total_output = 0
         n_samples = 0
         scores_by_scorer: dict[str, list[float]] = defaultdict(list)
+        tier_breakdown: dict[str, dict] | None = None
 
         if log.samples:
             for sample in log.samples:
@@ -152,6 +153,17 @@ def _load_model_data(
                         val = score.value if hasattr(score, "value") else score
                         if isinstance(val, (int, float)):
                             scores_by_scorer[scorer_name].append(val)
+                    # Extract tier_breakdown from price_ratio_scorer metadata
+                    if tier_breakdown is None:
+                        pr_score = sample.scores.get("price_ratio_scorer")
+                        if (
+                            pr_score is not None
+                            and hasattr(pr_score, "metadata")
+                            and isinstance(pr_score.metadata, dict)
+                        ):
+                            tb = pr_score.metadata.get("tier_breakdown")
+                            if isinstance(tb, dict) and tb:
+                                tier_breakdown = tb
 
         avg_scores: dict[str, float] = {}
         for k, vals in scores_by_scorer.items():
@@ -184,6 +196,7 @@ def _load_model_data(
                 "input_tokens": total_input,
                 "output_tokens": total_output,
                 "scores": avg_scores,
+                "tier_breakdown": tier_breakdown,
             }
         model_data[card_key]["dates"].append(date_str)
         model_data[card_key]["total_input"] += total_input
@@ -584,6 +597,55 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
         )
 
     lines.append("")
+
+    # Router Tier Usage (only if any task has tier_breakdown)
+    has_tiers = any(td.get("tier_breakdown") for td in eval_tasks.values())
+    if has_tiers:
+        lines.append("## Router Tier Usage")
+        lines.append("")
+
+        # Aggregate
+        tier_counts: dict[str, int] = {}
+        tier_models: dict[str, str] = {}
+        tier_costs: dict[str, float] = {}
+        for task_name in sorted(eval_tasks):
+            td = eval_tasks[task_name]
+            tb = td.get("tier_breakdown")
+            if not tb:
+                continue
+            for tier_name, tier_info in tb.items():
+                tier_counts[tier_name] = tier_counts.get(tier_name, 0) + 1
+                tier_costs[tier_name] = tier_costs.get(tier_name, 0.0) + tier_info.get("cost_usd", 0.0)
+                or_id = tier_info.get("model", "")
+                if or_id:
+                    tier_models[tier_name] = or_id
+
+        total_tier_tasks = sum(tier_counts.values())
+        lines.append("| Tier | Model | Tasks | % | Cost |")
+        lines.append("|------|-------|-------|---|------|")
+        for tier_name in sorted(tier_counts):
+            count = tier_counts[tier_name]
+            pct = count / total_tier_tasks * 100 if total_tier_tasks else 0
+            cost = tier_costs.get(tier_name, 0.0)
+            or_id = tier_models.get(tier_name, "?")
+            lines.append(f"| {tier_name} | {or_id} | {count} | {pct:.1f}% | ${cost:.6f} |")
+        lines.append("")
+
+        # Per-task mapping
+        lines.append("### Per-Task Tier Assignment")
+        lines.append("")
+        lines.append("| Task | Tier | Model |")
+        lines.append("|------|------|-------|")
+        for task_name in sorted(eval_tasks):
+            td = eval_tasks[task_name]
+            tb = td.get("tier_breakdown")
+            if not tb:
+                continue
+            for tier_name, tier_info in tb.items():
+                or_id = tier_info.get("model", "?")
+                lines.append(f"| {task_name} | {tier_name} | {or_id} |")
+                break  # show primary tier only
+        lines.append("")
 
     # Strengths & Weaknesses (reusing task_scores from _extract_task_scores)
     ranked_scores = sorted(task_scores, key=lambda x: x[1], reverse=True)
