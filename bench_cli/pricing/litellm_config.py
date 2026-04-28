@@ -71,6 +71,10 @@ def _load_litellm_alias_map() -> dict[str, str]:
     """Load and parse the LiteLLM config, returning {bench_alias: openrouter_id}.
 
     Returns empty dict if config file is missing or invalid.
+
+    For routing layers (auto_router/complexity_router), resolves to the default
+    tier's OpenRouter ID by reading complexity_router_default_model and looking
+    up that tier name in the same config.
     """
     if not _LITELLM_CONFIG_PATH.is_file():
         warnings.warn(
@@ -93,6 +97,24 @@ def _load_litellm_alias_map() -> dict[str, str]:
         )
         return {}
 
+    # Build tier name → openrouter_id map from the same config.
+    # Used to resolve routing-layer default tiers.
+    tier_to_orid: dict[str, str] = {}
+    for entry in config.get("model_list", []):
+        if not isinstance(entry, dict):
+            continue
+        model_name = entry.get("model_name", "")
+        litellm_params = entry.get("litellm_params", {})
+        if not model_name or not isinstance(litellm_params, dict):
+            continue
+        litellm_model = litellm_params.get("model", "")
+        if not litellm_model:
+            continue
+        _, _, openrouter_id = litellm_model.partition("/")
+        if not openrouter_id:
+            openrouter_id = litellm_model
+        tier_to_orid[model_name] = openrouter_id.lower()
+
     result: dict[str, str] = {}
 
     for entry in config.get("model_list", []):
@@ -105,9 +127,17 @@ def _load_litellm_alias_map() -> dict[str, str]:
         litellm_model = litellm_params.get("model", "")
         if not litellm_model:
             continue
-        # LiteLLM wraps models in a provider prefix (nvidia_nim/, openrouter/,
-        # minimax/, openai/, etc).  Strip it — the OpenRouter ID is everything
-        # after the first slash: "nvidia_nim/nvidia/nemotron-3-nano" → "nvidia/nemotron-3-nano"
+
+        # For routing layers (auto_router/...), resolve to default tier's ID
+        if litellm_model.startswith("auto_router/"):
+            default_tier = litellm_params.get("complexity_router_default_model", "")
+            default_orid = tier_to_orid.get(default_tier, "")
+            if default_orid:
+                result[model_name] = default_orid
+                continue
+            # No default tier found, fall through to stripped model
+
+        # Standard: strip provider prefix → OpenRouter ID
         _, _, openrouter_id = litellm_model.partition("/")
         if not openrouter_id:
             openrouter_id = litellm_model
@@ -201,3 +231,42 @@ def is_managed_model(alias: str) -> bool:
     if alias in ("openai/glm-local", "openai/qwen3-coder-plus", "openai/qwen3-max"):
         return True
     return False
+
+
+def get_router_tiers(alias: str) -> list[str] | None:
+    """Return ordered list of tier names for a router model, or None if not a router.
+
+    Reads the full LiteLLM config entry for the given alias and extracts
+    complexity_router_config.tiers values. Returns the tier names in tier order
+    (SIMPLE, MEDIUM, COMPLEX, REASONING) without duplicates.
+    """
+    lookup_key = alias[len(_OPENAI_PREFIX) :] if alias.startswith(_OPENAI_PREFIX) else alias
+    litellm_map = _load_litellm_alias_map()
+
+    # Re-parse config to access full entry (litellm_map only has stripped IDs)
+    if not _LITELLM_CONFIG_PATH.is_file():
+        return None
+    try:
+        with open(_LITELLM_CONFIG_PATH) as f:
+            config = yaml.safe_load(f)
+    except (yaml.YAMLError, OSError):
+        return None
+
+    tiers_seen: list[str] = []
+    for entry in config.get("model_list", []):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("model_name", "").lower() != lookup_key.lower():
+            continue
+        model_info = entry.get("model_info", {})
+        if not model_info.get("router"):
+            return None  # exists but not a router
+        router_config = entry.get("litellm_params", {}).get("complexity_router_config", {})
+        tier_map = router_config.get("tiers", {})
+        for key in ("SIMPLE", "MEDIUM", "COMPLEX", "REASONING"):
+            tier_name = tier_map.get(key)
+            if tier_name and tier_name not in tiers_seen:
+                tiers_seen.append(tier_name)
+        return tiers_seen
+
+    return None  # not in config at all
