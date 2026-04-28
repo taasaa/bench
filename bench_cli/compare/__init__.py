@@ -16,6 +16,7 @@ from bench_cli.compare.core import (
     _short_model,
     format_json,
     format_pillar_table,
+    format_tier_breakdown,
     load_compare_data,
 )
 
@@ -35,5 +36,6 @@ __all__ = [
     "compare",
     "format_json",
     "format_pillar_table",
+    "format_tier_breakdown",
     "load_compare_data",
 ]

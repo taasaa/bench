@@ -9,6 +9,10 @@ Interpretation:
 
 Soft stop on CacheMiss: returns Score(value=NaN) with anomaly=True.
 Free models (price=0): returns Score(value=inf) with is_free=True.
+
+Smart-router support: when state.output.usage is a dict (multiple models ran,
+e.g. routing tiers), sum costs across all entries. Each key is a tier name
+(background, default, heavy, thinking) resolved via LiteLLM config at scoring time.
 """
 
 from __future__ import annotations
@@ -61,6 +65,81 @@ def _extract_tokens(usage: Any) -> tuple[int, int]:
     return int(inp), int(out)
 
 
+def _resolve_and_price(
+    model_alias: str,
+    usage: Any,
+) -> tuple[float | None, float | None, bool, dict[str, dict] | None]:
+    """Resolve model alias to OpenRouter ID, compute cost from usage.
+
+    Returns (cost_usd, openrouter_id, is_free, tier_breakdown).
+    tier_breakdown is None for non-router models; for smart-router it contains
+    {tier_name: {"model": or_id, "input_tokens": N, "output_tokens": N, "cost_usd": F}}.
+    """
+    # Handle dict usage — distinguish old format from smart-router multi-model
+    if isinstance(usage, dict):
+        # Old single-model format: dict with token keys (backwards compat)
+        if "prompt_tokens" in usage or "completion_tokens" in usage:
+            inp = usage.get("prompt_tokens", 0) or 0
+            out = usage.get("completion_tokens", 0) or 0
+            or_model_id = resolve_openrouter_id(model_alias)
+            if or_model_id is None:
+                return None, None, False, None
+            try:
+                price_info = _price_info(or_model_id)
+            except CacheMiss:
+                return None, or_model_id, False, None
+            except Exception:
+                return None, or_model_id, False, None
+            is_free = price_info.is_free
+            return price_info.cost_per_sample(inp, out), or_model_id, is_free, None
+
+        # Smart-router / multi-model: dict of {tier_name: usage}
+        total_cost = 0.0
+        has_any_cost = False
+        is_free = False
+        tier_breakdown: dict[str, dict] = {}
+        for tier_name, tier_usage in usage.items():
+            tier_alias = f"openai/{tier_name}"
+            or_id = resolve_openrouter_id(tier_alias)
+            if or_id is None:
+                continue
+            try:
+                price_info = _price_info(or_id)
+            except CacheMiss:
+                continue
+            except Exception:
+                continue
+            inp, out = _extract_tokens(tier_usage)
+            tier_cost = price_info.cost_per_sample(inp, out)
+            total_cost += tier_cost
+            has_any_cost = True
+            if price_info.is_free:
+                is_free = True
+            tier_breakdown[tier_name] = {
+                "model": or_id,
+                "input_tokens": inp,
+                "output_tokens": out,
+                "cost_usd": tier_cost,
+            }
+        if has_any_cost:
+            return total_cost, None, is_free, tier_breakdown
+        return None, None, False, None
+
+    # Single ModelUsage object (standard single-model case)
+    inp, out = _extract_tokens(usage)
+    or_model_id = resolve_openrouter_id(model_alias)
+    if or_model_id is None:
+        return None, None, False, None
+    try:
+        price_info = _price_info(or_model_id)
+    except CacheMiss:
+        return None, or_model_id, False, None
+    except Exception:
+        return None, or_model_id, False, None
+    is_free = price_info.is_free
+    return price_info.cost_per_sample(inp, out), or_model_id, is_free, None
+
+
 @scorer(metrics=[mean()])
 def price_ratio_scorer(
     task_budget: TaskBudgetType | None = None,
@@ -72,22 +151,14 @@ def price_ratio_scorer(
     """
 
     async def score(state: TaskState, target: Target) -> Score:
-        # Extract token counts
-        input_tokens = 0
-        output_tokens = 0
-        if state.output and state.output.usage:
-            input_tokens, output_tokens = _extract_tokens(state.output.usage)
+        usage = state.output.usage if state.output else None
 
-        # Resolve bench model alias → OpenRouter ID
-        model_alias = (
-            state.metadata.get("model", str(state.model)) if state.metadata else str(state.model)
-        )
-        or_model_id = resolve_openrouter_id(model_alias)
+        actual_cost, _, is_free, tier_breakdown = _resolve_and_price(str(state.model), usage)
 
-        if or_model_id is None:
+        if actual_cost is None:
             return Score(
                 value=float("nan"),
-                explanation="cost_ratio=N/A, note=unknown model alias",
+                explanation="cost_ratio=N/A, note=price unavailable",
                 metadata={
                     "pillar": "cost",
                     "cost_ratio": None,
@@ -95,48 +166,15 @@ def price_ratio_scorer(
                     "reference_cost_usd": None,
                     "is_free": False,
                     "anomaly": True,
+                    "tier_breakdown": tier_breakdown,
                 },
             )
-
-        # Fetch price from cache (singleton, no per-sample re-reads)
-        try:
-            price_info = _price_info(or_model_id)
-        except CacheMiss:
-            return Score(
-                value=float("nan"),
-                explanation="cost_ratio=N/A, note=price unavailable (cache miss)",
-                metadata={
-                    "pillar": "cost",
-                    "cost_ratio": None,
-                    "actual_cost_usd": None,
-                    "reference_cost_usd": None,
-                    "is_free": False,
-                    "anomaly": True,
-                },
-            )
-        except Exception:
-            return Score(
-                value=float("nan"),
-                explanation="cost_ratio=N/A, note=price lookup failed",
-                metadata={
-                    "pillar": "cost",
-                    "cost_ratio": None,
-                    "actual_cost_usd": None,
-                    "reference_cost_usd": None,
-                    "is_free": False,
-                    "anomaly": True,
-                },
-            )
-
-        # Compute actual cost
-        actual_cost = price_info.cost_per_sample(input_tokens, output_tokens)
 
         # Free model shortcut
-        if price_info.is_free:
+        if is_free:
             return Score(
                 value=float("inf"),
-                explanation=f"cost_ratio=inf, actual_cost=$0.00 (FREE), "
-                f"input_tokens={input_tokens}, output_tokens={output_tokens}",
+                explanation=f"cost_ratio=inf, actual_cost=$0.00 (FREE)",
                 metadata={
                     "pillar": "cost",
                     "cost_ratio": None,
@@ -144,6 +182,7 @@ def price_ratio_scorer(
                     "reference_cost_usd": None,
                     "is_free": True,
                     "anomaly": False,
+                    "tier_breakdown": tier_breakdown,
                 },
             )
 
@@ -156,9 +195,7 @@ def price_ratio_scorer(
         if reference_cost is None:
             return Score(
                 value=float("nan"),
-                explanation=(
-                    f"cost_ratio=N/A, actual_cost=${actual_cost:.6f}, note=no reference cost set"
-                ),
+                explanation=f"cost_ratio=N/A, actual_cost=${actual_cost:.6f}, note=no reference cost set",
                 metadata={
                     "pillar": "cost",
                     "cost_ratio": None,
@@ -166,21 +203,16 @@ def price_ratio_scorer(
                     "reference_cost_usd": None,
                     "is_free": False,
                     "anomaly": False,
+                    "tier_breakdown": tier_breakdown,
                 },
             )
 
         # Compute cost ratio
         cost_ratio = reference_cost / actual_cost if actual_cost > 0 else float("nan")
 
-        explanation = (
-            f"cost_ratio={cost_ratio:.3f}, actual_cost=${actual_cost:.6f}, "
-            f"reference_cost=${reference_cost:.6f}, "
-            f"input_tokens={input_tokens}, output_tokens={output_tokens}"
-        )
-
         return Score(
             value=cost_ratio,
-            explanation=explanation,
+            explanation=f"cost_ratio={cost_ratio:.3f}, actual_cost=${actual_cost:.6f}, reference_cost=${reference_cost:.6f}",
             metadata={
                 "pillar": "cost",
                 "cost_ratio": cost_ratio,
@@ -188,6 +220,7 @@ def price_ratio_scorer(
                 "reference_cost_usd": reference_cost,
                 "is_free": False,
                 "anomaly": False,
+                "tier_breakdown": tier_breakdown,
             },
         )
 

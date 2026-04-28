@@ -9,6 +9,7 @@ from bench_cli.compare.core import (
     format_json,
     format_pillar_table,
     format_summary,
+    format_tier_breakdown,
     load_compare_data,
 )
 
@@ -47,3 +48,9 @@ def compare(log_dir: str, latest: int | None, as_json: bool, verbosity: int) -> 
         click.echo(format_compact_table(data))
     else:
         click.echo(format_summary(data))
+
+    # Show tier breakdown for smart-router models (all verbosity levels)
+    tier_output = format_tier_breakdown(data)
+    if tier_output:
+        click.echo()
+        click.echo(tier_output)

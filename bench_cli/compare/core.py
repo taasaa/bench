@@ -64,6 +64,7 @@ class PillarScores:
     samples: int
     price_ratio: float = float("nan")  # geometric mean of cost ratios, NaN if unavailable
     avg_cost_usd: float = float("nan")  # mean cost per sample in USD, NaN if unavailable
+    tier_breakdown: dict[str, dict] | None = None  # per-tier info for smart-router models
 
     # Per-sample counts for suppression/bookkeeping
     token_suppressed: int = 0
@@ -118,8 +119,8 @@ def _extract_from_scorers(
     sample_scores: dict,
     sample_model_usage: dict | None = None,
     model_alias: str | None = None,
-) -> tuple[float | None, float | None, float | None, float | None]:
-    """Extract (correctness, token_ratio, time_ratio, actual_cost_usd) from a sample's score dict.
+) -> tuple[float | None, float | None, float | None, float | None, dict[str, dict] | None]:
+    """Extract (correctness, token_ratio, time_ratio, actual_cost_usd, tier_breakdown) from a sample's score dict.
 
     Correctness: llm_judge > verify_sh > exact > includes (strings 'C'/'I'
     are converted to 1.0/0.0 by _numeric_val).
@@ -172,7 +173,18 @@ def _extract_from_scorers(
                 if recalc is not None:
                     actual_cost_usd = recalc
 
-    return correctness, token_ratio, time_ratio, actual_cost_usd
+    # Extract tier_breakdown from price_ratio_scorer metadata
+    tier_breakdown: dict[str, dict] | None = None
+    if (
+        pr_score is not None
+        and hasattr(pr_score, "metadata")
+        and isinstance(pr_score.metadata, dict)
+    ):
+        tb = pr_score.metadata.get("tier_breakdown")
+        if isinstance(tb, dict) and tb:
+            tier_breakdown = tb
+
+    return correctness, token_ratio, time_ratio, actual_cost_usd, tier_breakdown
 
 
 def _is_suppressed(score: object) -> bool:
@@ -200,7 +212,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
 
     # Accumulate per-sample data per (task, model, run_name)
     # Each entry: list of (correctness, token_ratio, time_ratio, total_tokens,
-    # working_time, token_suppressed, time_suppressed, actual_cost_usd)
+    # working_time, token_suppressed, time_suppressed, actual_cost_usd, tier_breakdown)
     run_samples: dict[
         tuple[str, str, str],
         list[
@@ -213,6 +225,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
                 bool,
                 bool,
                 float | None,
+                dict[str, dict] | None,
             ]
         ],
     ] = {}
@@ -230,8 +243,6 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         model = el.eval.model
         run_key = (task, model, info.name)
 
-        # Type: (correctness, token_ratio, time_ratio, total_tokens, working_time,
-        #        token_suppressed, time_suppressed, actual_cost_usd, avg_cost_usd)
         samples_list: list[
             tuple[
                 float | None,
@@ -242,7 +253,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
                 bool,
                 bool,
                 float | None,
-                float | None,
+                dict[str, dict] | None,
             ]
         ] = []
 
@@ -250,7 +261,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             if not isinstance(sample.scores, dict):
                 continue
 
-            correctness, token_ratio, time_ratio, actual_cost_usd = _extract_from_scorers(
+            correctness, token_ratio, time_ratio, actual_cost_usd, tier_breakdown = _extract_from_scorers(
                 sample.scores, sample.model_usage, model
             )
 
@@ -274,6 +285,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
                     tok_supp,
                     time_supp,
                     actual_cost_usd,
+                    tier_breakdown,
                 )
             )
 
@@ -322,6 +334,9 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         else:
             avg_price_ratio = float("nan")
 
+        # Tier breakdown: use first non-None from samples
+        tier_bd = next((s[8] for s in samples_list if s[8] is not None), None)
+
         best[key] = PillarScores(
             correctness=avg_correctness,
             token_ratio=avg_token_ratio,
@@ -333,6 +348,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
             avg_cost_usd=avg_cost_usd,
             token_suppressed=token_suppressed,
             time_suppressed=time_suppressed,
+            tier_breakdown=tier_bd,
         )
 
     # Build ordered task and model lists
@@ -675,6 +691,69 @@ def format_json(data: CompareData) -> str:
                         "avg_cost_usd": (
                             round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None
                         ),
+                        "tier_breakdown": ps.tier_breakdown,
                     }
                 )
     return json.dumps(rows, indent=2)
+
+
+def format_tier_breakdown(data: CompareData) -> str | None:
+    """Render smart-router tier usage breakdown. Returns None if no tier data."""
+    # Collect models that have tier data
+    router_models: dict[str, dict[str, dict]] = {}  # model -> task -> tier_breakdown
+    for model in data.models:
+        for task in data.tasks:
+            ps = data.matrix.get(task, {}).get(model)
+            if ps and ps.tier_breakdown:
+                if model not in router_models:
+                    router_models[model] = {}
+                router_models[model][task] = ps.tier_breakdown
+
+    if not router_models:
+        return None
+
+    lines: list[str] = []
+    for model, tasks_tiers in router_models.items():
+        model_name = _short_model(model)
+        lines.append(f"{'━' * 3} TIER USAGE ({model_name}) {'━' * 3}")
+        lines.append("")
+
+        # Aggregate: tier -> count, cost
+        tier_counts: dict[str, int] = {}
+        tier_costs: dict[str, float] = {}
+        tier_models: dict[str, str] = {}
+        for task, tb in tasks_tiers.items():
+            for tier_name, tier_info in tb.items():
+                tier_counts[tier_name] = tier_counts.get(tier_name, 0) + 1
+                tier_costs[tier_name] = tier_costs.get(tier_name, 0.0) + tier_info.get("cost_usd", 0.0)
+                or_id = tier_info.get("model", "")
+                if or_id:
+                    tier_models[tier_name] = or_id
+
+        total_tasks = len(tasks_tiers)
+
+        # Summary: tier distribution
+        for tier_name in sorted(tier_counts):
+            count = tier_counts[tier_name]
+            pct = count / total_tasks * 100 if total_tasks else 0
+            cost = tier_costs[tier_name]
+            or_id = tier_models.get(tier_name, "?")
+            # Strip provider prefix for readability
+            short_model = or_id.split("/", 1)[-1] if "/" in or_id else or_id
+            lines.append(f"  {tier_name:<12} {short_model:<30} {count:>3} tasks ({pct:>5.1f}%)  ${cost:.6f}")
+        lines.append("")
+
+        # Per-task mapping
+        lines.append("  Per-task:")
+        for task in sorted(tasks_tiers):
+            tb = tasks_tiers[task]
+            # Show the primary tier (first one, or the one with most tokens)
+            primary_tier = next(iter(tb))
+            primary_info = tb[primary_tier]
+            short_model = primary_info.get("model", "?")
+            if "/" in short_model:
+                short_model = short_model.split("/", 1)[-1]
+            lines.append(f"    {task:<30} {primary_tier:<12} {short_model}")
+        lines.append("")
+
+    return "\n".join(lines)
