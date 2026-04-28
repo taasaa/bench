@@ -49,28 +49,26 @@ def _make_sandboxed_tools(fixture_dir: Path) -> list[Tool]:
     that returns an inner async execute function.
     """
 
-    @tool(name="read_file", viewer=lambda call: call)
+    @tool(name="read_file")
     def read_file():
-        """Read the contents of a file in the project workspace.
-
-        Args:
-            path: Relative path to the file (e.g. "src/main.py").
-        """
-
         async def execute(path: str) -> str:
+            """Read the contents of a file in the project workspace.
+
+            Args:
+                path: Relative path to the file (e.g. "src/main.py").
+            """
             return sandbox_read(fixture_dir, path)
 
         return execute
 
-    @tool(name="list_directory", viewer=lambda call: call)
+    @tool(name="list_directory")
     def list_directory():
-        """List files and directories in the given path.
-
-        Args:
-            path: Relative directory path (default: workspace root).
-        """
-
         async def execute(path: str = ".") -> str:
+            """List files and directories in the given path.
+
+            Args:
+                path: Relative directory path (default: workspace root).
+            """
             return sandbox_list(fixture_dir, path)
 
         return execute
