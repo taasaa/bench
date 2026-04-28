@@ -45,28 +45,37 @@ def sandbox_list(fixture_dir: Path, path: str = ".") -> str:
 def _make_sandboxed_tools(fixture_dir: Path) -> list[Tool]:
     """Create read_file and list_directory tools sandboxed to fixture_dir.
 
-    Inner functions MUST be async — inspect-ai's tool loop awaits all tool calls.
+    Uses inspect-ai's factory pattern: @tool decorates an outer function
+    that returns an inner async execute function.
     """
 
-    @tool(viewer=lambda call: call)
-    async def read_file(path: str) -> str:
+    @tool(name="read_file", viewer=lambda call: call)
+    def read_file():
         """Read the contents of a file in the project workspace.
 
         Args:
             path: Relative path to the file (e.g. "src/main.py").
         """
-        return sandbox_read(fixture_dir, path)
 
-    @tool(viewer=lambda call: call)
-    async def list_directory(path: str = ".") -> str:
+        async def execute(path: str) -> str:
+            return sandbox_read(fixture_dir, path)
+
+        return execute
+
+    @tool(name="list_directory", viewer=lambda call: call)
+    def list_directory():
         """List files and directories in the given path.
 
         Args:
             path: Relative directory path (default: workspace root).
         """
-        return sandbox_list(fixture_dir, path)
 
-    return [read_file, list_directory]
+        async def execute(path: str = ".") -> str:
+            return sandbox_list(fixture_dir, path)
+
+        return execute
+
+    return [read_file(), list_directory()]
 
 
 def _build_fixture_context(fixture_path: str | None) -> str:
