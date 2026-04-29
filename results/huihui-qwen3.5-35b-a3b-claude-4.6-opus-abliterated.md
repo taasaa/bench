@@ -6,7 +6,7 @@
 
 **huihui-qwen3.5-35b-a3b-claude-4.6-opus-abliterated** achieves an overall correctness of **72%** across 32 evaluation tasks.
 Adequate for assisted coding workflows where human review catches errors, but not recommended for autonomous agent use without supervision.
-Token efficiency is below benchmark (ratio 0.75), tending toward verbose output. 
+Token efficiency is below benchmark (ratio 0.75), tending toward verbose output.
 Latency is competitive (ratio 1.00).
 This is a **free model** running locally, making it cost-optimal for any use case.
 

@@ -6,7 +6,7 @@
 
 **z-ai/glm-5-turbo** achieves an overall correctness of **79%** across 25 evaluation tasks.
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
-Token efficiency is below benchmark (ratio 0.96), tending toward verbose output. 
+Token efficiency is below benchmark (ratio 0.96), tending toward verbose output.
 Latency is fast (ratio 2.71).
 Cost is above the benchmark reference (ratio 0.53).
 

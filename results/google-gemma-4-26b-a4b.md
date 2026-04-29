@@ -6,7 +6,7 @@
 
 **google/gemma-4-26b-a4b** achieves an overall correctness of **77%** across 32 evaluation tasks.
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
-Token efficiency is below benchmark (ratio 0.68), tending toward verbose output. 
+Token efficiency is below benchmark (ratio 0.68), tending toward verbose output.
 Latency is slower than benchmark (ratio 0.78).
 This is a **free model** running locally, making it cost-optimal for any use case.
 

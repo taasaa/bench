@@ -6,7 +6,7 @@
 
 **nvidia/nemotron-3-nano-30b-a3b** achieves an overall correctness of **72%** across 25 evaluation tasks.
 Adequate for assisted coding workflows where human review catches errors, but not recommended for autonomous agent use without supervision.
-Token efficiency is below benchmark (ratio 0.03), tending toward verbose output. 
+Token efficiency is below benchmark (ratio 0.03), tending toward verbose output.
 Latency is slower than benchmark (ratio 0.50).
 Cost efficiency is strong (ratio 1.45), cheaper than the benchmark reference.
 
@@ -24,7 +24,7 @@ Cost efficiency is strong (ratio 1.45), cheaper than the benchmark reference.
 | **Tasks** | 34 eval tasks, 165 samples (2 smoke) |
 | **Provider** | NVIDIA NIM |
 | **Hosting** | NVIDIA NIM |
-| **Context Window** | 131,072 tokens |
+| **Context Window** | 1,000,000 tokens |
 | **Pricing** | $0.0500/M in, $0.2000/M out |
 | **Status** | paid |
 
