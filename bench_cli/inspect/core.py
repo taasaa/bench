@@ -145,7 +145,7 @@ def _load_samples(
             if not isinstance(s.scores, dict):
                 continue
 
-            correctness, token_ratio, time_ratio, actual_cost_usd = _extract_from_scorers(
+            correctness, token_ratio, time_ratio, actual_cost_usd, _ = _extract_from_scorers(
                 s.scores, getattr(s, "model_usage", None), model_alias
             )
 
@@ -352,7 +352,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         for s in el.samples:
             if not isinstance(s.scores, dict):
                 continue
-            c, _, _, _ = _extract_from_scorers(
+            c, _, _, _, _ = _extract_from_scorers(
                 s.scores, getattr(s, "model_usage", None), model_alias
             )
             if c is not None:
