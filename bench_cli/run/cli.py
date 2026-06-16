@@ -118,7 +118,30 @@ from bench_cli.run.core import (
     "--sequential",
     is_flag=True,
     default=False,
-    help="Run tasks one at a time (shorthand for --concurrency 1).",
+    help="Run tasks one at a time (shorthand for --concurrency 1). Implies --max-samples 1.",
+)
+@click.option(
+    "--max-samples",
+    type=int,
+    default=None,
+    help=(
+        "Maximum samples to run in parallel per task (default 1). "
+        "Default 1 is safe for rpm-capped providers (e.g. nvidia NIM): the "
+        "programmatic eval() path ignores INSPECT_EVAL_MAX_SAMPLES, so without "
+        "this bound every sample in a multi-sample task fires concurrently and "
+        "can trigger an upstream 429 retry storm. Override with --max-samples N."
+    ),
+)
+@click.option(
+    "--max-retries",
+    type=int,
+    default=None,
+    help=(
+        "Maximum retries for an individual model generate() call (HTTP-level). "
+        "None (default) passes through to Inspect's provider default. Set small "
+        "(e.g. 4) to bound backoff on flaky 429 endpoints so a single sample "
+        "fails fast instead of backing off for minutes."
+    ),
 )
 def run(
     model: str,
@@ -134,6 +157,8 @@ def run(
     one_by_one: bool,
     concurrency: int | None,
     sequential: bool,
+    max_samples: int | None,
+    max_retries: int | None,
 ) -> None:
     """Discover and run evaluation tasks via Inspect AI."""
     # Lazy import so CLI --help stays fast when Inspect is not configured.
@@ -144,13 +169,29 @@ def run(
             "--concurrency must be a positive integer (use --sequential for one-at-a-time)",
             param_hint="--concurrency",
         )
+    if max_samples is not None and max_samples <= 0:
+        raise click.BadParameter(
+            "--max-samples must be a positive integer",
+            param_hint="--max-samples",
+        )
 
+    # Task-level concurrency: --sequential or --concurrency bound how many tasks
+    # run at once; otherwise leave it to Inspect's default.
     if sequential:
         max_tasks_val: int | None = 1
     elif concurrency is not None:
         max_tasks_val = concurrency
     else:
         max_tasks_val = None
+
+    # Sample-level concurrency. --sequential => 1 (fully serial). Otherwise default
+    # to 1 (safe for rpm-capped providers; the programmatic eval() path ignores
+    # INSPECT_EVAL_MAX_SAMPLES, so this default is the only bound on sample
+    # concurrency). Override with --max-samples N.
+    if sequential:
+        max_samples_val: int = 1
+    else:
+        max_samples_val = max_samples if max_samples is not None else 1
 
     # Parse [override] suffix: alias[openrouter_id] lets you supply the OpenRouter
     # price-lookup ID separately from the LiteLLM eval model name.
@@ -230,6 +271,8 @@ def run(
                 fail_on_error=0.5,
                 retry_on_error=2,
                 max_tasks=max_tasks_val,
+                max_samples=max_samples_val,
+                max_retries=max_retries,
             )
             all_results.extend(result)
             click.echo(f"  -> {result[0].eval.task}: {result[0].status}")
@@ -256,6 +299,8 @@ def run(
             fail_on_error=0.5,
             retry_on_error=2,
             max_tasks=max_tasks_val,
+            max_samples=max_samples_val,
+            max_retries=max_retries,
         )
 
     # 4. Print summary.
