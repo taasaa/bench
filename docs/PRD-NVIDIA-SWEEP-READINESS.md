@@ -45,7 +45,7 @@ explicitly.
 3. **Pricing (`0c44366f`):** `OpenRouterCache.fetch_and_cache_prices()` rebuilds the `models` dict from scratch and overwrites the whole file. Manual entries share that dict, so they vanish.
 4. **Card mis-attribution (`3ce63043`) — the keystone:** `_slug_from_alias` and `_real_model_name` (`bench_cli/results/core.py`) derive card filename/name from `resolve_openrouter_id(bench_alias)`, a **volatile** reverse-lookup. **Verified live 2026-06-16: `resolve_openrouter_id` returns `None` for all three nvidia nemotron aliases** (`nemotron-30b`, `nemotron-3-super-120b`, `nemotron-30b-a3b`) after the cache refresh. When resolution flips between runs (cache refresh, config drift), the same model slugs to different filenames, cards split/merge, and on a reverse-lookup collision two models can map to one slug — the mechanism behind the deleted glm-5.1 card that was byte-identical to minimax-m2.7.
 5. **Nemotron anomalies (`01cfd589`):** same root as #4. `nvidia-nemotron-3-super-120b cost_ratio=0.000` and `nvidia-nemotron-3-nano-30b token_ratio=0.030` are downstream of resolution/price-cache state at the time of those runs. The models are **currently MISSING from the refreshed cache (337 models)** and resolve to `None`.
-6. **Ratio incoherence (`08f19328`):** tokens+latency use a 3-tier chain `resolve_baseline_reference()` (`scorers/protocol.py:146`) → BaselineStore (empty) → task_budget → SYSTEM_DEFAULT, all calibrated to **qwen-local**. Cost uses a 2-tier chain (`price_ratio_scorer`) with **no BaselineStore tier**, calibrated to **minimax-m2.7** (cost was transcribed into `task_budgets.py`; token/latency for m2.7 were never persisted — no m2.7 `.eval` logs exist on disk). Net: `bench baseline record` swaps token/latency references but silently ignores cost. Additionally, `compare/core.py` recomputes only **price** ratio at view time (`:328`, comment: "the ratio stored in eval logs uses stale references from the time of the run"); token+latency ratios are baked at scoring time, so a reference change does not re-cohere old logs.
+6. **Ratio incoherence (`08f19328`):** tokens+latency use a 3-tier chain `resolve_baseline_reference()` in `scorers/protocol.py` → BaselineStore (empty) → task_budget → SYSTEM_DEFAULT, all calibrated to **qwen-local**. Cost uses a 2-tier chain (`price_ratio_scorer`) with **no BaselineStore tier**, calibrated to **minimax-m2.7** (cost was transcribed into `task_budgets.py`; token/latency for m2.7 were never persisted — no m2.7 `.eval` logs exist on disk). Net: `bench baseline record` swaps token/latency references but silently ignores cost. Additionally, `compare/core.py` recomputes only **price** ratio at view time (`:328`, comment: "the ratio stored in eval logs uses stale references from the time of the run"); token+latency ratios are baked at scoring time, so a reference change does not re-cohere old logs.
 7. **Judge drift (`532e0ee4`):** **code is correct** — exactly one reference, `DEFAULT_JUDGE_MODEL = "openai/judge"` (`scorers/llm_judge.py:23`); nothing hardcodes glm-5.1. Live LiteLLM routes `judge → openai/qwen3.6-plus`. Defect is SB doc drift only.
 8. **Stale tests (D):** 3 pre-existing failures from live config drift. `test_agent_card_name` is a symptom of root cause #4; the other two are genuinely stale expectations.
 
@@ -68,7 +68,7 @@ skip dispatch with a one-line message. Errored/partial/`started` logs are
 No custom progress bar. Use Inspect's built-in `PlainDisplay`:
 
 - Pass `display="plain"` to `inspect_eval` when stdout is **not** a TTY (auto), or unconditionally when `--no-tui` is passed. Leave TTY behavior (default `full`) unchanged for interactive runs.
-- Heartbeat for programmatic monitoring: append one small JSON object per completed task to `logs/_runs/<model>.<ts>.status.json` — `{task, status, score, tokens, ts}`. Implement as a post-task hook in the run loop (both batch and one-by-one), not inside Inspect.
+- Heartbeat for programmatic monitoring — **one-by-one mode only** (batch mode is a single blocking `inspect_eval` call with no per-task Python loop to hook; attempting an in-batch heartbeat would require filesystem-watching or Inspect internals, both out of scope). In one-by-one mode the existing per-task loop in `bench_cli/run/cli.py` appends one small JSON object per completed task to `logs/_runs/<model>.<ts>.status.json` — `{task, status, score, tokens, ts}`. Batch mode gets plain-text progress (same as one-by-one) plus a single post-run JSON summary written after the `inspect_eval` call returns (not a live heartbeat). This keeps the heartbeat implementable as written without Inspect internals or filesystem-watching.
 - **Implementation site:** `bench_cli/run/cli.py`.
 
 **W1c · Pricing merge-on-refresh (`0c44366f`) — decision: merge.**
@@ -85,7 +85,7 @@ Card filename slug and human name derive **from `bench_alias`**, not from the vo
 - `_slug_from_alias(bench_alias)`: deterministic mapping from bench alias to slug. Define the mapping once (e.g. `openai/<x>` → `<x>`, with a single explicit override table for any alias whose slug must differ from its bare form). Same input → same slug forever, independent of cache/config state.
 - `_real_model_name`: derive from the same table or a parallel display-name table.
 - **Implementation site:** `bench_cli/results/core.py`; the mapping table co-located or in `model_aliases.py`.
-- **Migration note:** existing cards (16 files) keep their current slugs only if the new deterministic table reproduces them; otherwise the rename is a one-time, expected churn documented here.
+- **Migration note:** existing cards (13 files) keep their current slugs only if the new deterministic table reproduces them; otherwise the rename is a one-time, expected churn documented here.
 
 **W2b · Skip router-tier monikers in `results generate`.**
 `generate_card_for_model` and the bulk `results generate` path skip `default`, `thinking`, `heavy`, `background`, `smart-router` (meta-monikers per SB Operating Rules). No cards emitted for monikers.
@@ -124,14 +124,15 @@ SB Decisions + Gotchas updated via `brain-ctl`: judge model is `openai/judge →
 ## Success Criteria
 
 1. `bench run` (default) skips `(model, task)` pairs that have a `status="success"` log; `--no-resume` re-runs everything.
-2. Backgrounded `bench run` (redirected stdout) emits plain-text, grep-able progress and updates `logs/_runs/<model>.<ts>.status.json` per task.
-3. After `bench prices refresh`, the 3 manual prices (`mistral-large-3-675b`, `nemotron-nano-omni-30b`, `diffusiongemma-26b-a4b`) remain in the cache.
+2. Backgrounded `bench run` (redirected stdout) emits plain-text, grep-able progress; one-by-one mode additionally updates `logs/_runs/<model>.<ts>.status.json` per task (batch mode writes a post-run summary, not a live heartbeat).
+3. Seed the 3 manual prices via `bench prices add` (`mistral-large-3-675b`, `nemotron-nano-omni-30b`, `diffusiongemma-26b-a4b`), then run `bench prices refresh`, then assert the 3 remain in the cache. (They are currently absent from repo and cache — verified — having been wiped by the bug W1c fixes.)
 4. Two distinct models never produce identical card data; card slug/name is invariant across a cache refresh (regression test).
 5. `bench results generate` emits no cards for router-tier monikers.
 6. `bench compare` recomputes all three ratio columns from current references; each ratio column header names its reference model.
 7. `bench baseline record --model X` records cost alongside tokens/latency; `price_ratio_scorer` uses the Tier-1 cost entry when present.
 8. SB context (`brain-ctl context bench`) states judge → `qwen3.6-plus`.
-9. `.venv/bin/pytest` is fully green (542+ passing, 0 failures) on a clean checkout, with no new failures introduced.
+9. `.venv/bin/pytest` is fully green — all currently-green tests (547) plus the 3 previously-failing config-drift tests now green, 0 failures, on a clean checkout, with no new failures introduced.
+10. **(W2d)** Each nemotron model (nemotron-30b, nemotron-3-super-120b, nemotron-30b-a3b) either resolves to a correct OpenRouter ID with a price, or is documented NaN-correct; the historical `0.000`/`0.030` anomalies (`01cfd589`) do not reproduce under the stabilized path.
 
 ## Implementation Order
 
@@ -141,7 +142,7 @@ W2 (keystone; unblocks clean tests) → W1 → W3 → W5 + W4 → sweep (W3d: mi
 
 - **W2a migration churn:** changing the slug derivation may rename existing cards. Decision needed at implementation time: migrate old filenames or accept one-time churn. Mitigation: choose the deterministic table to reproduce existing slugs where possible.
 - **W3a blast radius:** recomputing token/latency ratios changes displayed numbers for all historical logs (this is the intended coherence fix). Document the before/after in the runbook; no on-disk mutation.
-- **W2d ambiguity:** some nemotron NIM models may have no OpenRouter listing at all. Resolution: per-model NaN-correct documentation vs. manual price — decided per model during implementation.
+- **W2d ambiguity:** some nemotron NIM models may have no OpenRouter listing at all. Starting inventory to audit (from `results/`): `nvidia-nemotron-3-nano-30b-a3b`, `nvidia-nemotron-3-super-120b-a12b`, plus the `nemotron-30b`/`nemotron-30b-a3b` aliases in `tests`. Resolution per model: NaN-correct documentation vs. manual price — decided during implementation, default NaN-correct unless manually priceable.
 - **Original #5 not forensically reproducible:** the corrupt glm-5.1 card was deleted. W2a + W2c is the durable prevention, not a diff-verified reproduction of the original bug.
 
 ## Verification
