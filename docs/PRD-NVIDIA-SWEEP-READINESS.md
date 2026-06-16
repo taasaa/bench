@@ -125,14 +125,14 @@ SB Decisions + Gotchas updated via `brain-ctl`: judge model is `openai/judge →
 
 1. `bench run` (default) skips `(model, task)` pairs that have a `status="success"` log; `--no-resume` re-runs everything.
 2. Backgrounded `bench run` (redirected stdout) emits plain-text, grep-able progress; one-by-one mode additionally updates `logs/_runs/<model>.<ts>.status.json` per task (batch mode writes a post-run summary, not a live heartbeat).
-3. Seed the 3 manual prices via `bench prices add` (`mistral-large-3-675b`, `nemotron-nano-omni-30b`, `diffusiongemma-26b-a4b`), then run `bench prices refresh`, then assert the 3 remain in the cache. (They are currently absent from repo and cache — verified — having been wiped by the bug W1c fixes.)
+3. Seed the 3 manual prices via `bench prices add` (each alias is configured in `~/dev/litellm/config.yaml`; values from SB handoff 2026-06-16): `bench prices add openai/mistral-large-3-675b 0.50 1.50`, `bench prices add openai/nemotron-nano-omni-30b 0.25 0.50`, `bench prices add openai/diffusiongemma-26b-a4b 0.06 0.33`. Then run `bench prices refresh`, then assert the 3 remain in the cache. (They are currently absent from repo and cache — verified — having been wiped by the bug W1c fixes.)
 4. Two distinct models never produce identical card data; card slug/name is invariant across a cache refresh (regression test).
 5. `bench results generate` emits no cards for router-tier monikers.
 6. `bench compare` recomputes all three ratio columns from current references; each ratio column header names its reference model.
 7. `bench baseline record --model X` records cost alongside tokens/latency; `price_ratio_scorer` uses the Tier-1 cost entry when present.
 8. SB context (`brain-ctl context bench`) states judge → `qwen3.6-plus`.
 9. `.venv/bin/pytest` is fully green — all currently-green tests (547) plus the 3 previously-failing config-drift tests now green, 0 failures, on a clean checkout, with no new failures introduced.
-10. **(W2d)** Each nemotron model (nemotron-30b, nemotron-3-super-120b, nemotron-30b-a3b) either resolves to a correct OpenRouter ID with a price, or is documented NaN-correct; the historical `0.000`/`0.030` anomalies (`01cfd589`) do not reproduce under the stabilized path.
+10. **(W2d)** Each nemotron model under test resolves to a correct OpenRouter ID with a price, or is documented NaN-correct. Audit inventory (concrete aliases, not invented): the `01cfd589` anomaly subjects (`openai/nvidia-nemotron-3-super-120b-a12b`, `openai/nvidia-nemotron-3-nano-30b-a3b`), the test alias (`openai/nvidia-nemotron-30b` from `tests/test_results.py:445`), and the LiteLLM-configured `openai/nemotron-nano-omni-30b` + `openai/nemotron-ultra-550b`. The historical `0.000`/`0.030` anomalies (`01cfd589`) do not reproduce under the stabilized path.
 
 ## Implementation Order
 
