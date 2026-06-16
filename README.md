@@ -34,7 +34,7 @@ pytest
 |----------|-------------|
 | [EVAL-GUIDE.md](docs/EVAL-GUIDE.md) | Every task, what it tests, how the scoring works |
 | [BENCH-VERIFICATION-RUNBOOK.md](docs/BENCH-VERIFICATION-RUNBOOK.md) | Runbook for verification and sanity checks |
-| [AGENT.md](AGENT.md) | Agent-facing project reference |
+| [AGENTS.md](AGENTS.md) | Minimal agent-context file (deep context lives in the Second Brain project `bench`)|
 
 ## Architecture
 
