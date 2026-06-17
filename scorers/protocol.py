@@ -197,3 +197,23 @@ def resolve_cost_reference(
             ):
                 return float(baseline.reference_cost_usd), RatioSource.BASELINE, ref_model_id
     return None, RatioSource.SYSTEM_DEFAULT, None
+
+
+def _maybe_provision_baseline_store(
+    baseline_store: BaselineStore | None,
+) -> BaselineStore | None:
+    """Self-provision a BaselineStore if a reference model is registered.
+
+    This is the W3 self-provisioning pattern used by all three ratio scorers.
+    Returns the original store if already provided, a new BaselineStore if
+    a reference model is registered, or None if no reference is designated.
+    """
+    if baseline_store is not None:
+        return baseline_store
+    from scorers.reference_model import get_reference_model_id
+
+    if get_reference_model_id() is not None:
+        from scorers.baseline_store import BaselineStore
+
+        return BaselineStore()
+    return None

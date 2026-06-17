@@ -38,7 +38,7 @@ def test_price_ratio_uses_reference_model_cost(tmp_path, monkeypatch):
         "openai/minimax-m3",
     )
     # Point the lazy-provisioned store at our temp dir so the scorer finds the baseline.
-    monkeypatch.setattr("scorers.price_ratio.BaselineStore", lambda *a, **k: store)
+    monkeypatch.setattr("scorers.protocol._maybe_provision_baseline_store", lambda *a, **k: store)
 
     budget = TaskBudget(reference_cost_usd=0.001)  # Tier-2 fallback; must NOT win
     scorer = price_ratio_scorer(task_budget=budget)
@@ -104,7 +104,8 @@ def test_token_ratio_uses_reference_baseline_when_registered(tmp_path, monkeypat
         "add_tests",
         "openai/minimax-m3",
     )
-    monkeypatch.setattr("scorers.token_ratio.BaselineStore", lambda *a, **k: store)
+    # Monkeypatch the shared self-provisioning helper to return our test store
+    monkeypatch.setattr("scorers.protocol._maybe_provision_baseline_store", lambda *a, **k: store)
 
     # task_budget.output_tokens=508 would give 508/1016==0.5; reference 200 -> 200/1016
     budget = TaskBudget(output_tokens=508)

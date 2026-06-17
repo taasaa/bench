@@ -100,25 +100,13 @@ def _load_litellm_alias_map() -> dict[str, str]:
         )
         return {}
 
-    # Build tier name → openrouter_id map from the same config.
-    # Used to resolve routing-layer default tiers.
+    # Single pass: collect tier->orid and alias->orid in one loop
     tier_to_orid: dict[str, str] = {}
-    for entry in config.get("model_list", []):
-        if not isinstance(entry, dict):
-            continue
-        model_name = entry.get("model_name", "")
-        litellm_params = entry.get("litellm_params", {})
-        if not model_name or not isinstance(litellm_params, dict):
-            continue
-        litellm_model = litellm_params.get("model", "")
-        if not litellm_model:
-            continue
-        _, _, openrouter_id = litellm_model.partition("/")
-        if not openrouter_id:
-            openrouter_id = litellm_model
-        tier_to_orid[model_name] = openrouter_id.lower()
+    alias_to_orid: dict[str, str] = {}
 
-    result: dict[str, str] = {}
+    def _extract_orid(litellm_model: str) -> str:
+        _, _, openrouter_id = litellm_model.partition("/")
+        return openrouter_id.lower() if openrouter_id else litellm_model.lower()
 
     for entry in config.get("model_list", []):
         if not isinstance(entry, dict):
@@ -131,22 +119,27 @@ def _load_litellm_alias_map() -> dict[str, str]:
         if not litellm_model:
             continue
 
-        # For routing layers (auto_router/...), resolve to default tier's ID
-        if litellm_model.startswith("auto_router/"):
-            default_tier = litellm_params.get("complexity_router_default_model", "")
-            default_orid = tier_to_orid.get(default_tier, "")
-            if default_orid:
-                result[model_name] = default_orid
-                continue
-            # No default tier found, fall through to stripped model
+        orid = _extract_orid(litellm_model)
+        alias_to_orid[model_name] = orid
+        tier_to_orid[model_name] = orid
 
-        # Standard: strip provider prefix → OpenRouter ID
-        _, _, openrouter_id = litellm_model.partition("/")
-        if not openrouter_id:
-            openrouter_id = litellm_model
-        result[model_name] = openrouter_id.lower()
+    # Resolve routing layers to their default tier
+    for entry in config.get("model_list", []):
+        if not isinstance(entry, dict):
+            continue
+        model_name = entry.get("model_name", "")
+        litellm_params = entry.get("litellm_params", {})
+        if not model_name or not isinstance(litellm_params, dict):
+            continue
+        litellm_model = litellm_params.get("model", "")
+        if not litellm_model.startswith("auto_router/"):
+            continue
 
-    return result
+        default_tier = litellm_params.get("complexity_router_default_model", "")
+        if default_tier and (orid := tier_to_orid.get(default_tier)):
+            alias_to_orid[model_name] = orid
+
+    return alias_to_orid
 
 
 @lru_cache(maxsize=1)

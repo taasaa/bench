@@ -43,13 +43,9 @@ def token_ratio_scorer(
         task_budget: Per-task budget override. Any None field falls through
                      to the next tier in the resolution chain.
     """
-    # W3: self-provision a store once a reference model is registered, so task.py
-    # callers need no changes. No-op until a reference is designated.
-    if baseline_store is None:
-        from scorers.reference_model import get_reference_model_id
-
-        if get_reference_model_id() is not None:
-            baseline_store = BaselineStore()
+    # W3: self-provision a store once a reference model is registered.
+    import scorers.protocol as _proto
+    baseline_store = _proto._maybe_provision_baseline_store(baseline_store)
 
     async def score(state: TaskState, target: Target) -> Score:
         actual_tokens = state.token_usage  # total tokens only (no input/output split)

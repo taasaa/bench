@@ -439,46 +439,42 @@ def _geometric_mean(vals: list[float]) -> float:
     return math.exp(log_sum / len(vals))
 
 
-def _recompute_token_ratio(baseline_store, task, avg_tokens, budget):
-    """W3a: ref output_tokens / actual avg total tokens.
-
-    Tier 1: reference-model BaselineStore (registry-driven). Tier 2: task_budget --
-    applied ONLY when Tier-1 did not resolve a BASELINE (PRD Goal #5: a recorded
-    reference is the reference for ALL subjects, so task_budget no longer overrides it).
-    """
-    ref, source, _m = resolve_baseline_reference(baseline_store, task, "", "output_tokens")
-    if (
-        source is not RatioSource.BASELINE
-        and budget is not None
-        and budget.output_tokens is not None
-    ):
-        ref = float(budget.output_tokens)
-    return ref / avg_tokens if avg_tokens and avg_tokens > 0 else float("nan")
-
-
-def _recompute_time_ratio(baseline_store, task, avg_time, budget):
-    """W3a: ref latency / actual avg seconds (same Tier-1/Tier-2 precedence as token)."""
-    ref, source, _m = resolve_baseline_reference(baseline_store, task, "", "latency_seconds")
-    if (
-        source is not RatioSource.BASELINE
-        and budget is not None
-        and budget.latency_seconds is not None
-    ):
-        ref = float(budget.latency_seconds)
-    return ref / avg_time if avg_time and avg_time > 0 else float("nan")
-
-
 # Documented calibration sources used when no reference model is registered.
 _TOKEN_LATENCY_DEFAULT_REF = "qwen-local"  # SYSTEM_DEFAULT_BUDGETS calibration source
 _COST_DEFAULT_REF = "minimax-m2.7"  # task_budgets.py reference_cost_usd source
 
 
-def _ratio_reference_labels() -> dict[str, str]:
-    """Return {efficiency_latency: <ref>, cost: <ref>} for the ratio-column legend (W3c).
+def _resolve_tiered_reference(baseline_store, task, metric_name, budget, budget_attr):
+    """Resolve reference value for a metric with Tier-1 (BaselineStore) -> Tier-2 (budget) precedence.
 
-    Once a reference model is registered (W3d), all three pillars share it; until then,
-    the legend reports the documented per-pillar calibration sources so the split is loud.
+    Returns (ref_value, source_was_baseline). If Tier-1 returns a BASELINE source, budget is ignored.
     """
+    ref, source, _ = resolve_baseline_reference(baseline_store, task, "", metric_name)
+    if source is not RatioSource.BASELINE and budget is not None:
+        budget_val = getattr(budget, budget_attr, None)
+        if budget_val is not None:
+            ref = float(budget_val)
+    return ref, source is RatioSource.BASELINE
+
+
+def _recompute_ratio(baseline_store, task, avg_actual, budget, metric_name, budget_attr) -> float:
+    """Compute ref / actual ratio using tiered reference resolution."""
+    ref, _ = _resolve_tiered_reference(baseline_store, task, metric_name, budget, budget_attr)
+    return ref / avg_actual if avg_actual and avg_actual > 0 else float("nan")
+
+
+def _recompute_token_ratio(baseline_store, task, avg_tokens, budget):
+    """W3a: ref output_tokens / actual avg total tokens (Tier-1 -> Tier-2)."""
+    return _recompute_ratio(baseline_store, task, avg_tokens, budget, "output_tokens", "output_tokens")
+
+
+def _recompute_time_ratio(baseline_store, task, avg_time, budget):
+    """W3a: ref latency / actual avg seconds (Tier-1 -> Tier-2)."""
+    return _recompute_ratio(baseline_store, task, avg_time, budget, "latency_seconds", "latency_seconds")
+
+
+def _ratio_reference_labels() -> dict[str, str]:
+    """Return {efficiency_latency: <ref>, cost: <ref>} for the ratio-column legend (W3c)."""
     ref = get_reference_model_id()
     if ref:
         return {"efficiency_latency": ref, "cost": ref}

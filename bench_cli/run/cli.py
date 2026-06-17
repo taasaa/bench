@@ -55,6 +55,28 @@ def _append_heartbeat(
         f.write(_json.dumps(entry) + "\n")
 
 
+def _extract_result_metrics(log) -> tuple[float | None, int]:
+    """Extract (score, total_tokens) from an eval log result."""
+    score = None
+    tokens = 0
+    if not (log.results and log.results.scores):
+        return score, tokens
+    s = log.results.scores[0]
+    mv = s.metrics.get("mean")
+    if mv is not None:
+        score = mv.value
+    try:
+        for sm in log.samples or []:
+            mu = getattr(getattr(sm, "output", None), "usage", None)
+            if mu is not None:
+                tokens += int(getattr(mu, "input_tokens", 0) or 0) + int(
+                    getattr(mu, "output_tokens", 0) or 0
+                )
+    except Exception:
+        tokens = 0
+    return score, tokens
+
+
 def _write_run_summary(path: Path, *, bench_alias: str, results: list) -> None:
     """W1b: write one post-run JSON summary after a batch inspect_eval() returns.
 
@@ -263,21 +285,13 @@ def run(
 
     # Task-level concurrency: --sequential or --concurrency bound how many tasks
     # run at once; otherwise leave it to Inspect's default.
-    if sequential:
-        max_tasks_val: int | None = 1
-    elif concurrency is not None:
-        max_tasks_val = concurrency
-    else:
-        max_tasks_val = None
+    max_tasks_val: int | None = 1 if sequential else concurrency
 
     # Sample-level concurrency. --sequential => 1 (fully serial). Otherwise default
     # to 1 (safe for rpm-capped providers; the programmatic eval() path ignores
     # INSPECT_EVAL_MAX_SAMPLES, so this default is the only bound on sample
     # concurrency). Override with --max-samples N.
-    if sequential:
-        max_samples_val: int = 1
-    else:
-        max_samples_val = max_samples if max_samples is not None else 1
+    max_samples_val: int = 1 if sequential else (max_samples if max_samples is not None else 1)
 
     # Parse [override] suffix: alias[openrouter_id] lets you supply the OpenRouter
     # price-lookup ID separately from the LiteLLM eval model name.
@@ -387,30 +401,15 @@ def run(
             )
             all_results.extend(result)
             click.echo(f"  -> {result[0].eval.task}: {result[0].status}")
-            _score_val = None
-            _tok = 0
-            if result[0].results and result[0].results.scores:
-                s = result[0].results.scores[0]
-                mv = s.metrics.get("mean")
-                if mv is not None:
-                    _score_val = mv.value
-                    click.echo(f"    score={mv.value:.3f}")
-                # Sum sample tokens for the heartbeat, if available.
-                try:
-                    for sm in result[0].samples or []:
-                        mu = getattr(getattr(sm, "output", None), "usage", None)
-                        if mu is not None:
-                            _tok += int(getattr(mu, "input_tokens", 0) or 0) + int(
-                                getattr(mu, "output_tokens", 0) or 0
-                            )
-                except Exception:
-                    _tok = 0
+            score, tokens = _extract_result_metrics(result[0])
+            if score is not None:
+                click.echo(f"    score={score:.3f}")
             _append_heartbeat(
                 heartbeat,
                 task=Path(spec).parent.name,
                 status=str(result[0].status),
-                score=_score_val,
-                tokens=_tok,
+                score=score,
+                tokens=tokens,
             )
             if not no_compare:
                 from bench_cli.compare import format_pillar_table, load_compare_data

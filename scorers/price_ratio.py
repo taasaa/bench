@@ -67,6 +67,20 @@ def _extract_tokens(usage: Any) -> tuple[int, int]:
     return int(inp), int(out)
 
 
+def _price_from_alias(alias: str, inp: int, out: int) -> tuple[float | None, str | None, bool]:
+    """Resolve alias, get price, compute cost. Returns (cost_usd, or_id, is_free)."""
+    or_model_id = resolve_openrouter_id(alias)
+    if or_model_id is None:
+        return None, None, False
+    try:
+        price_info = _price_info(or_model_id)
+    except CacheMiss:
+        return None, or_model_id, False
+    except Exception:
+        return None, or_model_id, False
+    return price_info.cost_per_sample(inp, out), or_model_id, price_info.is_free
+
+
 def _resolve_and_price(
     model_alias: str,
     usage: Any,
@@ -83,17 +97,7 @@ def _resolve_and_price(
         if "prompt_tokens" in usage or "completion_tokens" in usage:
             inp = usage.get("prompt_tokens", 0) or 0
             out = usage.get("completion_tokens", 0) or 0
-            or_model_id = resolve_openrouter_id(model_alias)
-            if or_model_id is None:
-                return None, None, False, None
-            try:
-                price_info = _price_info(or_model_id)
-            except CacheMiss:
-                return None, or_model_id, False, None
-            except Exception:
-                return None, or_model_id, False, None
-            is_free = price_info.is_free
-            return price_info.cost_per_sample(inp, out), or_model_id, is_free, None
+            return _price_from_alias(model_alias, inp, out) + (None,)
 
         # Smart-router / multi-model: dict of {tier_name: usage}
         total_cost = 0.0
@@ -102,26 +106,19 @@ def _resolve_and_price(
         tier_breakdown: dict[str, dict] = {}
         for tier_name, tier_usage in usage.items():
             tier_alias = f"openai/{tier_name}"
-            or_id = resolve_openrouter_id(tier_alias)
-            if or_id is None:
-                continue
-            try:
-                price_info = _price_info(or_id)
-            except CacheMiss:
-                continue
-            except Exception:
-                continue
             inp, out = _extract_tokens(tier_usage)
-            tier_cost = price_info.cost_per_sample(inp, out)
-            total_cost += tier_cost
+            cost, or_id, free = _price_from_alias(tier_alias, inp, out)
+            if cost is None or or_id is None:
+                continue
+            total_cost += cost
             has_any_cost = True
-            if price_info.is_free:
+            if free:
                 is_free = True
             tier_breakdown[tier_name] = {
                 "model": or_id,
                 "input_tokens": inp,
                 "output_tokens": out,
-                "cost_usd": tier_cost,
+                "cost_usd": cost,
             }
         if has_any_cost:
             return total_cost, None, is_free, tier_breakdown
@@ -129,17 +126,7 @@ def _resolve_and_price(
 
     # Single ModelUsage object (standard single-model case)
     inp, out = _extract_tokens(usage)
-    or_model_id = resolve_openrouter_id(model_alias)
-    if or_model_id is None:
-        return None, None, False, None
-    try:
-        price_info = _price_info(or_model_id)
-    except CacheMiss:
-        return None, or_model_id, False, None
-    except Exception:
-        return None, or_model_id, False, None
-    is_free = price_info.is_free
-    return price_info.cost_per_sample(inp, out), or_model_id, is_free, None
+    return _price_from_alias(model_alias, inp, out) + (None,)
 
 
 @scorer(metrics=[mean()])
@@ -155,13 +142,9 @@ def price_ratio_scorer(
                        If None but a reference model is registered, one is
                        self-provisioned so task.py callers need no changes.
     """
-    # W3: self-provision a store once a reference model is registered, so task.py
-    # callers need no changes. No-op until a reference is designated.
-    if baseline_store is None:
-        from scorers.reference_model import get_reference_model_id
-
-        if get_reference_model_id() is not None:
-            baseline_store = BaselineStore()
+    # W3: self-provision a store once a reference model is registered.
+    import scorers.protocol as _proto
+    baseline_store = _proto._maybe_provision_baseline_store(baseline_store)
 
     async def score(state: TaskState, target: Target) -> Score:
         usage = state.output.usage if state.output else None
