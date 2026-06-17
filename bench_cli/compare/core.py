@@ -21,6 +21,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from scorers.task_budgets import get_task_budget
+from scorers.baseline_store import BaselineStore
+from scorers.protocol import (
+    resolve_baseline_reference,
+    resolve_cost_reference,
+    RatioSource,
+)
 
 # ---------------------------------------------------------------------------
 # Model pricing (hardcoded / user-provided — not from KiloCode cache)
@@ -294,6 +300,8 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
 
     # For each (task, model), keep the latest run (logs are loaded newest-first)
     best: dict[tuple[str, str], PillarScores] = {}
+    # W3a/W3b: one BaselineStore for reference-driven ratio recomputation.
+    baseline_store = BaselineStore()
 
     for (task, model, _log_name), samples_list in run_samples.items():
         key = (task, model)
@@ -306,17 +314,14 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         valid_c = [s[0] for s in samples_list if s[0] is not None]
         avg_correctness = sum(valid_c) / len(valid_c) if valid_c else 0.0
 
-        # Token ratio average (skip None/NaN)
-        valid_tr = [s[1] for s in samples_list if s[1] is not None]
-        avg_token_ratio = sum(valid_tr) / len(valid_tr) if valid_tr else 0.0
-
-        # Time ratio average (skip None/NaN)
-        valid_lr = [s[2] for s in samples_list if s[2] is not None]
-        avg_time_ratio = sum(valid_lr) / len(valid_lr) if valid_lr else 0.0
-
         # Absolute metrics
         avg_tokens = sum(s[3] for s in samples_list) / n
         avg_time = sum(s[4] for s in samples_list) / n
+
+        budget = get_task_budget(task)
+        # W3a: recompute token/time ratios from current references (not baked-in score values)
+        avg_token_ratio = _recompute_token_ratio(baseline_store, task, avg_tokens, budget)
+        avg_time_ratio = _recompute_time_ratio(baseline_store, task, avg_time, budget)
 
         token_suppressed = sum(1 for s in samples_list if s[5])
         time_suppressed = sum(1 for s in samples_list if s[6])
@@ -325,11 +330,13 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         valid_cost = [s[7] for s in samples_list if s[7] is not None]
         avg_cost_usd = sum(valid_cost) / len(valid_cost) if valid_cost else float("nan")
 
-        # Price ratio: recompute using current reference costs from task_budgets.py
-        # (the ratio stored in eval logs uses stale references from the time of the run)
-        budget = get_task_budget(task)
-        if budget and budget.reference_cost_usd is not None and valid_cost:
-            ratios = [budget.reference_cost_usd / c for c in valid_cost if c > 0]
+        # W3a/W3b: recompute price ratio from the current cost reference
+        # (Tier-1 reference-model BaselineStore -> Tier-2 task_budget.reference_cost_usd)
+        ref_cost, _s, _ref = resolve_cost_reference(baseline_store, task)
+        if ref_cost is None and budget is not None:
+            ref_cost = budget.reference_cost_usd
+        if ref_cost is not None and valid_cost:
+            ratios = [ref_cost / c for c in valid_cost if c > 0]
             avg_price_ratio = _geometric_mean(ratios) if ratios else float("nan")
         else:
             avg_price_ratio = float("nan")
@@ -429,6 +436,35 @@ def _geometric_mean(vals: list[float]) -> float:
             return float("nan")
     log_sum = math.fsum(math.log(v) for v in vals)
     return math.exp(log_sum / len(vals))
+
+
+def _recompute_token_ratio(baseline_store, task, avg_tokens, budget):
+    """W3a: ref output_tokens / actual avg total tokens.
+
+    Tier 1: reference-model BaselineStore (registry-driven). Tier 2: task_budget --
+    applied ONLY when Tier-1 did not resolve a BASELINE (PRD Goal #5: a recorded
+    reference is the reference for ALL subjects, so task_budget no longer overrides it).
+    """
+    ref, source, _m = resolve_baseline_reference(baseline_store, task, "", "output_tokens")
+    if (
+        source is not RatioSource.BASELINE
+        and budget is not None
+        and budget.output_tokens is not None
+    ):
+        ref = float(budget.output_tokens)
+    return ref / avg_tokens if avg_tokens and avg_tokens > 0 else float("nan")
+
+
+def _recompute_time_ratio(baseline_store, task, avg_time, budget):
+    """W3a: ref latency / actual avg seconds (same Tier-1/Tier-2 precedence as token)."""
+    ref, source, _m = resolve_baseline_reference(baseline_store, task, "", "latency_seconds")
+    if (
+        source is not RatioSource.BASELINE
+        and budget is not None
+        and budget.latency_seconds is not None
+    ):
+        ref = float(budget.latency_seconds)
+    return ref / avg_time if avg_time and avg_time > 0 else float("nan")
 
 
 # Columns: TASK | CORRECT | TOK_RATIO | TIME_RATIO | TOKENS | TIME | COST_RATIO | AVG COST
