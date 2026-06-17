@@ -249,6 +249,19 @@ def _write_run_summary(path: Path, *, bench_alias: str, results: list) -> None:
         "fails fast instead of backing off for minutes."
     ),
 )
+@click.option(
+    "--as",
+    "as_name",
+    default=None,
+    help=(
+        "Recorded model identity to write into eval logs, overriding the "
+        "auto-resolved OpenRouter id. Use when you route through a moniker "
+        "(e.g. openai/thinking) but want logs/compare/cards to show a "
+        "recognizable name (e.g. 'nemotron-ultra-550b'). Stored literally, no "
+        "prefix applied. Without --as, logs record the raw OpenRouter id "
+        "(e.g. 'minimaxai/minimax-m3'); managed/local models keep their alias."
+    ),
+)
 def run(
     model: str,
     tier: str,
@@ -267,6 +280,7 @@ def run(
     sequential: bool,
     max_samples: int | None,
     max_retries: int | None,
+    as_name: str | None,
 ) -> None:
     """Discover and run evaluation tasks via Inspect AI."""
     # Lazy import so CLI --help stays fast when Inspect is not configured.
@@ -297,6 +311,17 @@ def run(
     # price-lookup ID separately from the LiteLLM eval model name.
     bench_alias, or_override = parse_model_arg(model)
 
+    # recorded_name: identity written into eval logs (recognizable). routed_name:
+    # identity sent to the proxy (the --model value).
+    from bench_cli.run.core import resolve_recorded_name, rewrite_log_model_name
+
+    routed_name = bench_alias
+    recorded_name = resolve_recorded_name(routed_name, as_name)
+    if recorded_name != routed_name:
+        click.echo(
+            f"Recording model as '{recorded_name}' (routing through '{routed_name}')."
+        )
+
     # Persist the override so resolve_openrouter_id() finds it for all callers
     # (price gate, scorer, compare) -- not just the gate.
     if or_override is not None:
@@ -326,7 +351,7 @@ def run(
         click.echo(f"No tasks found for tier {tier!r}.", err=True)
         raise SystemExit(1)
 
-    click.echo(f"Running {len(specs)} task(s) from tier '{tier}' with model '{bench_alias}'.")
+    click.echo(f"Running {len(specs)} task(s) from tier '{tier}' with model '{recorded_name}'.")
 
     # Pre-flight price gate -- block if model has no known price.
     _check_price_gate(bench_alias)
@@ -349,7 +374,7 @@ def run(
     run_specs = specs
     if not no_resume:
         spec_dirs = {Path(s).parent.name for s in specs}
-        done = _completed_tasks(log_dir, bench_alias, spec_dirs)
+        done = _completed_tasks(log_dir, recorded_name, spec_dirs)
         run_specs = [s for s in specs if Path(s).parent.name not in done]
         skipped = len(specs) - len(run_specs)
         if skipped:
@@ -383,12 +408,12 @@ def run(
         click.echo("Running tasks one-by-one (--one-by-one mode)")
         click.echo()
         all_results = []
-        heartbeat = _status_path(log_dir, bench_alias)
+        heartbeat = _status_path(log_dir, recorded_name)
         for i, spec in enumerate(run_specs, 1):
             click.echo(f"[{i}/{len(run_specs)}] Running {spec}")
             result = inspect_eval(
                 tasks=[tasks_with_metadata[i - 1]],
-                model=bench_alias,
+                model=routed_name,
                 solver=solver,
                 sandbox=eval_sandbox,
                 log_dir=log_dir,
@@ -400,6 +425,16 @@ def run(
                 display=display_mode,
             )
             all_results.extend(result)
+            if recorded_name != routed_name:
+                for r in result:
+                    location = getattr(r, "location", None)
+                    ok = bool(location) and rewrite_log_model_name(location, recorded_name)
+                    if not ok:
+                        click.echo(
+                            f"  Warning: could not rewrite model name in {getattr(r, 'location', '?')}; "
+                            f"log keeps routed name '{routed_name}'.",
+                            err=True,
+                        )
             click.echo(f"  -> {result[0].eval.task}: {result[0].status}")
             score, tokens = _extract_result_metrics(result[0])
             if score is not None:
@@ -422,7 +457,7 @@ def run(
     else:
         results = inspect_eval(
             tasks=tasks_with_metadata,
-            model=bench_alias,
+            model=routed_name,
             solver=solver,
             sandbox=eval_sandbox,
             log_dir=log_dir,
@@ -433,11 +468,21 @@ def run(
             max_retries=max_retries,
             display=display_mode,
         )
+        if recorded_name != routed_name:
+            for r in results:
+                location = getattr(r, "location", None)
+                ok = bool(location) and rewrite_log_model_name(location, recorded_name)
+                if not ok:
+                    click.echo(
+                        f"Warning: could not rewrite model name in {getattr(r, 'location', '?')}; "
+                        f"log keeps routed name '{routed_name}'.",
+                        err=True,
+                    )
         # W1b (SC#2): batch mode has no per-task Python loop to hook, so emit a
         # single post-run summary (not a live heartbeat).
         _write_run_summary(
-            _status_path(log_dir, bench_alias).with_suffix(".summary.json"),
-            bench_alias=bench_alias,
+            _status_path(log_dir, recorded_name).with_suffix(".summary.json"),
+            bench_alias=recorded_name,
             results=results,
         )
 
@@ -475,7 +520,7 @@ def run(
         from bench_cli.results import generate_card_for_model
 
         card_path = generate_card_for_model(
-            bench_alias,
+            recorded_name,
             Path(log_dir),
             agent=agent,
             agent_mode=agent_mode,
