@@ -466,3 +466,56 @@ class TestResolveAliasMapTier:
             input_tokens = 100; output_tokens = 50
         cost, or_id, is_free, _ = _resolve_and_price("openai/nemotron-nano-omni-30b", U())
         assert cost is None  # NaN-correct: scorer will emit NaN
+
+
+class TestMergeOnRefresh:
+    """W1c: refresh MERGES new OpenRouter data onto existing cache; manual prices survive."""
+
+    def test_merge_preserves_manual_and_adds_new(self):
+        """Pure helper: manual entries survive; new entries added."""
+        from bench_cli.pricing.price_cache import _merge_models
+        existing = {"manual/keep-me": {"input": 0.06, "output": 0.33, "context": None}}
+        new = {"openrouter/new": {"input": 0.1, "output": 0.2, "context": None}}
+        merged = _merge_models(existing, new)
+        assert merged["manual/keep-me"]["input"] == 0.06   # manual survived
+        assert merged["openrouter/new"]["input"] == 0.1    # new added
+
+    def test_merge_new_wins_on_collision(self):
+        """Pure helper: on id collision, the freshly-fetched price wins (PRD edge case)."""
+        from bench_cli.pricing.price_cache import _merge_models
+        existing = {"x/y": {"input": 9.0, "output": 9.0, "context": None}}
+        new = {"x/y": {"input": 0.1, "output": 0.2, "context": None}}
+        merged = _merge_models(existing, new)
+        assert merged["x/y"]["input"] == 0.1   # new wins
+
+    def test_fetch_and_cache_merges_end_to_end(self, tmp_path, monkeypatch):
+        """End-to-end: real fetch_and_cache_prices merges; manual survives refresh.
+
+        Mocks ONLY the network (urllib.request.urlopen), not the function under test,
+        so the real fetch + merge code runs.
+        """
+        from bench_cli.pricing import price_cache as pc
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        cache_file = tmp_path / "cache.json"
+        cache = OpenRouterCache(cache_path=cache_file)
+        # seed a manual price
+        cache.add_price("manual/keep-me", 0.06, 0.33)
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+        # Fake OpenRouter API: returns ONE new model. OpenRouter prices are per-token.
+        fake_api = {"data": [{"id": "openrouter/new",
+                              "pricing": {"prompt": "0.0000001", "completion": "0.0000002"},
+                              "context_length": None}]}
+
+        class _FakeResp:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return json.dumps(fake_api).encode("utf-8")
+
+        monkeypatch.setattr(pc.urllib.request, "urlopen", lambda req, timeout=30: _FakeResp())
+
+        cache.fetch_and_cache_prices()
+        allp = cache.get_all_prices()
+        assert "manual/keep-me" in allp          # manual survived the refresh
+        assert "openrouter/new" in allp          # new model merged in
