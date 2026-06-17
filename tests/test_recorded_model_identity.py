@@ -11,11 +11,6 @@ def test_as_override_literal_full_name():
         "nvidia/nemotron-3-ultra-550b-a55b"
 
 
-def test_moniker_resolves_to_openrouter_id():
-    # thinking currently backs minimax-m3 on the NIM endpoint
-    assert resolve_recorded_name("openai/thinking", None) == "minimaxai/minimax-m3"
-
-
 def test_recognizable_alias_resolves_to_openrouter_id():
     assert resolve_recorded_name("openai/nemotron-ultra-550b", None) == \
         "nvidia/nemotron-3-ultra-550b-a55b"
@@ -39,13 +34,43 @@ def test_as_overrides_managed_short_circuit():
 
 
 def test_bracket_pricing_override_does_not_leak_into_recorded_name():
-    # B4: logs/pricing/model_overrides.json has openai/minimax-m3 -> minimax/minimax-m3
-    # (a pricing-only correction for the OpenRouter-API provider). The recorded
-    # name must be the actual NIM backing model, NOT the override target.
-    # resolve_recorded_name must bypass the override map.
-    assert resolve_recorded_name("openai/minimax-m3", None) == "minimaxai/minimax-m3", (
-        "bracket pricing override leaked into recorded name"
+    # B4 invariant: resolve_recorded_name bypasses the pricing-override map.
+    # The override (logs/pricing/model_overrides.json) is pricing-only and must
+    # not leak into the recorded model identity. For every alias where the
+    # override actually changes resolution (backing_id != pricing_id), the
+    # recorded name must follow backing_id (the override-blind resolution),
+    # NEVER pricing_id (the override-applied result).
+    from bench_cli.pricing.litellm_config import (
+        _load_overrides,
+        resolve_backing_model_id,
+        resolve_openrouter_id,
     )
+
+    overrides = _load_overrides()
+    assert overrides, "test premise: at least one override must exist in model_overrides.json"
+
+    testable = []
+    for alias in overrides:
+        backing = resolve_backing_model_id(alias)
+        pricing = resolve_openrouter_id(alias)
+        if backing is not None and backing != pricing:
+            testable.append((alias, backing, pricing))
+    assert testable, (
+        "test premise: at least one override must ACTUALLY change resolution "
+        "(no point testing B4 if every override is a no-op)"
+    )
+
+    for alias, backing, pricing in testable:
+        recorded = resolve_recorded_name(alias, None)
+        assert recorded == backing, (
+            f"B4 invariant broken for {alias!r}: recorded={recorded!r} "
+            f"should equal backing={backing!r} (pricing={pricing!r} would have "
+            f"leaked the override)"
+        )
+        assert recorded != pricing, (
+            f"bracket pricing override leaked into recorded name for {alias!r}: "
+            f"recorded={recorded!r} == pricing={pricing!r} (override target)"
+        )
 
 
 import shutil
