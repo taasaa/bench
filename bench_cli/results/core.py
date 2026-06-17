@@ -14,7 +14,6 @@ from pathlib import Path
 import click
 
 from bench_cli.pricing.litellm_config import is_managed_model, resolve_openrouter_id
-from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _RESULTS_DIR = _PROJECT_ROOT / "results"
@@ -37,9 +36,14 @@ _ROUTER_MONIKERS = {"default", "thinking", "heavy", "background", "smart-router"
 
 
 def is_moniker_alias(bench_alias: str) -> bool:
-    """True if alias is a router-tier meta-moniker (default/thinking/heavy/...)."""
-    bare = bench_alias.replace("openai/", "")
-    return bare in _ROUTER_MONIKERS
+    """True if alias is a router-tier meta-moniker (default/thinking/heavy/...).
+
+    Checks the BARE name (first segment stripped) so OR ids like
+    'minimaxai/minimax-m3' (bare 'minimax-m3') are correctly False.
+    """
+    from bench_cli.resolver import bare_model_name
+
+    return bare_model_name(bench_alias) in _ROUTER_MONIKERS
 
 
 def _build_pillar_map() -> dict[str, str]:
@@ -49,34 +53,24 @@ def _build_pillar_map() -> dict[str, str]:
     return _load_pillar_map()
 
 
-def _resolve_from_static_map(bench_alias: str) -> str | None:
-    """Return the static MODEL_ALIAS_MAP entry for an alias, or None."""
-    return MODEL_ALIAS_MAP.get(bench_alias)
-
-
 def _slug_from_alias(bench_alias: str) -> str:
-    """Deterministic card filename slug from bench alias.
+    """Deterministic card filename slug from the recorded name.
 
-    Derived from the STATIC MODEL_ALIAS_MAP (or_id with '/' -> '-'), else the
-    bare alias. NEVER calls resolve_openrouter_id -- so the same alias always
-    slugs to the same filename, independent of cache/config drift.
+    Slug = the recorded full name with '/' -> '-'. The recorded name is the
+    OpenRouter id (e.g. 'minimaxai/minimax-m3') or an --as value; either way
+    we slug the whole string. NEVER calls resolve_openrouter_id.
     """
-    mapped = _resolve_from_static_map(bench_alias)
-    if mapped:
-        return mapped.replace("/", "-")
-    return bench_alias.replace("openai/", "").replace("/", "-")
+    return bench_alias.replace("/", "-")
 
 
 def _real_model_name(bench_alias: str) -> str:
-    """Deterministic human-readable model name from bench alias.
+    """Deterministic human-readable model name = the recorded full name.
 
-    Mirrors _slug_from_alias's source (static map, else bare alias) so name and
-    slug always agree. NEVER calls resolve_openrouter_id.
+    Mirrors _slug_from_alias's source so name and slug always agree. The
+    recorded OR id already carries the provider; display it in full (the
+    compare table strips to bare via bare_model_name elsewhere).
     """
-    mapped = _resolve_from_static_map(bench_alias)
-    if mapped:
-        return mapped
-    return bench_alias.replace("openai/", "")
+    return bench_alias
 
 
 def _rating(score: float) -> str:

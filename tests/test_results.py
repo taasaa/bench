@@ -149,12 +149,13 @@ class TestDeterministicCardIdentity:
     """W2a: card slug/name are deterministic from the static alias map, never volatile."""
 
     def test_slug_known_alias_matches_orid(self):
-        # openai/nvidia-nemotron-30b -> nvidia/nemotron-3-nano-30b-a3b -> slug
-        assert _slug_from_alias("openai/nvidia-nemotron-30b") == "nvidia-nemotron-3-nano-30b-a3b"
-        assert "/" not in _slug_from_alias("openai/nvidia-nemotron-30b")
+        # Recorded OR id -> slug (full name with '/' -> '-').
+        assert _slug_from_alias("nvidia/nemotron-3-nano-30b-a3b") == "nvidia-nemotron-3-nano-30b-a3b"
+        assert "/" not in _slug_from_alias("nvidia/nemotron-3-nano-30b-a3b")
 
     def test_slug_unknown_alias_bare(self):
-        slug = _slug_from_alias("openai/some-brand-new-model")
+        # An arbitrary recorded OR id still slugs predictably with '/' -> '-'.
+        slug = _slug_from_alias("some-brand/new-model")
         assert slug == "some-brand-new-model"
 
     def test_slug_invariant_to_cache_drift(self, monkeypatch):
@@ -162,10 +163,10 @@ class TestDeterministicCardIdentity:
         monkeypatch.setattr(
             "bench_cli.results.core.resolve_openrouter_id", lambda a: None
         )
-        assert _slug_from_alias("openai/nvidia-nemotron-30b") == "nvidia-nemotron-3-nano-30b-a3b"
+        assert _slug_from_alias("nvidia/nemotron-3-nano-30b-a3b") == "nvidia-nemotron-3-nano-30b-a3b"
 
     def test_real_name_matches_orid(self):
-        assert _real_model_name("openai/nvidia-nemotron-30b") == "nvidia/nemotron-3-nano-30b-a3b"
+        assert _real_model_name("nvidia/nemotron-3-nano-30b-a3b") == "nvidia/nemotron-3-nano-30b-a3b"
 
     def test_two_distinct_models_never_collide(self, tmp_path, monkeypatch):
         """Guards the deleted glm-5.1 == m2.7 byte-identical card bug.
@@ -498,7 +499,7 @@ class TestAgentCardNaming:
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
 
         data = self._make_model_data(agent="claude", agent_mode="docker")
-        path = generate_card("openai/nvidia-nemotron-30b", data, tmp_path)
+        path = generate_card("nvidia/nemotron-3-nano-30b-a3b", data, tmp_path)
         assert path is not None
         assert path.name == "nvidia-nemotron-3-nano-30b-a3b__claude__docker.md"
 
