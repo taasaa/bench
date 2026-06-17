@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from bench_cli.results import (
@@ -10,6 +11,7 @@ from bench_cli.results import (
     _format_ratio,
     _generate_summary,
     _rating,
+    _real_model_name,
     _slug_from_alias,
     generate_card,
     generate_card_for_model,
@@ -136,6 +138,34 @@ class TestSlugFromAlias:
     def test_unknown_model_falls_back(self):
         slug = _slug_from_alias("openai/some-unknown-model")
         assert "some-unknown-model" in slug
+
+
+# ---------------------------------------------------------------------------
+# _slug_from_alias / _real_model_name determinism (W2a)
+# ---------------------------------------------------------------------------
+
+
+class TestDeterministicCardIdentity:
+    """W2a: card slug/name are deterministic from the static alias map, never volatile."""
+
+    def test_slug_known_alias_matches_orid(self):
+        # openai/nvidia-nemotron-30b -> nvidia/nemotron-3-nano-30b-a3b -> slug
+        assert _slug_from_alias("openai/nvidia-nemotron-30b") == "nvidia-nemotron-3-nano-30b-a3b"
+        assert "/" not in _slug_from_alias("openai/nvidia-nemotron-30b")
+
+    def test_slug_unknown_alias_bare(self):
+        slug = _slug_from_alias("openai/some-brand-new-model")
+        assert slug == "some-brand-new-model"
+
+    def test_slug_invariant_to_cache_drift(self, monkeypatch):
+        # Even if resolve_openrouter_id flips/returns None, the slug must NOT change.
+        monkeypatch.setattr(
+            "bench_cli.results.core.resolve_openrouter_id", lambda a: None
+        )
+        assert _slug_from_alias("openai/nvidia-nemotron-30b") == "nvidia-nemotron-3-nano-30b-a3b"
+
+    def test_real_name_matches_orid(self):
+        assert _real_model_name("openai/nvidia-nemotron-30b") == "nvidia/nemotron-3-nano-30b-a3b"
 
 
 # ---------------------------------------------------------------------------

@@ -40,27 +40,25 @@ def _build_pillar_map() -> dict[str, str]:
 
 
 def _slug_from_alias(bench_alias: str) -> str:
-    """Convert bench alias to a filename slug using OpenRouter ID.
+    """Deterministic card filename slug from bench alias.
 
-    Falls back to LiteLLM config model name for local models.
+    Derived from the STATIC MODEL_ALIAS_MAP (or_id with '/' -> '-'), else the
+    bare alias. NEVER calls resolve_openrouter_id -- so the same alias always
+    slugs to the same filename, independent of cache/config drift. This is the
+    W2a keystone fix for the glm-5.1 == m2.7 mis-attribution bug.
     """
-    or_id = resolve_openrouter_id(bench_alias)
-    if or_id:
-        return or_id.replace("/", "-")
-    # Fallback: use MODEL_ALIAS_MAP or the alias itself
     mapped = MODEL_ALIAS_MAP.get(bench_alias)
     if mapped:
         return mapped.replace("/", "-")
-    # Last resort: strip openai/ prefix
     return bench_alias.replace("openai/", "").replace("/", "-")
 
 
 def _real_model_name(bench_alias: str) -> str:
-    """Get a human-readable model name from bench alias."""
-    or_id = resolve_openrouter_id(bench_alias)
-    if or_id:
-        # Capitalize provider and model parts nicely
-        return or_id
+    """Deterministic human-readable model name from bench alias.
+
+    Mirrors _slug_from_alias's source (static map, else bare alias) so name and
+    slug always agree. NEVER calls resolve_openrouter_id.
+    """
     mapped = MODEL_ALIAS_MAP.get(bench_alias)
     if mapped:
         return mapped
