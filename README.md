@@ -8,6 +8,12 @@ Standalone local LLM and AI agent evaluation system. Run eval tasks against mode
 # Model eval
 python -m bench_cli run --tier full --model openai/qwen-local
 python -m bench_cli run --concurrency 4 --tier full
+python -m bench_cli run --model openai/thinking --as nemotron-ultra-550b  # route via moniker, record recognizable name
+
+# Resume note: re-running an existing model now records its OpenRouter id (e.g.
+# 'z-ai/glm-5.2') instead of the old alias, so resume treats it as a new model
+# and re-runs. To continue an old run in its old identity, pass
+# --as openai/<old-alias>.
 
 # Compare scores
 python -m bench_cli compare
@@ -18,6 +24,9 @@ python -m bench_cli compare-profiles openai/qwen-local openai/gemma-4-26-local
 
 # Model cards and pricing
 python -m bench_cli results generate
+# Note: after a --as / OR-id run, `bench results generate --model <alias>` won't
+# match rewritten logs (they store the recorded name). Query by the recorded
+# OpenRouter id or omit --model to regenerate all cards.
 python -m bench_cli prices refresh
 python -m bench_cli prices list
 
