@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bench_cli.resolver import bare_model_name
 from scorers.reference_model import get_reference_model_id
 from scorers.task_budgets import get_task_budget
 from scorers.baseline_store import BaselineStore
@@ -374,8 +375,8 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
 
 
 def _short_model(name: str) -> str:
-    """Strip 'openai/' prefix for display."""
-    return name.removeprefix("openai/")
+    """Strip the first path segment for display (openai/x or minimaxai/x -> x)."""
+    return bare_model_name(name)
 
 
 def _fmt(val: float) -> str:

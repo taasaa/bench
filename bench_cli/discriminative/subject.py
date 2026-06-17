@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bench_cli.resolver import bare_model_name
 from bench_cli.discriminative.types import SubjectID
 
 
@@ -82,10 +83,8 @@ def _infer_agent_mode(sandbox, solver_args: dict | None) -> str:
 
 
 def _normalize_model(model: str) -> str:
-    """Strip provider prefix to get the bare alias (e.g. openai/qwen-local → qwen-local)."""
-    if "/" in model:
-        return model.split("/", 1)[1]
-    return model
+    """Strip provider prefix (e.g. minimaxai/minimax-m3 -> minimax-m3)."""
+    return bare_model_name(model)
 
 
 def get_all_log_paths(
