@@ -49,4 +49,6 @@ class TestBareName:
         assert bare_name(canonical) == "qwen-local"
 
     def test_non_openai_prefix(self):
-        assert bare_name("anthropic/claude-3") == "anthropic/claude-3"
+        # bare_name now strips the FIRST segment (not just openai/), so a
+        # non-openai prefix is also reduced to its suffix.
+        assert bare_name("anthropic/claude-3") == "claude-3"

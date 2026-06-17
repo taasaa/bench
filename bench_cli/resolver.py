@@ -12,6 +12,16 @@ import click
 from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
 
 
+def bare_model_name(model: str) -> str:
+    """Everything after the first '/' segment, or the whole string if no '/'.
+
+    Handles both proxy-alias form ('openai/thinking' -> 'thinking') and raw
+    OpenRouter ids ('minimaxai/minimax-m3' -> 'minimax-m3'). This is the single
+    source of truth for display/moniker-check/slug derivation.
+    """
+    return model.split("/", 1)[1] if "/" in model else model
+
+
 def _build_suffix_map() -> dict[str, str]:
     """Build {bare_suffix: canonical_key} from MODEL_ALIAS_MAP."""
     result: dict[str, str] = {}
@@ -58,5 +68,5 @@ def resolve_model(raw: str) -> str:
 
 
 def bare_name(canonical: str) -> str:
-    """Return display name: openai/qwen-local -> qwen-local."""
-    return canonical.removeprefix("openai/")
+    """Return display name: openai/qwen-local -> qwen-local, minimaxai/minimax-m3 -> minimax-m3."""
+    return bare_model_name(canonical)
