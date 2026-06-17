@@ -32,6 +32,16 @@ def _card_key(model: str, agent: str | None = None, agent_mode: str | None = Non
     return model
 
 
+# Router-tier meta-monikers (SB Operating Rules): never emit cards for these.
+_ROUTER_MONIKERS = {"default", "thinking", "heavy", "background", "smart-router"}
+
+
+def is_moniker_alias(bench_alias: str) -> bool:
+    """True if alias is a router-tier meta-moniker (default/thinking/heavy/...)."""
+    bare = bench_alias.replace("openai/", "")
+    return bare in _ROUTER_MONIKERS
+
+
 def _build_pillar_map() -> dict[str, str]:
     """Scan tasks/ directory to build task_name -> pillar mapping."""
     from bench_cli.inspect.core import _load_pillar_map
@@ -683,6 +693,8 @@ def generate_all_cards(log_dir: Path | None = None) -> list[Path]:
     generated = []
 
     for bench_alias in sorted(model_data.keys()):
+        if is_moniker_alias(bench_alias):
+            continue
         try:
             path = generate_card(bench_alias, model_data[bench_alias], log_dir)
             if path:
@@ -700,6 +712,8 @@ def generate_card_for_model(
     agent_mode: str | None = None,
 ) -> Path | None:
     """Generate/update a model card for a single model after eval run."""
+    if is_moniker_alias(bench_alias):
+        return None
     model_data = _load_model_data(log_dir, model_filter=bench_alias)
     card_key = _card_key(bench_alias, agent, agent_mode)
     if card_key not in model_data:

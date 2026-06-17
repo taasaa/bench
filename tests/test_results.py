@@ -511,3 +511,18 @@ class TestGenerateCardForModel:
             agent_mode="docker",
         )
         assert path is None
+
+
+# ---------------------------------------------------------------------------
+# W2b: router-tier meta-monikers must never emit cards
+# ---------------------------------------------------------------------------
+
+
+class TestMonikerSkip:
+    """W2b: results generate emits no cards for router-tier meta-monikers."""
+
+    @pytest.mark.parametrize("moniker", ["default", "thinking", "heavy", "background", "smart-router"])
+    def test_is_moniker_alias(self, moniker):
+        from bench_cli.results.core import is_moniker_alias
+        assert is_moniker_alias(f"openai/{moniker}") is True
+        assert is_moniker_alias("openai/nvidia-nemotron-30b") is False
