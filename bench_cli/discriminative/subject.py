@@ -30,18 +30,21 @@ def resolve_subject_from_log(log_path: Path) -> SubjectID:
 
     el = read_eval_log(str(log_path))
 
-    # Model: first key in model_usage
-    model = None
-    if el.samples and el.samples[0].model_usage:
-        # Use the first non-judge model
-        for key in el.samples[0].model_usage:
-            if "judge" not in key.lower():
-                model = key
-                break
-        if model is None:
-            model = next(iter(el.samples[0].model_usage))
+    # Model identity: PRIMARY source is el.eval.model (the recorded name after
+    # the --as/rewrite path). model_usage keys are ROUTED names (monikers) and
+    # would re-introduce the moniker-as-subject problem; use them only as a
+    # fallback for legacy logs whose eval.model was never rewritten.
+    model = el.eval.model if (el.eval and el.eval.model) else None
     if model is None:
-        model = el.eval.model or "unknown"
+        if el.samples and el.samples[0].model_usage:
+            for key in el.samples[0].model_usage:
+                if "judge" not in key.lower():
+                    model = key
+                    break
+            if model is None:
+                model = next(iter(el.samples[0].model_usage))
+    if model is None:
+        model = "unknown"
 
     # Subject type from sandbox
     sandbox_type = getattr(el.eval.sandbox, "type", None)
