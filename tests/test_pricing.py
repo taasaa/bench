@@ -451,3 +451,18 @@ class TestResolveAliasMapTier:
         litellm_config._build_reverse_lookup.cache_clear()
         # not managed, in map, but cache empty -> None
         assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") is None
+
+    def test_sc10_nemotron_subjects_priced(self):
+        """SC#10: the two 01cfd589 cost-anomaly subjects now resolve to cached, paid or_ids."""
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") == "nvidia/nemotron-3-super-120b-a12b"
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-nano-30b-a3b") == "nvidia/nemotron-3-nano-30b-a3b"
+
+    def test_sc10_omni_nan_correct(self):
+        """SC#10 NaN-correct: omni model's paid or_id is absent from cache -> scorer NaNs."""
+        from scorers.price_ratio import _resolve_and_price
+        # nemotron-nano-omni-30b resolves via litellm to a paid or_id that is MISSING
+        # from the cache -> no price -> cost is None (scorer will emit NaN)
+        class U:
+            input_tokens = 100; output_tokens = 50
+        cost, or_id, is_free, _ = _resolve_and_price("openai/nemotron-nano-omni-30b", U())
+        assert cost is None  # NaN-correct: scorer will emit NaN
