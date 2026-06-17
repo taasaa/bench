@@ -72,6 +72,24 @@ def _resolve_alias(raw: str) -> str:
     return f"openai/{cleaned}"
 
 
+def _resolve_query_name(model_alias: str) -> str:
+    """Resolve a user-supplied inspect --model to the recorded-name form.
+
+    Logs store the recorded identity (OR id or --as value). When a user queries
+    by a routing alias, resolve it through the same path bench run uses so the
+    el.eval.model filter matches. Querying by an already-recorded OR id is a
+    no-op (resolve_recorded_name is idempotent on OR ids).
+
+    NOTE (R5): a log recorded via `--as <custom>` is NOT discoverable from the
+    routing alias (the custom name has no LiteLLM backing to resolve to); users
+    must query such logs by the literal `--as` value. Both forms are matched
+    because the filter accepts EITHER the raw user input OR the resolved form.
+    """
+    from bench_cli.run.core import resolve_recorded_name
+
+    return resolve_recorded_name(model_alias, None)
+
+
 # ---------------------------------------------------------------------------
 # Score extraction
 # ---------------------------------------------------------------------------
@@ -120,6 +138,7 @@ def _load_samples(
     log_dir = log_dir or _LOG_DIR
     task_samples: dict[str, list[SampleScore]] = defaultdict(list)
     seen_tasks: set[str] = set()
+    resolved_query = _resolve_query_name(model_alias)
 
     for info in list_eval_logs(log_dir=str(log_dir), descending=True):
         try:
@@ -128,7 +147,7 @@ def _load_samples(
             warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
 
-        if el.eval.model != model_alias:
+        if el.eval.model not in (model_alias, resolved_query):
             continue
         if el.status != "success" or not el.samples:
             continue
@@ -311,6 +330,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
     Returns empty dict if there is only one run per task.
     """
     log_dir = log_dir or _LOG_DIR
+    resolved_query = _resolve_query_name(model_alias)
 
     # First pass: identify the latest (newest) file per task.
     latest_file_per_task: dict[str, str] = {}
@@ -320,7 +340,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         except Exception as exc:
             warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
-        if el.eval.model != model_alias:
+        if el.eval.model not in (model_alias, resolved_query):
             continue
         if el.status != "success" or not el.samples:
             continue
@@ -344,7 +364,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         except Exception as exc:
             warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
-        if el.eval.model != model_alias:
+        if el.eval.model not in (model_alias, resolved_query):
             continue
         if el.status != "success" or not el.samples:
             continue
