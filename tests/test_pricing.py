@@ -424,3 +424,30 @@ class TestIsManagedModel:
     def test_partial_match_not_managed(self):
         # "local" appears in the alias but not as -local suffix
         assert is_managed_model("openai/local-model-test") is False
+
+
+class TestResolveAliasMapTier:
+    """D1: resolve_openrouter_id consults MODEL_ALIAS_MAP (verified in cache)."""
+
+    def test_alias_map_entry_resolves_when_cached(self):
+        # openai/nvidia-nemotron-3-super-120b-a12b is priced in the 337-model cache
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") == "nvidia/nemotron-3-super-120b-a12b"
+
+    def test_alias_map_skipped_for_managed_models(self):
+        # qwen-local is managed -> tier skipped -> falls to litellm (not the map's qwen/qwen3.5-35b-a3b)
+        from bench_cli.pricing.litellm_config import is_managed_model
+        assert is_managed_model("openai/qwen-local")
+        # managed model never resolves via the alias map's paid or_id:
+        assert resolve_openrouter_id("openai/qwen-local") != MODEL_ALIAS_MAP["openai/qwen-local"]
+
+    def test_alias_map_miss_falls_through(self, tmp_path, monkeypatch):
+        # alias in map but or_id NOT in cache -> falls through (returns None or litellm id)
+        from bench_cli.pricing import litellm_config
+        from bench_cli.pricing.price_cache import OpenRouterCache
+        empty = tmp_path / "empty.json"; empty.write_text("{}")
+        monkeypatch.setattr(OpenRouterCache, "__init__",
+            lambda self, **kw: self.__dict__.update(_cache_path=empty, _data=None))
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", tmp_path / "ov.json")
+        litellm_config._build_reverse_lookup.cache_clear()
+        # not managed, in map, but cache empty -> None
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") is None

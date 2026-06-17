@@ -5,8 +5,11 @@ Reads ~/dev/litellm/config.yaml and resolves bench model aliases
 (e.g. "nvidia/nemotron-3-nano-30b-a3b").
 
 Resolution order:
-  1. LiteLLM config → OpenRouter cache lookup (happy path for most models)
-  2. Persistent overrides (human-validated slug corrections)
+  1. Persistent overrides (human-validated slug corrections)
+  2. MODEL_ALIAS_MAP — deterministic static bench_alias → OpenRouter id
+     (fires only when the mapped id is present in the cache; skipped for
+     managed/local models, which are pricing-exempt by design)
+  3. LiteLLM config → OpenRouter cache lookup (happy path for most models)
 If an override is stale (model dropped from cache), raises RuntimeError.
 """
 
@@ -185,8 +188,10 @@ def resolve_openrouter_id(alias: str) -> str | None:
 
     Resolution order:
       1. Persistent overrides (human-validated slug corrections)
-      2. LiteLLM config → verify slug is in OpenRouter cache (happy path)
-      3. If an override exists but the model was dropped from cache → error
+      2. MODEL_ALIAS_MAP — deterministic static alias → OpenRouter id
+         (verified in cache; skipped for managed/local models)
+      3. LiteLLM config → verify slug is in OpenRouter cache (happy path)
+      4. If an override exists but the model was dropped from cache → error
 
     Returns:
         OpenRouter model ID that IS in the cache, or None if alias is unknown.
@@ -195,6 +200,7 @@ def resolve_openrouter_id(alias: str) -> str | None:
         RuntimeError: if an override exists but the model is no longer in cache.
     """
     from bench_cli.pricing.price_cache import OpenRouterCache
+    from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
 
     cache = OpenRouterCache()
     all_prices = cache.get_all_prices()
@@ -211,7 +217,15 @@ def resolve_openrouter_id(alias: str) -> str | None:
             "Update the override or refresh the cache."
         )
 
-    # 2. Try LiteLLM config resolution — verify against cache
+    # 2. MODEL_ALIAS_MAP — bench-canonical bench_alias → OpenRouter id.
+    #    Deterministic (static dict); only fires when the mapped id is in cache.
+    #    Skipped for managed/local models (they are pricing-exempt by design).
+    if not is_managed_model(alias):
+        mapped_id = MODEL_ALIAS_MAP.get(alias)
+        if mapped_id is not None and mapped_id in all_prices:
+            return mapped_id
+
+    # 3. Try LiteLLM config resolution — verify against cache
     litellm_id = _resolve_from_litellm(alias)
     if litellm_id is not None and litellm_id in all_prices:
         return litellm_id
