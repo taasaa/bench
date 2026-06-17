@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scorers.reference_model import get_reference_model_id
 from scorers.task_budgets import get_task_budget
 from scorers.baseline_store import BaselineStore
 from scorers.protocol import (
@@ -467,6 +468,23 @@ def _recompute_time_ratio(baseline_store, task, avg_time, budget):
     return ref / avg_time if avg_time and avg_time > 0 else float("nan")
 
 
+# Documented calibration sources used when no reference model is registered.
+_TOKEN_LATENCY_DEFAULT_REF = "qwen-local"  # SYSTEM_DEFAULT_BUDGETS calibration source
+_COST_DEFAULT_REF = "minimax-m2.7"  # task_budgets.py reference_cost_usd source
+
+
+def _ratio_reference_labels() -> dict[str, str]:
+    """Return {efficiency_latency: <ref>, cost: <ref>} for the ratio-column legend (W3c).
+
+    Once a reference model is registered (W3d), all three pillars share it; until then,
+    the legend reports the documented per-pillar calibration sources so the split is loud.
+    """
+    ref = get_reference_model_id()
+    if ref:
+        return {"efficiency_latency": ref, "cost": ref}
+    return {"efficiency_latency": _TOKEN_LATENCY_DEFAULT_REF, "cost": _COST_DEFAULT_REF}
+
+
 # Columns: TASK | CORRECT | TOK_RATIO | TIME_RATIO | TOKENS | TIME | COST_RATIO | AVG COST
 _COL_HEADERS = ["CORRECT", "TOK_RATIO", "TIME_RATIO", "TOKENS", "TIME", "COST_RATIO", "AVG COST"]
 _COL_KEYS = [
@@ -532,6 +550,14 @@ def format_pillar_table(
             lines.append("COST: no cache")
     except Exception:
         pass
+    lines.append("")
+
+    # W3c: label the ratio columns with their (reference-driven) reference model.
+    labels = _ratio_reference_labels()
+    lines.append(
+        f"RATIOS vs {labels['efficiency_latency']} (efficiency/latency) · "
+        f"{labels['cost']} (cost)"
+    )
     lines.append("")
 
     # Row 1: model names
