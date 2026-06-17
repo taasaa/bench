@@ -22,6 +22,53 @@ TIER_DIRS: dict[str, list[str]] = {
 
 DEFAULT_MODEL = "openai/default"
 
+# Regex to extract the task token from an eval-log filename:
+# 2026-04-16T23-13-32-00-00_task-name_ID.eval
+# Kept independent from results/core.py:_FNAME_RE so the run path never
+# couples to the results/card path.
+_FNAME_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T[\d-]+)_(.+)_([A-Za-z0-9]+)\.eval")
+
+
+# ---------------------------------------------------------------------------
+# Cross-run resume (W1a)
+# ---------------------------------------------------------------------------
+
+
+def _completed_tasks(log_dir: str, bench_alias: str, spec_dirs: set[str]) -> set[str]:
+    """Task dir-names (hyphenated) that already have a status='success'
+    log for ``bench_alias``.
+
+    Only logs whose filename task token is in ``spec_dirs`` are header-read,
+    so this is cheap even with 1000s of logs on disk.
+
+    Only status='success' counts -- errored/started/partial logs are always
+    re-run so a killed run recovers past its failure point.
+    """
+    from inspect_ai.log import list_eval_logs, read_eval_log
+
+    log_path = Path(log_dir)
+    if not log_path.is_dir():
+        return set()
+    done: set[str] = set()
+    try:
+        infos = list_eval_logs(log_dir=str(log_path))
+    except Exception:
+        return set()
+    for info in infos:
+        m = _FNAME_RE.search(info.name)
+        if not m:
+            continue
+        task_token = m.group(2)
+        if task_token not in spec_dirs:
+            continue  # cheap skip: not a task we'd run
+        try:
+            el = read_eval_log(info, header_only=True)
+        except Exception:
+            continue
+        if el.eval and el.eval.model == bench_alias and el.status == "success":
+            done.add(task_token)
+    return done
+
 
 # ---------------------------------------------------------------------------
 # Task discovery

@@ -9,6 +9,7 @@ import click
 from bench_cli.run.core import (
     DEFAULT_MODEL,
     _check_price_gate,
+    _completed_tasks,
     _discover_tasks,
     _resolve_agent_solver,
     _resolve_task,
@@ -94,6 +95,23 @@ from bench_cli.run.core import (
     help="Skip automatic bench compare after eval completes.",
 )
 @click.option(
+    "--no-resume",
+    is_flag=True,
+    default=False,
+    help=(
+        "Force a fully fresh run: re-run every task even if a status='success' "
+        "log already exists. Required after a scoring fix, a scorer change, a "
+        "verify.sh/judge.md edit, or a reference-cost update (otherwise resume "
+        "would silently skip now-stale tasks)."
+    ),
+)
+@click.option(
+    "--no-tui",
+    is_flag=True,
+    default=False,
+    help="Force plain-text progress (Inspect display='plain') even when stdout is a TTY.",
+)
+@click.option(
     "--one-by-one",
     is_flag=True,
     default=False,
@@ -154,6 +172,8 @@ def run(
     max_tasks: int | None,
     log_dir: str,
     no_compare: bool,
+    no_resume: bool,
+    no_tui: bool,
     one_by_one: bool,
     concurrency: int | None,
     sequential: bool,
@@ -243,12 +263,34 @@ def run(
         if agent_mode in ("docker", "harness"):
             eval_sandbox = "docker"
 
+    # W1a: cross-run resume (default-on). Skip (model, task) pairs that
+    # already have a status='success' log, unless --no-resume. Filtering
+    # happens BEFORE task resolution so we don't even load completed tasks.
+    run_specs = specs
+    if not no_resume:
+        spec_dirs = {Path(s).parent.name for s in specs}
+        done = _completed_tasks(log_dir, bench_alias, spec_dirs)
+        run_specs = [s for s in specs if Path(s).parent.name not in done]
+        skipped = len(specs) - len(run_specs)
+        if skipped:
+            click.echo(
+                f"Resume: skipping {skipped} task(s) with existing success log "
+                f"(--no-resume to re-run)."
+            )
+        if not run_specs:
+            click.echo(
+                "All tasks already have a success log; nothing to do. "
+                "Use --no-resume to re-run."
+            )
+            return
+
     # 0. Convert spec strings to Task objects with bench_task_dir injected.
     # inspect_eval runs scorers inside an async event loop where stack introspection
     # fails (no task.py frame visible). Passing via Task metadata lets the scorer
     # find verify.sh without any filesystem gymnastics.
     tasks_with_metadata = [
-        _resolve_task(spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model) for spec in specs
+        _resolve_task(spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model)
+        for spec in run_specs
     ]
 
     # 3. Execute via Inspect AI's programmatic eval() API.
@@ -260,8 +302,8 @@ def run(
         click.echo("Running tasks one-by-one (--one-by-one mode)")
         click.echo()
         all_results = []
-        for i, spec in enumerate(specs, 1):
-            click.echo(f"[{i}/{len(specs)}] Running {spec}")
+        for i, spec in enumerate(run_specs, 1):
+            click.echo(f"[{i}/{len(run_specs)}] Running {spec}")
             result = inspect_eval(
                 tasks=[tasks_with_metadata[i - 1]],
                 model=bench_alias,
