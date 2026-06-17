@@ -43,6 +43,8 @@ class Baseline:
     output_tokens: int | None = None
     latency_seconds: float | None = None
     tool_call_count: int | None = None
+    reference_cost_usd: float | None = None
+    """Measured avg cost/sample for this (task, model). Tier-1 cost reference (W3b)."""
 
     def to_dict(self) -> dict:
         """Serialize this baseline to a plain dict for JSON serialization."""
@@ -132,6 +134,7 @@ class BaselineStore:
         latency_seconds: float | None = None,
         tool_call_count: int | None = None,
         correctness_gate: float = CORRECTNESS_GATE_DEFAULT,
+        reference_cost_usd: float | None = None,
     ) -> Baseline:
         """Create and save a baseline with correctness gate applied.
 
@@ -150,6 +153,7 @@ class BaselineStore:
             output_tokens=output_tokens,
             latency_seconds=latency_seconds,
             tool_call_count=tool_call_count,
+            reference_cost_usd=reference_cost_usd,
         )
         self.save(baseline, task_id, model_id)
         return baseline
