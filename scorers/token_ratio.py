@@ -39,9 +39,17 @@ def token_ratio_scorer(
     Args:
         baseline_store: Optional BaselineStore for reference resolution.
                        If None, falls back to task_budget → system default.
+                       Self-provisions once a reference model is registered (W3).
         task_budget: Per-task budget override. Any None field falls through
                      to the next tier in the resolution chain.
     """
+    # W3: self-provision a store once a reference model is registered, so task.py
+    # callers need no changes. No-op until a reference is designated.
+    if baseline_store is None:
+        from scorers.reference_model import get_reference_model_id
+
+        if get_reference_model_id() is not None:
+            baseline_store = BaselineStore()
 
     async def score(state: TaskState, target: Target) -> Score:
         actual_tokens = state.token_usage  # total tokens only (no input/output split)
@@ -53,12 +61,18 @@ def token_ratio_scorer(
         )
         model_id = str(state.model)
 
-        # Tier 1: baseline
+        # Tier 1: reference-model baseline (registry-driven, W3).
         reference_tokens, source, ref_model = resolve_baseline_reference(
             baseline_store, task_id, model_id, "output_tokens"
         )
-        # Tier 2: task budget override
-        if task_budget is not None and task_budget.output_tokens is not None:
+        # Tier 2: task-budget fallback ONLY when no reference baseline resolved (W3):
+        # once a reference model is recorded it is the reference for ALL subjects,
+        # so task_budget no longer overrides it.
+        if (
+            source is not RatioSource.BASELINE
+            and task_budget is not None
+            and task_budget.output_tokens is not None
+        ):
             reference_tokens = float(task_budget.output_tokens)
             source = RatioSource.TASK_BUDGET
             ref_model = None

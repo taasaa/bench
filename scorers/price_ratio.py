@@ -24,6 +24,8 @@ from inspect_ai.solver import TaskState
 
 from bench_cli.pricing.litellm_config import resolve_openrouter_id
 from bench_cli.pricing.model_aliases import PriceInfo
+from scorers.baseline_store import BaselineStore
+from scorers.protocol import resolve_cost_reference
 from scorers.protocol import TaskBudget as TaskBudgetType
 
 # Late import — price_cache may not exist yet (Team A builds it).
@@ -143,12 +145,23 @@ def _resolve_and_price(
 @scorer(metrics=[mean()])
 def price_ratio_scorer(
     task_budget: TaskBudgetType | None = None,
+    baseline_store: "BaselineStore | None" = None,
 ) -> None:
     """Score cost via price ratio.
 
     Args:
         task_budget: Per-task budget with optional reference_cost_usd.
+        baseline_store: Optional BaselineStore for Tier-1 cost reference (W3b).
+                       If None but a reference model is registered, one is
+                       self-provisioned so task.py callers need no changes.
     """
+    # W3: self-provision a store once a reference model is registered, so task.py
+    # callers need no changes. No-op until a reference is designated.
+    if baseline_store is None:
+        from scorers.reference_model import get_reference_model_id
+
+        if get_reference_model_id() is not None:
+            baseline_store = BaselineStore()
 
     async def score(state: TaskState, target: Target) -> Score:
         usage = state.output.usage if state.output else None
@@ -186,9 +199,11 @@ def price_ratio_scorer(
                 },
             )
 
-        # Resolve reference cost
-        reference_cost: float | None = None
-        if task_budget is not None and task_budget.reference_cost_usd is not None:
+        # Resolve reference cost — Tier 1: reference-model BaselineStore (W3b),
+        # Tier 2: task_budget.reference_cost_usd.
+        task_name = (state.metadata or {}).get("task_name", "") if state.metadata else ""
+        reference_cost, _src, _ref = resolve_cost_reference(baseline_store, task_name)
+        if reference_cost is None and task_budget is not None:
             reference_cost = task_budget.reference_cost_usd
 
         # No reference cost — record actual cost only, skip ratio
