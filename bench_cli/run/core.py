@@ -177,6 +177,41 @@ def parse_model_arg(model: str) -> tuple[str, str | None]:
     return model, None
 
 
+def resolve_recorded_name(routed_name: str, as_name: str | None) -> str:
+    """Compute the model identity to record in eval logs.
+
+    Order (first match wins):
+      1. --as given -> the literal --as value (no prefix applied).
+      2. Managed/local model (is_managed_model) -> routed_name unchanged.
+         MUST short-circuit before the resolver: the pricing resolver returns
+         non-None LiteLLM ids for some managed models (e.g. qwen-local ->
+         huihui-qwen3.5-35b-a3b-claude-4.6-opus-abliterated), which would
+         silently corrupt local-model identity.
+      3. resolve_backing_model_id(routed_name) -> raw OpenRouter id of the actual
+         backing model (B4: bypasses the pricing override map, so e.g.
+         openai/minimax-m3 records minimaxai/minimax-m3, NOT the override target
+         minimax/minimax-m3).
+      4. Resolver returns None -> routed_name unchanged (unknown alias).
+
+    Args:
+      routed_name: the --model value sent to the proxy (e.g. "openai/thinking").
+      as_name: the --as value, or None.
+
+    Returns:
+      The recorded identity (full OR id, or --as literal, or routed fallback).
+    """
+    from bench_cli.pricing.litellm_config import is_managed_model, resolve_backing_model_id
+
+    if as_name is not None:
+        return as_name
+    if is_managed_model(routed_name):
+        return routed_name
+    or_id = resolve_backing_model_id(routed_name)
+    if or_id is not None:
+        return or_id
+    return routed_name
+
+
 # ---------------------------------------------------------------------------
 # Pre-flight price gate
 # ---------------------------------------------------------------------------

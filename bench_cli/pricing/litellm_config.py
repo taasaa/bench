@@ -231,6 +231,36 @@ def resolve_openrouter_id(alias: str) -> str | None:
     return None
 
 
+def resolve_backing_model_id(alias: str) -> str | None:
+    """Resolve a bench alias to its actual backing OpenRouter id, IGNORING the
+    pricing override map.
+
+    Use this (not resolve_openrouter_id) when you need the *real* backing model
+    for identity/recording, not the pricing correction. The bracket pricing
+    override (logs/pricing/model_overrides.json) is pricing-only and must not
+    leak into the recorded model identity (spec Non-Goal).
+
+    Resolution order (no step 1 override lookup):
+      1. MODEL_ALIAS_MAP — static alias -> OpenRouter id (if in cache).
+      2. LiteLLM config -> verify slug in cache (or return slug for caller to decide).
+    """
+    from bench_cli.pricing.price_cache import OpenRouterCache
+    from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
+
+    cache = OpenRouterCache()
+    all_prices = cache.get_all_prices()
+
+    # 1. MODEL_ALIAS_MAP (deterministic static), verified in cache
+    if not is_managed_model(alias):
+        mapped_id = MODEL_ALIAS_MAP.get(alias)
+        if mapped_id is not None and mapped_id in all_prices:
+            return mapped_id
+
+    # 2. LiteLLM config resolution
+    litellm_id = _resolve_from_litellm(alias)
+    return litellm_id  # may be None; caller decides
+
+
 def is_managed_model(alias: str) -> bool:
     """Return True if alias is a local/proxy model not in OpenRouter catalog."""
     if alias.endswith("-local"):
