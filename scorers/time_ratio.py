@@ -38,9 +38,13 @@ def time_ratio_scorer(
 
     Args:
         baseline_store: Optional BaselineStore for reference resolution.
+                       Self-provisions once a reference model is registered (W3).
         task_budget: Per-task budget. noise_floor_seconds field overrides
                      DEFAULT_NOISE_FLOOR if set.
     """
+    # W3: self-provision a store once a reference model is registered.
+    import scorers.protocol as _proto
+    baseline_store = _proto._maybe_provision_baseline_store(baseline_store)
 
     def _noise_floor() -> float:
         if task_budget is not None and task_budget.noise_floor_seconds is not None:
@@ -68,12 +72,18 @@ def time_ratio_scorer(
         model_id = str(state.model)
         noise_floor = _noise_floor()
 
-        # Tier 1: baseline
+        # Tier 1: reference-model baseline (registry-driven, W3).
         reference_seconds, source, ref_model = resolve_baseline_reference(
             baseline_store, task_id, model_id, "latency_seconds"
         )
-        # Tier 2: task budget override
-        if task_budget is not None and task_budget.latency_seconds is not None:
+        # Tier 2: task-budget fallback ONLY when no reference baseline resolved (W3):
+        # once a reference model is recorded it is the reference for ALL subjects,
+        # so task_budget no longer overrides it.
+        if (
+            source is not RatioSource.BASELINE
+            and task_budget is not None
+            and task_budget.latency_seconds is not None
+        ):
             reference_seconds = float(task_budget.latency_seconds)
             source = RatioSource.TASK_BUDGET
             ref_model = None

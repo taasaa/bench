@@ -20,6 +20,29 @@ from scorers.baseline_store import (
 )
 
 
+def _avg_cost_from_result(result) -> float | None:
+    """Mean per-sample actual_cost_usd from price_ratio_scorer metadata. None if absent.
+
+    W3b: feeds Baseline.reference_cost_usd so a recorded baseline becomes the
+    Tier-1 cost reference for price_ratio_scorer.
+    """
+    vals: list[float] = []
+    samples = getattr(result, "samples", None) or []
+    for sample in samples:
+        scores = getattr(sample, "scores", None)
+        if not isinstance(scores, dict):
+            continue
+        pr = scores.get("price_ratio_scorer")
+        if pr is None:
+            continue
+        meta = getattr(pr, "metadata", None)
+        if isinstance(meta, dict):
+            c = meta.get("actual_cost_usd")
+            if isinstance(c, (int, float)):
+                vals.append(float(c))
+    return sum(vals) / len(vals) if vals else None
+
+
 @click.group()
 def baseline() -> None:
     """Record and manage baseline eval results for ratio scoring."""
@@ -137,6 +160,7 @@ def record(
         avg_output = output_tokens // max(sample_count, 1)
         avg_input = input_tokens // max(sample_count, 1)
         avg_latency = latency_sum / max(sample_count, 1) if sample_count else None
+        avg_cost = _avg_cost_from_result(result)
 
         baseline = store.record(
             task_id=task_id,
@@ -148,6 +172,7 @@ def record(
             latency_seconds=avg_latency,
             tool_call_count=tool_call_count // max(sample_count, 1),
             correctness_gate=1.0 if force else correctness_threshold,
+            reference_cost_usd=avg_cost,
         )
 
         status = "✓" if baseline.valid_for_reference else "✗"
@@ -162,6 +187,13 @@ def record(
 
     click.echo(f"\nRecorded {recorded} baselines in {wall_time:.1f}s")
     click.echo(f"Baseline store: {BASELINES_DIR}/")
+
+    # W3d: promote the recorded model to the unified Tier-1 reference for all
+    # ratio pillars. Scorers/compare auto-pick this up via the registry.
+    from scorers.reference_model import set_reference_model_id
+
+    set_reference_model_id(model)
+    click.echo(f"Reference model set to: {model} (unified Tier-1 reference for all pillars)")
 
 
 @baseline.command("list")

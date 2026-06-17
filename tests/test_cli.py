@@ -237,6 +237,100 @@ class TestRunIntegration:
         assert "No tasks found" in result.output
 
 
+def _run_with_mocked_eval(tasks_root, monkeypatch, extra_args):
+    """Invoke `bench run --tier quick` with inspect_ai.eval mocked.
+
+    Returns (result, mock_eval) so callers can assert on call_args.
+    Mirrors the wiring test pattern in TestRunIntegration.
+    """
+    from inspect_ai import Task
+    from types import SimpleNamespace
+
+    fake_task = Task(dataset=None)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    runner = CliRunner()
+    with patch("inspect_ai.eval") as mock_eval:
+        fake_log = SimpleNamespace(
+            status="success",
+            eval=SimpleNamespace(task="fixture_task"),
+            results=SimpleNamespace(
+                scores=[SimpleNamespace(metrics={"mean": SimpleNamespace(value=1.0)})]
+            ),
+        )
+        mock_eval.return_value = [fake_log]
+        with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
+            with patch("bench_cli.run.cli._check_price_gate"):
+                result = runner.invoke(
+                    cli,
+                    ["run", "--model", "openai/default", "--tier", "quick"] + list(extra_args),
+                )
+    return result, mock_eval
+
+
+class TestRunSampleConcurrency:
+    """P0 fix (SB task a69a58d4): programmatic inspect_eval() must thread
+    max_samples + bounded max_retries, which Inspect's env vars silently ignore
+    on the programmatic path."""
+
+    def test_default_max_samples_is_one(self, tasks_root, monkeypatch):
+        """No flag -> max_samples=1 (safe default for rpm-capped providers)."""
+        result, mock_eval = _run_with_mocked_eval(tasks_root, monkeypatch, [])
+        assert result.exit_code == 0, result.output
+        assert mock_eval.call_args.kwargs.get("max_samples") == 1
+
+    def test_max_samples_flag_is_passed(self, tasks_root, monkeypatch):
+        """--max-samples N threads through to inspect_eval()."""
+        result, mock_eval = _run_with_mocked_eval(tasks_root, monkeypatch, ["--max-samples", "4"])
+        assert result.exit_code == 0, result.output
+        assert mock_eval.call_args.kwargs.get("max_samples") == 4
+
+    def test_sequential_implies_max_samples_one(self, tasks_root, monkeypatch):
+        """--sequential => fully serial: max_samples=1 AND max_tasks=1."""
+        result, mock_eval = _run_with_mocked_eval(tasks_root, monkeypatch, ["--sequential"])
+        assert result.exit_code == 0, result.output
+        kwargs = mock_eval.call_args.kwargs
+        assert kwargs.get("max_samples") == 1
+        assert kwargs.get("max_tasks") == 1
+
+    def test_sequential_overrides_explicit_max_samples(self, tasks_root, monkeypatch):
+        """--sequential --max-samples 8 => max_samples=1 (sequential wins)."""
+        result, mock_eval = _run_with_mocked_eval(
+            tasks_root, monkeypatch, ["--sequential", "--max-samples", "8"]
+        )
+        assert result.exit_code == 0, result.output
+        assert mock_eval.call_args.kwargs.get("max_samples") == 1
+
+    def test_max_retries_flag_is_passed(self, tasks_root, monkeypatch):
+        """--max-retries N threads through to inspect_eval() (GenerateConfig kwarg)."""
+        result, mock_eval = _run_with_mocked_eval(tasks_root, monkeypatch, ["--max-retries", "6"])
+        assert result.exit_code == 0, result.output
+        assert mock_eval.call_args.kwargs.get("max_retries") == 6
+
+    def test_default_max_retries_passthrough(self, tasks_root, monkeypatch):
+        """No --max-retries => max_retries=None (passthrough to Inspect provider default)."""
+        result, mock_eval = _run_with_mocked_eval(tasks_root, monkeypatch, [])
+        assert result.exit_code == 0, result.output
+        assert mock_eval.call_args.kwargs.get("max_retries") is None
+
+    def test_one_by_one_threads_max_samples_to_each_call(self, tasks_root, monkeypatch):
+        """--one-by-one must pass max_samples to every per-task inspect_eval call."""
+        result, mock_eval = _run_with_mocked_eval(tasks_root, monkeypatch, ["--one-by-one"])
+        assert result.exit_code == 0, result.output
+        # --tier quick discovers 2 verification tasks -> 2 eval calls
+        assert mock_eval.call_count == 2
+        for call in mock_eval.call_args_list:
+            assert call.kwargs.get("max_samples") == 1
+            assert call.kwargs.get("max_retries") is None
+
+    def test_run_help_shows_concurrency_flags(self):
+        """--help advertises the new --max-samples / --max-retries flags."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--max-samples" in result.output
+        assert "--max-retries" in result.output
+
+
 class TestPricesCLI:
     """Tests for bench prices refresh and bench prices list commands."""
 
@@ -361,7 +455,7 @@ class TestPriceGate:
             litellm_config._build_reverse_lookup.cache_clear()
 
             result = runner.invoke(
-                cli, ["run", "--tier", "quick", "--model", "openai/nvidia-nemotron-30b"]
+                cli, ["run", "--tier", "quick", "--model", "openai/nemotron-ultra-550b"]
             )
             assert "No price found" in result.output
             assert "ERROR" in result.output

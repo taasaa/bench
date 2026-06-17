@@ -149,27 +149,71 @@ def resolve_baseline_reference(
     model_id: str,
     budget_field: Literal["output_tokens", "latency_seconds"],
 ) -> tuple[float, RatioSource, str | None]:
-    """Resolve a reference value using the 3-tier chain.
+    """Resolve a reference value using the reference-model chain (W3 unified reference).
 
-    Tier 1: BaselineStore → Tier 2: TaskBudget field → Tier 3: SYSTEM_DEFAULT.
+    Tier 1: BaselineStore entry for the DESIGNATED reference model (registry-driven),
+            NOT the subject. ``model_id`` (the subject) is retained for signature
+            stability but is not the Tier-1 lookup key.
+    Tier 3: SYSTEM_DEFAULT.
 
-    Args:
-        baseline_store: BaselineStore instance (None skips tier 1).
-        task_id: Task identifier for baseline lookup.
-        model_id: Model identifier for baseline lookup.
-        budget_field: Which TaskBudget field to use.
-
-    Returns:
-        (reference_value, source, reference_model_id)
+    (Tier 2 -- task_budget -- is applied by the caller, as before.)
     """
-    # Tier 1: baseline
     if baseline_store is not None:
-        baseline = baseline_store.load(task_id, model_id)
-        if baseline is not None and baseline.valid_for_reference:
-            field_val = getattr(baseline, budget_field, None)
-            if field_val is not None:
-                return float(field_val), RatioSource.BASELINE, baseline.model_id
+        from scorers.reference_model import get_reference_model_id
 
-    # Tier 3: system default
+        ref_model_id = get_reference_model_id()
+        if ref_model_id is not None:
+            baseline = baseline_store.load(task_id, ref_model_id)
+            if baseline is not None and baseline.valid_for_reference:
+                field_val = getattr(baseline, budget_field, None)
+                if field_val is not None:
+                    return float(field_val), RatioSource.BASELINE, ref_model_id
+
     default_val = SYSTEM_DEFAULT_BUDGETS.get(budget_field, 1500.0)
     return float(default_val), RatioSource.SYSTEM_DEFAULT, None
+
+
+def resolve_cost_reference(
+    baseline_store: BaselineStore | None,
+    task_id: str,
+) -> tuple[float | None, RatioSource, str | None]:
+    """Resolve a COST reference against the designated reference model (W3b).
+
+    Returns (reference_cost_usd, source, reference_model_id).
+    Tier 1: BaselineStore entry for the reference model with a valid reference_cost_usd.
+    Returns (None, SYSTEM_DEFAULT, None) when none is present -- callers fall back to
+    task_budget.reference_cost_usd (Tier 2) themselves.
+    """
+    if baseline_store is not None:
+        from scorers.reference_model import get_reference_model_id
+
+        ref_model_id = get_reference_model_id()
+        if ref_model_id is not None:
+            baseline = baseline_store.load(task_id, ref_model_id)
+            if (
+                baseline is not None
+                and baseline.valid_for_reference
+                and baseline.reference_cost_usd is not None
+            ):
+                return float(baseline.reference_cost_usd), RatioSource.BASELINE, ref_model_id
+    return None, RatioSource.SYSTEM_DEFAULT, None
+
+
+def _maybe_provision_baseline_store(
+    baseline_store: BaselineStore | None,
+) -> BaselineStore | None:
+    """Self-provision a BaselineStore if a reference model is registered.
+
+    This is the W3 self-provisioning pattern used by all three ratio scorers.
+    Returns the original store if already provided, a new BaselineStore if
+    a reference model is registered, or None if no reference is designated.
+    """
+    if baseline_store is not None:
+        return baseline_store
+    from scorers.reference_model import get_reference_model_id
+
+    if get_reference_model_id() is not None:
+        from scorers.baseline_store import BaselineStore
+
+        return BaselineStore()
+    return None

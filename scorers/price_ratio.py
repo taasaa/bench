@@ -24,6 +24,8 @@ from inspect_ai.solver import TaskState
 
 from bench_cli.pricing.litellm_config import resolve_openrouter_id
 from bench_cli.pricing.model_aliases import PriceInfo
+from scorers.baseline_store import BaselineStore
+from scorers.protocol import resolve_cost_reference
 from scorers.protocol import TaskBudget as TaskBudgetType
 
 # Late import — price_cache may not exist yet (Team A builds it).
@@ -65,6 +67,20 @@ def _extract_tokens(usage: Any) -> tuple[int, int]:
     return int(inp), int(out)
 
 
+def _price_from_alias(alias: str, inp: int, out: int) -> tuple[float | None, str | None, bool]:
+    """Resolve alias, get price, compute cost. Returns (cost_usd, or_id, is_free)."""
+    or_model_id = resolve_openrouter_id(alias)
+    if or_model_id is None:
+        return None, None, False
+    try:
+        price_info = _price_info(or_model_id)
+    except CacheMiss:
+        return None, or_model_id, False
+    except Exception:
+        return None, or_model_id, False
+    return price_info.cost_per_sample(inp, out), or_model_id, price_info.is_free
+
+
 def _resolve_and_price(
     model_alias: str,
     usage: Any,
@@ -81,17 +97,7 @@ def _resolve_and_price(
         if "prompt_tokens" in usage or "completion_tokens" in usage:
             inp = usage.get("prompt_tokens", 0) or 0
             out = usage.get("completion_tokens", 0) or 0
-            or_model_id = resolve_openrouter_id(model_alias)
-            if or_model_id is None:
-                return None, None, False, None
-            try:
-                price_info = _price_info(or_model_id)
-            except CacheMiss:
-                return None, or_model_id, False, None
-            except Exception:
-                return None, or_model_id, False, None
-            is_free = price_info.is_free
-            return price_info.cost_per_sample(inp, out), or_model_id, is_free, None
+            return _price_from_alias(model_alias, inp, out) + (None,)
 
         # Smart-router / multi-model: dict of {tier_name: usage}
         total_cost = 0.0
@@ -100,26 +106,19 @@ def _resolve_and_price(
         tier_breakdown: dict[str, dict] = {}
         for tier_name, tier_usage in usage.items():
             tier_alias = f"openai/{tier_name}"
-            or_id = resolve_openrouter_id(tier_alias)
-            if or_id is None:
-                continue
-            try:
-                price_info = _price_info(or_id)
-            except CacheMiss:
-                continue
-            except Exception:
-                continue
             inp, out = _extract_tokens(tier_usage)
-            tier_cost = price_info.cost_per_sample(inp, out)
-            total_cost += tier_cost
+            cost, or_id, free = _price_from_alias(tier_alias, inp, out)
+            if cost is None or or_id is None:
+                continue
+            total_cost += cost
             has_any_cost = True
-            if price_info.is_free:
+            if free:
                 is_free = True
             tier_breakdown[tier_name] = {
                 "model": or_id,
                 "input_tokens": inp,
                 "output_tokens": out,
-                "cost_usd": tier_cost,
+                "cost_usd": cost,
             }
         if has_any_cost:
             return total_cost, None, is_free, tier_breakdown
@@ -127,28 +126,25 @@ def _resolve_and_price(
 
     # Single ModelUsage object (standard single-model case)
     inp, out = _extract_tokens(usage)
-    or_model_id = resolve_openrouter_id(model_alias)
-    if or_model_id is None:
-        return None, None, False, None
-    try:
-        price_info = _price_info(or_model_id)
-    except CacheMiss:
-        return None, or_model_id, False, None
-    except Exception:
-        return None, or_model_id, False, None
-    is_free = price_info.is_free
-    return price_info.cost_per_sample(inp, out), or_model_id, is_free, None
+    return _price_from_alias(model_alias, inp, out) + (None,)
 
 
 @scorer(metrics=[mean()])
 def price_ratio_scorer(
     task_budget: TaskBudgetType | None = None,
+    baseline_store: "BaselineStore | None" = None,
 ) -> None:
     """Score cost via price ratio.
 
     Args:
         task_budget: Per-task budget with optional reference_cost_usd.
+        baseline_store: Optional BaselineStore for Tier-1 cost reference (W3b).
+                       If None but a reference model is registered, one is
+                       self-provisioned so task.py callers need no changes.
     """
+    # W3: self-provision a store once a reference model is registered.
+    import scorers.protocol as _proto
+    baseline_store = _proto._maybe_provision_baseline_store(baseline_store)
 
     async def score(state: TaskState, target: Target) -> Score:
         usage = state.output.usage if state.output else None
@@ -186,9 +182,11 @@ def price_ratio_scorer(
                 },
             )
 
-        # Resolve reference cost
-        reference_cost: float | None = None
-        if task_budget is not None and task_budget.reference_cost_usd is not None:
+        # Resolve reference cost — Tier 1: reference-model BaselineStore (W3b),
+        # Tier 2: task_budget.reference_cost_usd.
+        task_name = (state.metadata or {}).get("task_name", "") if state.metadata else ""
+        reference_cost, _src, _ref = resolve_cost_reference(baseline_store, task_name)
+        if reference_cost is None and task_budget is not None:
             reference_cost = task_budget.reference_cost_usd
 
         # No reference cost — record actual cost only, skip ratio

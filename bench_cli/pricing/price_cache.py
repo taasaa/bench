@@ -96,9 +96,15 @@ class OpenRouterCache:
                 "context": context,
             }
 
+        # W1c: MERGE new OpenRouter data onto existing cache so manual prices
+        # (added via 'bench prices add') survive refresh. New data wins on
+        # collision (manual price was a stand-in for an unknown).
+        existing = self._read_cache()
+        existing_models = existing.get("models", {}) if existing else {}
+
         cache_data = {
             "fetched_at": datetime.now(timezone.utc).isoformat(),
-            "models": models,
+            "models": _merge_models(existing_models, models),
         }
 
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -229,6 +235,19 @@ def _safe_float(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _merge_models(
+    existing: dict[str, dict[str, Any]],
+    new: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Merge freshly-fetched OpenRouter models onto existing cached models.
+
+    W1c: preserves manual prices (added via 'bench prices add') across refresh.
+    On id collision the freshly-fetched ``new`` value wins (the manual price was
+    a stand-in for an unknown; PRD edge case). Pure function -- no I/O.
+    """
+    return {**existing, **new}
 
 
 # ---------------------------------------------------------------------------

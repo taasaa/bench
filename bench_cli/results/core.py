@@ -32,6 +32,16 @@ def _card_key(model: str, agent: str | None = None, agent_mode: str | None = Non
     return model
 
 
+# Router-tier meta-monikers (SB Operating Rules): never emit cards for these.
+_ROUTER_MONIKERS = {"default", "thinking", "heavy", "background", "smart-router"}
+
+
+def is_moniker_alias(bench_alias: str) -> bool:
+    """True if alias is a router-tier meta-moniker (default/thinking/heavy/...)."""
+    bare = bench_alias.replace("openai/", "")
+    return bare in _ROUTER_MONIKERS
+
+
 def _build_pillar_map() -> dict[str, str]:
     """Scan tasks/ directory to build task_name -> pillar mapping."""
     from bench_cli.inspect.core import _load_pillar_map
@@ -39,29 +49,31 @@ def _build_pillar_map() -> dict[str, str]:
     return _load_pillar_map()
 
 
-def _slug_from_alias(bench_alias: str) -> str:
-    """Convert bench alias to a filename slug using OpenRouter ID.
+def _resolve_from_static_map(bench_alias: str) -> str | None:
+    """Return the static MODEL_ALIAS_MAP entry for an alias, or None."""
+    return MODEL_ALIAS_MAP.get(bench_alias)
 
-    Falls back to LiteLLM config model name for local models.
+
+def _slug_from_alias(bench_alias: str) -> str:
+    """Deterministic card filename slug from bench alias.
+
+    Derived from the STATIC MODEL_ALIAS_MAP (or_id with '/' -> '-'), else the
+    bare alias. NEVER calls resolve_openrouter_id -- so the same alias always
+    slugs to the same filename, independent of cache/config drift.
     """
-    or_id = resolve_openrouter_id(bench_alias)
-    if or_id:
-        return or_id.replace("/", "-")
-    # Fallback: use MODEL_ALIAS_MAP or the alias itself
-    mapped = MODEL_ALIAS_MAP.get(bench_alias)
+    mapped = _resolve_from_static_map(bench_alias)
     if mapped:
         return mapped.replace("/", "-")
-    # Last resort: strip openai/ prefix
     return bench_alias.replace("openai/", "").replace("/", "-")
 
 
 def _real_model_name(bench_alias: str) -> str:
-    """Get a human-readable model name from bench alias."""
-    or_id = resolve_openrouter_id(bench_alias)
-    if or_id:
-        # Capitalize provider and model parts nicely
-        return or_id
-    mapped = MODEL_ALIAS_MAP.get(bench_alias)
+    """Deterministic human-readable model name from bench alias.
+
+    Mirrors _slug_from_alias's source (static map, else bare alias) so name and
+    slug always agree. NEVER calls resolve_openrouter_id.
+    """
+    mapped = _resolve_from_static_map(bench_alias)
     if mapped:
         return mapped
     return bench_alias.replace("openai/", "")
@@ -80,9 +92,7 @@ def _rating(score: float) -> str:
 
 def _format_ratio(val: float | None) -> str:
     """Format a ratio value, handling NaN and None."""
-    if val is None:
-        return "--"
-    if math.isnan(val):
+    if val is None or math.isnan(val):
         return "--"
     if math.isinf(val):
         return "FREE"
@@ -141,6 +151,9 @@ def _load_model_data(
         scores_by_scorer: dict[str, list[float]] = defaultdict(list)
         tier_breakdown: dict[str, dict] | None = None
 
+        def _is_finite_number(v) -> bool:
+            return isinstance(v, (int, float)) and not math.isnan(v) and not math.isinf(v)
+
         if log.samples:
             for sample in log.samples:
                 n_samples += 1
@@ -151,29 +164,21 @@ def _load_model_data(
                 if hasattr(sample, "scores") and sample.scores:
                     for scorer_name, score in sample.scores.items():
                         val = score.value if hasattr(score, "value") else score
-                        if isinstance(val, (int, float)):
+                        if _is_finite_number(val):
                             scores_by_scorer[scorer_name].append(val)
                     # Extract tier_breakdown from price_ratio_scorer metadata
                     if tier_breakdown is None:
                         pr_score = sample.scores.get("price_ratio_scorer")
-                        if (
-                            pr_score is not None
-                            and hasattr(pr_score, "metadata")
-                            and isinstance(pr_score.metadata, dict)
-                        ):
-                            tb = pr_score.metadata.get("tier_breakdown")
-                            if isinstance(tb, dict) and tb:
-                                tier_breakdown = tb
+                        md = getattr(pr_score, "metadata", None)
+                        if isinstance(md, dict) and (tb := md.get("tier_breakdown")):
+                            tier_breakdown = tb
 
-        avg_scores: dict[str, float] = {}
-        for k, vals in scores_by_scorer.items():
-            numeric = [
-                v
-                for v in vals
-                if isinstance(v, (int, float)) and not math.isnan(v) and not math.isinf(v)
-            ]
-            if numeric:
-                avg_scores[k] = round(sum(numeric) / len(numeric), 4)
+        avg_scores = {
+            k: round(sum(vals) / len(vals), 4)
+            for k, vals in scores_by_scorer.items()
+            if (filtered := [v for v in vals if _is_finite_number(v)])
+            for vals in [filtered]
+        }
 
         if card_key not in model_data:
             model_data[card_key] = {
@@ -685,6 +690,8 @@ def generate_all_cards(log_dir: Path | None = None) -> list[Path]:
     generated = []
 
     for bench_alias in sorted(model_data.keys()):
+        if is_moniker_alias(bench_alias):
+            continue
         try:
             path = generate_card(bench_alias, model_data[bench_alias], log_dir)
             if path:
@@ -702,6 +709,8 @@ def generate_card_for_model(
     agent_mode: str | None = None,
 ) -> Path | None:
     """Generate/update a model card for a single model after eval run."""
+    if is_moniker_alias(bench_alias):
+        return None
     model_data = _load_model_data(log_dir, model_filter=bench_alias)
     card_key = _card_key(bench_alias, agent, agent_mode)
     if card_key not in model_data:

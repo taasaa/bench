@@ -305,11 +305,13 @@ class TestLiteLLMConfig:
         assert result is None
 
     def test_resolve_openrouter_id_litellm_name_without_prefix(self):
-        """Bench alias without openai/ prefix resolves via LiteLLM config + cache reverse-lookup."""
-        # "rut" in LiteLLM config → "openai/MiniMax-M2.7" → lowercase "minimax-m2.7"
-        # → reverse-lookup in OpenRouter cache → "minimax/minimax-m2.7"
+        """Bench alias without openai/ prefix resolves via LiteLLM config + cache reverse-lookup.
+
+        Config-calibrated (LiteLLM routing changes over time): 'rut' currently -> glm-5.2.
+        """
         result = resolve_openrouter_id("rut")
-        assert result == "minimax/minimax-m2.7"
+        # 'rut' -> 'zai/glm-5.2' per current ~/dev/litellm/config.yaml; cache reverse-lookup
+        assert result == "z-ai/glm-5.2"
 
     def test_load_litellm_alias_map_caches(self):
         """Calling twice returns same dict (lru_cache)."""
@@ -424,3 +426,124 @@ class TestIsManagedModel:
     def test_partial_match_not_managed(self):
         # "local" appears in the alias but not as -local suffix
         assert is_managed_model("openai/local-model-test") is False
+
+
+class TestResolveAliasMapTier:
+    """D1: resolve_openrouter_id consults MODEL_ALIAS_MAP (verified in cache)."""
+
+    def test_alias_map_entry_resolves_when_cached(self):
+        # openai/nvidia-nemotron-3-super-120b-a12b is priced in the 337-model cache
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") == "nvidia/nemotron-3-super-120b-a12b"
+
+    def test_alias_map_skipped_for_managed_models(self):
+        # qwen-local is managed -> tier skipped -> falls to litellm (not the map's qwen/qwen3.5-35b-a3b)
+        from bench_cli.pricing.litellm_config import is_managed_model
+        assert is_managed_model("openai/qwen-local")
+        # managed model never resolves via the alias map's paid or_id:
+        assert resolve_openrouter_id("openai/qwen-local") != MODEL_ALIAS_MAP["openai/qwen-local"]
+
+    def test_alias_map_miss_falls_through(self, tmp_path, monkeypatch):
+        # alias in map but or_id NOT in cache -> falls through (returns None or litellm id)
+        from bench_cli.pricing import litellm_config
+        from bench_cli.pricing.price_cache import OpenRouterCache
+        empty = tmp_path / "empty.json"; empty.write_text("{}")
+        monkeypatch.setattr(OpenRouterCache, "__init__",
+            lambda self, **kw: self.__dict__.update(_cache_path=empty, _data=None))
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", tmp_path / "ov.json")
+        litellm_config._build_reverse_lookup.cache_clear()
+        # not managed, in map, but cache empty -> None
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") is None
+
+    def test_sc10_nemotron_subjects_priced(self):
+        """SC#10: the two 01cfd589 cost-anomaly subjects now resolve to cached, paid or_ids."""
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") == "nvidia/nemotron-3-super-120b-a12b"
+        assert resolve_openrouter_id("openai/nvidia-nemotron-3-nano-30b-a3b") == "nvidia/nemotron-3-nano-30b-a3b"
+
+    def test_sc10_omni_nan_correct(self, tmp_path, monkeypatch):
+        """SC#10 NaN-correct: a model whose paid or_id is absent from the cache -> scorer NaNs.
+
+        Uses an isolated empty cache so the test is deterministic (it proves the NaN
+        *mechanism*: resolve→or_id present, but or_id NOT in cache → cost is None),
+        independent of whether any particular or_id happens to be manually priced in
+        the live cache. (nemotron-nano-omni-30b is the historical example: its paid
+        or_id was missing from the OpenRouter cache until SC#3 priced it manually.)
+        """
+        from bench_cli.pricing import litellm_config
+        from bench_cli.pricing.price_cache import OpenRouterCache
+        from scorers.price_ratio import _resolve_and_price
+
+        empty = tmp_path / "empty.json"
+        empty.write_text("{}")
+        monkeypatch.setattr(
+            OpenRouterCache,
+            "__init__",
+            lambda self, **kw: self.__dict__.update(_cache_path=empty, _data=None),
+        )
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", tmp_path / "ov.json")
+        litellm_config._build_reverse_lookup.cache_clear()
+        # _resolve_and_price prices via the module-level _price_cache singleton
+        # (created at import); point it at the empty cache too, so the scorer's
+        # pricing path also misses.
+        import scorers.price_ratio as pr
+        monkeypatch.setattr(pr, "_price_cache", OpenRouterCache())
+
+        # Resolves via litellm to a paid or_id, but that or_id is absent from the
+        # empty cache -> no price -> cost is None (scorer emits NaN).
+        class U:
+            input_tokens = 100; output_tokens = 50
+        cost, or_id, is_free, _ = _resolve_and_price("openai/nemotron-nano-omni-30b", U())
+        assert or_id == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"  # resolved
+        assert cost is None  # NaN-correct: scorer will emit NaN
+
+
+class TestMergeOnRefresh:
+    """W1c: refresh MERGES new OpenRouter data onto existing cache; manual prices survive."""
+
+    def test_merge_preserves_manual_and_adds_new(self):
+        """Pure helper: manual entries survive; new entries added."""
+        from bench_cli.pricing.price_cache import _merge_models
+        existing = {"manual/keep-me": {"input": 0.06, "output": 0.33, "context": None}}
+        new = {"openrouter/new": {"input": 0.1, "output": 0.2, "context": None}}
+        merged = _merge_models(existing, new)
+        assert merged["manual/keep-me"]["input"] == 0.06   # manual survived
+        assert merged["openrouter/new"]["input"] == 0.1    # new added
+
+    def test_merge_new_wins_on_collision(self):
+        """Pure helper: on id collision, the freshly-fetched price wins (PRD edge case)."""
+        from bench_cli.pricing.price_cache import _merge_models
+        existing = {"x/y": {"input": 9.0, "output": 9.0, "context": None}}
+        new = {"x/y": {"input": 0.1, "output": 0.2, "context": None}}
+        merged = _merge_models(existing, new)
+        assert merged["x/y"]["input"] == 0.1   # new wins
+
+    def test_fetch_and_cache_merges_end_to_end(self, tmp_path, monkeypatch):
+        """End-to-end: real fetch_and_cache_prices merges; manual survives refresh.
+
+        Mocks ONLY the network (urllib.request.urlopen), not the function under test,
+        so the real fetch + merge code runs.
+        """
+        from bench_cli.pricing import price_cache as pc
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        cache_file = tmp_path / "cache.json"
+        cache = OpenRouterCache(cache_path=cache_file)
+        # seed a manual price
+        cache.add_price("manual/keep-me", 0.06, 0.33)
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+        # Fake OpenRouter API: returns ONE new model. OpenRouter prices are per-token.
+        fake_api = {"data": [{"id": "openrouter/new",
+                              "pricing": {"prompt": "0.0000001", "completion": "0.0000002"},
+                              "context_length": None}]}
+
+        class _FakeResp:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return json.dumps(fake_api).encode("utf-8")
+
+        monkeypatch.setattr(pc.urllib.request, "urlopen", lambda req, timeout=30: _FakeResp())
+
+        cache.fetch_and_cache_prices()
+        allp = cache.get_all_prices()
+        assert "manual/keep-me" in allp          # manual survived the refresh
+        assert "openrouter/new" in allp          # new model merged in

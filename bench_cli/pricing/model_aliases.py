@@ -71,6 +71,11 @@ MODEL_ALIAS_MAP: dict[str, str] = {
     "openai/minimax": "minimax/minimax-m2.7",
     "openai/minimax-m2.7": "minimax/minimax-m2.7",
     "openai/nvidia-mistral-small4": "mistralai/mistral-small-4-119b-2603",
+    # NVIDIA Nemotron-3 NIM aliases (SC#10: priced in cache; fix = alias->or_id mapping)
+    "openai/nvidia-nemotron-30b": "nvidia/nemotron-3-nano-30b-a3b",
+    "openai/nvidia-nemotron-3-super-120b-a12b": "nvidia/nemotron-3-super-120b-a12b",
+    "openai/nvidia-nemotron-3-nano-30b-a3b": "nvidia/nemotron-3-nano-30b-a3b",
+    "openai/nemotron-ultra-550b": "nvidia/nemotron-3-ultra-550b-a55b",
     "openai/fabric": "nvidia/nemotron-3-super-120b-a12b",
     # LiteLLM proxy default (minimax m2.7)
     "openai/default": "minimax/minimax-m2.7",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from bench_cli.results import (
@@ -10,6 +11,7 @@ from bench_cli.results import (
     _format_ratio,
     _generate_summary,
     _rating,
+    _real_model_name,
     _slug_from_alias,
     generate_card,
     generate_card_for_model,
@@ -136,6 +138,60 @@ class TestSlugFromAlias:
     def test_unknown_model_falls_back(self):
         slug = _slug_from_alias("openai/some-unknown-model")
         assert "some-unknown-model" in slug
+
+
+# ---------------------------------------------------------------------------
+# _slug_from_alias / _real_model_name determinism (W2a)
+# ---------------------------------------------------------------------------
+
+
+class TestDeterministicCardIdentity:
+    """W2a: card slug/name are deterministic from the static alias map, never volatile."""
+
+    def test_slug_known_alias_matches_orid(self):
+        # openai/nvidia-nemotron-30b -> nvidia/nemotron-3-nano-30b-a3b -> slug
+        assert _slug_from_alias("openai/nvidia-nemotron-30b") == "nvidia-nemotron-3-nano-30b-a3b"
+        assert "/" not in _slug_from_alias("openai/nvidia-nemotron-30b")
+
+    def test_slug_unknown_alias_bare(self):
+        slug = _slug_from_alias("openai/some-brand-new-model")
+        assert slug == "some-brand-new-model"
+
+    def test_slug_invariant_to_cache_drift(self, monkeypatch):
+        # Even if resolve_openrouter_id flips/returns None, the slug must NOT change.
+        monkeypatch.setattr(
+            "bench_cli.results.core.resolve_openrouter_id", lambda a: None
+        )
+        assert _slug_from_alias("openai/nvidia-nemotron-30b") == "nvidia-nemotron-3-nano-30b-a3b"
+
+    def test_real_name_matches_orid(self):
+        assert _real_model_name("openai/nvidia-nemotron-30b") == "nvidia/nemotron-3-nano-30b-a3b"
+
+    def test_two_distinct_models_never_collide(self, tmp_path, monkeypatch):
+        """Guards the deleted glm-5.1 == m2.7 byte-identical card bug.
+
+        Two distinct bench aliases that map to distinct or_ids MUST produce
+        distinct slug + name AND distinct generated card filenames + title lines --
+        never identical card data. (Compares actual generated card content, not just
+        the slug derivation, so it directly guards the historical byte-identical card.)
+        """
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+        a = "openai/nvidia-nemotron-30b"        # -> nvidia/nemotron-3-nano-30b-a3b
+        b = "openai/fabric"                      # -> nvidia/nemotron-3-super-120b-a12b
+        # 1. derivation-level distinctness
+        assert _slug_from_alias(a) != _slug_from_alias(b)
+        assert _real_model_name(a) != _real_model_name(b)
+        # 2. file-level distinctness (the user-visible collision)
+        data = {
+            "tasks": {"add-tests": {"date": "2026-04-20", "samples": 1, "input_tokens": 1,
+                                   "output_tokens": 1, "scores": {"verify_sh": 1.0}}},
+            "dates": ["2026-04-20"], "total_input": 1, "total_output": 1,
+        }
+        pa = generate_card(a, dict(data), tmp_path)
+        pb = generate_card(b, dict(data), tmp_path)
+        assert pa is not None and pb is not None
+        assert pa.name != pb.name                       # distinct filenames
+        assert pa.read_text().splitlines()[0] != pb.read_text().splitlines()[0]  # distinct title lines
 
 
 # ---------------------------------------------------------------------------
@@ -481,3 +537,18 @@ class TestGenerateCardForModel:
             agent_mode="docker",
         )
         assert path is None
+
+
+# ---------------------------------------------------------------------------
+# W2b: router-tier meta-monikers must never emit cards
+# ---------------------------------------------------------------------------
+
+
+class TestMonikerSkip:
+    """W2b: results generate emits no cards for router-tier meta-monikers."""
+
+    @pytest.mark.parametrize("moniker", ["default", "thinking", "heavy", "background", "smart-router"])
+    def test_is_moniker_alias(self, moniker):
+        from bench_cli.results.core import is_moniker_alias
+        assert is_moniker_alias(f"openai/{moniker}") is True
+        assert is_moniker_alias("openai/nvidia-nemotron-30b") is False
