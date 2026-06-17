@@ -105,3 +105,33 @@ def test_resolve_returns_system_default_when_no_reference_registered(tmp_path, m
     assert ref_val == 1000.0
     assert source is RatioSource.SYSTEM_DEFAULT
     assert ref_model is None
+
+
+def test_avg_cost_from_result_averages_actual_cost():
+    """W3b: _avg_cost_from_result reads price_ratio_scorer metadata.actual_cost_usd."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from bench_cli.baseline import _avg_cost_from_result
+
+    def _sample(cost):
+        pr = MagicMock()
+        pr.metadata = {"actual_cost_usd": cost}
+        return SimpleNamespace(scores={"price_ratio_scorer": pr})
+
+    result = SimpleNamespace(samples=[_sample(0.002), _sample(0.004)])
+    assert _avg_cost_from_result(result) == 0.003
+
+
+def test_avg_cost_from_result_none_when_absent():
+    """W3b: returns None when no sample carries actual_cost_usd."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from bench_cli.baseline import _avg_cost_from_result
+
+    result = SimpleNamespace(
+        samples=[
+            SimpleNamespace(scores={"token_ratio_scorer": MagicMock()}),
+            SimpleNamespace(scores={}),
+        ]
+    )
+    assert _avg_cost_from_result(result) is None
