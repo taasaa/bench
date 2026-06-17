@@ -305,11 +305,13 @@ class TestLiteLLMConfig:
         assert result is None
 
     def test_resolve_openrouter_id_litellm_name_without_prefix(self):
-        """Bench alias without openai/ prefix resolves via LiteLLM config + cache reverse-lookup."""
-        # "rut" in LiteLLM config → "openai/MiniMax-M2.7" → lowercase "minimax-m2.7"
-        # → reverse-lookup in OpenRouter cache → "minimax/minimax-m2.7"
+        """Bench alias without openai/ prefix resolves via LiteLLM config + cache reverse-lookup.
+
+        Config-calibrated (LiteLLM routing changes over time): 'rut' currently -> glm-5.2.
+        """
         result = resolve_openrouter_id("rut")
-        assert result == "minimax/minimax-m2.7"
+        # 'rut' -> 'zai/glm-5.2' per current ~/dev/litellm/config.yaml; cache reverse-lookup
+        assert result == "z-ai/glm-5.2"
 
     def test_load_litellm_alias_map_caches(self):
         """Calling twice returns same dict (lru_cache)."""
