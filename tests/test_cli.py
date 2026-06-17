@@ -455,7 +455,7 @@ class TestPriceGate:
             litellm_config._build_reverse_lookup.cache_clear()
 
             result = runner.invoke(
-                cli, ["run", "--tier", "quick", "--model", "openai/nvidia-nemotron-30b"]
+                cli, ["run", "--tier", "quick", "--model", "openai/nemotron-ultra-550b"]
             )
             assert "No price found" in result.output
             assert "ERROR" in result.output
