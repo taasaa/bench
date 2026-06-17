@@ -33,3 +33,21 @@ def test_get_model_metadata_provider_for_nvidia_or_id():
         f"expected NVIDIA NIM for OR id, got {meta['provider']!r}"
     )
     assert meta["free"] is False  # not a managed/local model
+
+
+def test_get_model_metadata_pricing_for_direct_or_id():
+    from bench_cli.results.core import _get_model_metadata
+
+    meta = _get_model_metadata("nvidia/nemotron-3-ultra-550b-a55b")
+
+    assert meta["has_price"] is True
+    assert meta["input_price"] > 0
+    assert meta["output_price"] > 0
+
+
+def test_get_model_metadata_pricing_for_bench_alias_still_works():
+    from bench_cli.results.core import _get_model_metadata
+
+    meta = _get_model_metadata("openai/nemotron-ultra-550b")
+
+    assert meta["has_price"] is True

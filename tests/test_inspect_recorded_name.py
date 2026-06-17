@@ -1,5 +1,70 @@
 """bench inspect must find rewritten logs by routing alias OR recorded name."""
+import shutil
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from bench_cli.inspect.cli import inspect
 from bench_cli.inspect.core import _resolve_query_name
+from bench_cli.run.core import rewrite_log_model_name
+
+
+_FIXTURE = Path(__file__).parent / "fixtures" / "eval-logs" / "sample_success.eval"
+
+
+def _copy_rewritten_log(dest_dir: Path, recorded_name: str) -> Path:
+    dest = dest_dir / _FIXTURE.name
+    shutil.copy2(_FIXTURE, dest)
+    assert rewrite_log_model_name(dest, recorded_name) is True
+    return dest
+
+
+def test_stats_cli_finds_recorded_or_id_query_after_alias_normalization(tmp_path):
+    _copy_rewritten_log(tmp_path, "minimaxai/minimax-m3")
+
+    result = CliRunner().invoke(
+        inspect,
+        ["stats", "--model", "minimaxai/minimax-m3", "--log-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "f18_direct_answer_first" in result.output
+
+
+def test_stats_cli_finds_recorded_name_from_routing_alias(tmp_path):
+    _copy_rewritten_log(tmp_path, "minimaxai/minimax-m3")
+
+    result = CliRunner().invoke(
+        inspect,
+        ["stats", "--model", "openai/thinking", "--log-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "f18_direct_answer_first" in result.output
+
+
+def test_stats_cli_finds_custom_as_label_after_alias_normalization(tmp_path):
+    _copy_rewritten_log(tmp_path, "my-custom-label")
+
+    result = CliRunner().invoke(
+        inspect,
+        ["stats", "--model", "my-custom-label", "--log-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "f18_direct_answer_first" in result.output
+
+
+def test_stats_cli_finds_recorded_or_id_from_recognizable_bare_alias(tmp_path):
+    _copy_rewritten_log(tmp_path, "nvidia/nemotron-3-ultra-550b-a55b")
+
+    result = CliRunner().invoke(
+        inspect,
+        ["stats", "--model", "nemotron-ultra-550b", "--log-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "f18_direct_answer_first" in result.output
 
 
 def test_resolve_query_name_passes_recorded_through():

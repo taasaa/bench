@@ -46,9 +46,12 @@ def inspect() -> None:
 )
 def stats(model_alias: str, log_dir: str) -> None:
     """Print per-task pillar averages for a model."""
+    raw_model_alias = model_alias
     model_alias = _resolve_alias(model_alias)
     log_path = Path(log_dir)
-    task_samples = _load_samples(model_alias, log_path, latest_only=True)
+    task_samples = _load_samples(
+        model_alias, log_path, latest_only=True, raw_model_alias=raw_model_alias
+    )
     _load_pillar_map()
     pillar_map_norm = _PILLAR_MAP_NORMALIZED
 
@@ -140,18 +143,21 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
     Today's run is excluded from the baseline. Tasks with correctness delta
     > --delta-threshold are flagged as SIGNIFICANT.
     """
+    raw_model_alias = model_alias
     model_alias = _resolve_alias(model_alias)
     log_path = Path(log_dir)
 
     # Load current run samples (today only)
-    task_samples = _load_samples(model_alias, log_path, latest_only=True)
+    task_samples = _load_samples(
+        model_alias, log_path, latest_only=True, raw_model_alias=raw_model_alias
+    )
 
     if not task_samples:
         click.echo(f"No eval logs found for {model_alias}.", err=True)
         raise SystemExit(1)
 
     # Load baseline (all runs except today)
-    baseline = _load_baseline(model_alias, log_path)
+    baseline = _load_baseline(model_alias, log_path, raw_model_alias=raw_model_alias)
 
     click.echo(f"{'─' * 90}")
     click.echo(f" MODEL: {_short_model(model_alias)}  |  Delta threshold: {delta_threshold}")
@@ -239,9 +245,12 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
 )
 def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
     """Full QA pass — read every sample output and judge explanation for a model."""
+    raw_model_alias = model_alias
     model_alias = _resolve_alias(model_alias)
     log_path = Path(log_dir)
-    task_samples = _load_samples(model_alias, log_path, latest_only=True)
+    task_samples = _load_samples(
+        model_alias, log_path, latest_only=True, raw_model_alias=raw_model_alias
+    )
     _load_pillar_map()
     pillar_map_norm = _PILLAR_MAP_NORMALIZED
 

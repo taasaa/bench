@@ -24,7 +24,7 @@ def resolve_subject_from_log(log_path: Path) -> SubjectID:
     Detection strategy:
     - eval.sandbox.type == 'docker' → AGENT (inspect-swe solver running)
     - eval.sandbox.type is None → MODEL (bare model via CLI generate() solver)
-    - sample.model_usage keys → model name (strip openai/ prefix for display)
+    - el.eval.model → recorded model name; sample.model_usage keys → legacy fallback
     """
     from inspect_ai.log import read_eval_log
 

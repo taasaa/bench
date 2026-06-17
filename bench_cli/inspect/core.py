@@ -90,6 +90,13 @@ def _resolve_query_name(model_alias: str) -> str:
     return resolve_recorded_name(model_alias, None)
 
 
+def _query_candidates(raw_model_alias: str, normalized_alias: str) -> set[str]:
+    """Return all recorded-name forms an inspect query should match."""
+    candidates = {raw_model_alias.strip(), normalized_alias.strip()}
+    candidates.update(_resolve_query_name(alias) for alias in tuple(candidates) if alias)
+    return {alias for alias in candidates if alias}
+
+
 # ---------------------------------------------------------------------------
 # Score extraction
 # ---------------------------------------------------------------------------
@@ -124,21 +131,23 @@ def _load_samples(
     model_alias: str,
     log_dir: Path | None = None,
     latest_only: bool = False,
+    raw_model_alias: str | None = None,
 ) -> dict[str, list[SampleScore]]:
     """Load samples for a model from eval logs.
 
     Args:
-        model_alias: Bench model alias to filter by.
+        model_alias: Normalized bench model alias to filter by.
         log_dir: Directory containing .eval files.
         latest_only: If True, only return samples from the latest run per task
                      (by eval log filename timestamp).
+        raw_model_alias: User-provided query before CLI alias normalization.
 
     Returns {task_name: [SampleScore, ...]}.
     """
     log_dir = log_dir or _LOG_DIR
     task_samples: dict[str, list[SampleScore]] = defaultdict(list)
     seen_tasks: set[str] = set()
-    resolved_query = _resolve_query_name(model_alias)
+    query_candidates = _query_candidates(raw_model_alias or model_alias, model_alias)
 
     for info in list_eval_logs(log_dir=str(log_dir), descending=True):
         try:
@@ -147,7 +156,7 @@ def _load_samples(
             warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
 
-        if el.eval.model not in (model_alias, resolved_query):
+        if el.eval.model not in query_candidates:
             continue
         if el.status != "success" or not el.samples:
             continue
@@ -322,7 +331,11 @@ def _per_task_stats(samples: list[SampleScore]) -> dict:
     }
 
 
-def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, float]:
+def _load_baseline(
+    model_alias: str,
+    log_dir: Path | None = None,
+    raw_model_alias: str | None = None,
+) -> dict[str, float]:
     """Load baseline per-task correctness from all runs except the latest per task.
 
     For each task, collects samples from ALL runs except the most recent one
@@ -330,7 +343,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
     Returns empty dict if there is only one run per task.
     """
     log_dir = log_dir or _LOG_DIR
-    resolved_query = _resolve_query_name(model_alias)
+    query_candidates = _query_candidates(raw_model_alias or model_alias, model_alias)
 
     # First pass: identify the latest (newest) file per task.
     latest_file_per_task: dict[str, str] = {}
@@ -340,7 +353,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         except Exception as exc:
             warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
-        if el.eval.model not in (model_alias, resolved_query):
+        if el.eval.model not in query_candidates:
             continue
         if el.status != "success" or not el.samples:
             continue
@@ -364,7 +377,7 @@ def _load_baseline(model_alias: str, log_dir: Path | None = None) -> dict[str, f
         except Exception as exc:
             warnings.warn(f"Skipping corrupt/unreadable eval log {info.name}: {exc}", stacklevel=2)
             continue
-        if el.eval.model not in (model_alias, resolved_query):
+        if el.eval.model not in query_candidates:
             continue
         if el.status != "success" or not el.samples:
             continue

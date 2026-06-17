@@ -437,11 +437,15 @@ def _get_model_metadata(bench_alias: str) -> dict:
     output_price = 0.0
     has_price = False
     try:
-        or_id = resolve_openrouter_id(bench_alias)
-        if or_id:
-            from bench_cli.pricing.price_cache import OpenRouterCache
+        from bench_cli.pricing.price_cache import OpenRouterCache
 
-            cache = OpenRouterCache()
+        cache = OpenRouterCache()
+        or_id = (
+            bench_alias
+            if bench_alias in cache.get_all_prices()
+            else resolve_openrouter_id(bench_alias)
+        )
+        if or_id:
             price_info = cache.get_price(or_id)
             input_price = price_info.input_price
             output_price = price_info.output_price
