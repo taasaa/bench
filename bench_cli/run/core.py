@@ -212,6 +212,39 @@ def resolve_recorded_name(routed_name: str, as_name: str | None) -> str:
     return routed_name
 
 
+def rewrite_log_model_name(log_path: "Path | str", recorded_name: str) -> bool:
+    """Rewrite an eval log's eval.model to recorded_name. Non-fatal.
+
+    Read -> set el.eval.model -> write_eval_log. Verified to preserve samples
+    and all scorer Score objects under inspect-ai 0.3.210.
+
+    Args:
+      log_path: path to the .eval file (file:// prefix stripped if present).
+      recorded_name: the model identity to store in eval.model.
+
+    Returns:
+      True if the log now holds recorded_name (or already did); False on any
+      error (missing file, corrupt zip, permission). Never raises — a long
+      sequential run must not be lost to a relabeling I/O hiccup.
+    """
+    from inspect_ai.log import read_eval_log, write_eval_log
+
+    p = str(log_path)
+    if p.startswith("file://"):
+        p = p[len("file://"):]
+    try:
+        el = read_eval_log(p)
+        if el.eval is None:
+            return False
+        if el.eval.model == recorded_name:
+            return True  # already correct, no write needed
+        el.eval.model = recorded_name
+        write_eval_log(el, p)
+        return True
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Pre-flight price gate
 # ---------------------------------------------------------------------------
