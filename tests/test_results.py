@@ -167,6 +167,32 @@ class TestDeterministicCardIdentity:
     def test_real_name_matches_orid(self):
         assert _real_model_name("openai/nvidia-nemotron-30b") == "nvidia/nemotron-3-nano-30b-a3b"
 
+    def test_two_distinct_models_never_collide(self, tmp_path, monkeypatch):
+        """Guards the deleted glm-5.1 == m2.7 byte-identical card bug.
+
+        Two distinct bench aliases that map to distinct or_ids MUST produce
+        distinct slug + name AND distinct generated card filenames + title lines --
+        never identical card data. (Compares actual generated card content, not just
+        the slug derivation, so it directly guards the historical byte-identical card.)
+        """
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+        a = "openai/nvidia-nemotron-30b"        # -> nvidia/nemotron-3-nano-30b-a3b
+        b = "openai/fabric"                      # -> nvidia/nemotron-3-super-120b-a12b
+        # 1. derivation-level distinctness
+        assert _slug_from_alias(a) != _slug_from_alias(b)
+        assert _real_model_name(a) != _real_model_name(b)
+        # 2. file-level distinctness (the user-visible collision)
+        data = {
+            "tasks": {"add-tests": {"date": "2026-04-20", "samples": 1, "input_tokens": 1,
+                                   "output_tokens": 1, "scores": {"verify_sh": 1.0}}},
+            "dates": ["2026-04-20"], "total_input": 1, "total_output": 1,
+        }
+        pa = generate_card(a, dict(data), tmp_path)
+        pb = generate_card(b, dict(data), tmp_path)
+        assert pa is not None and pb is not None
+        assert pa.name != pb.name                       # distinct filenames
+        assert pa.read_text().splitlines()[0] != pb.read_text().splitlines()[0]  # distinct title lines
+
 
 # ---------------------------------------------------------------------------
 # _extract_task_scores
