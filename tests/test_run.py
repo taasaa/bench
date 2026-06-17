@@ -105,3 +105,49 @@ def test_run_no_resume_dispatches_despite_success_logs(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert called["n"] == 1
+
+
+def test_plain_display_when_not_tty(tmp_path, monkeypatch):
+    """W1b: display='plain' is passed when stdout is not a TTY."""
+    from bench_cli.run.cli import _choose_display
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    assert _choose_display(no_tui=False) == "plain"
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    assert _choose_display(no_tui=False) is None
+    assert _choose_display(no_tui=True) == "plain"
+
+
+def test_heartbeat_appends_jsonl(tmp_path):
+    """W1b: one-by-one mode appends one JSON object per task to the status file."""
+    from bench_cli.run.cli import _append_heartbeat
+    hb = tmp_path / "hb.jsonl"
+    _append_heartbeat(hb, task="f23-ghost-constraint", status="success", score=0.75, tokens=1234)
+    _append_heartbeat(hb, task="f1-multi-file-verify", status="error", score=None, tokens=0)
+    lines = hb.read_text().strip().splitlines()
+    assert len(lines) == 2
+    import json
+    first = json.loads(lines[0])
+    assert first["task"] == "f23-ghost-constraint" and first["status"] == "success" and first["score"] == 0.75
+
+
+def test_write_run_summary_contains_all_tasks(tmp_path):
+    """W1b (SC#2): batch mode writes one post-run JSON summary listing every task."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from bench_cli.run.cli import _write_run_summary
+    out = tmp_path / "m.summary.json"
+    metric = MagicMock(); metric.value = 0.75
+    score = MagicMock(); score.metrics = {"mean": metric}
+    results = [
+        SimpleNamespace(eval=SimpleNamespace(task="f23_ghost_constraint"), status="success",
+                        results=SimpleNamespace(scores=[score])),
+        SimpleNamespace(eval=SimpleNamespace(task="f1_multi_file_verify"), status="error",
+                        results=SimpleNamespace(scores=[])),
+    ]
+    _write_run_summary(out, bench_alias="openai/glm-5.1", results=results)
+    import json
+    data = json.loads(out.read_text())
+    assert data["model"] == "openai/glm-5.1"
+    assert len(data["tasks"]) == 2
+    assert data["tasks"][0]["task"] == "f23_ghost_constraint" and data["tasks"][0]["score"] == 0.75
+    assert data["tasks"][1]["status"] == "error"
