@@ -288,16 +288,23 @@ Blast Radius.
 TDD, Red-Green-Refactor per the sp pipeline. Test locations: `tests/` (new file
 or extend existing).
 
+**Proxy-stability principle:** the recorded-model-identity feature touches a
+moving target — the LiteLLM proxy (`~/dev/litellm/config.yaml`) rebinds router
+monikers over time. Tests that hardcode "moniker X resolves to concrete model Y"
+break every rebind. **Tests assert invariants and resolve live at setup time**
+instead of pinning concrete model ids.
+
 1. **`resolve_recorded_name(--model, --as)`** unit:
    - `--as` present → returns literal `--as`.
    - `--as` None, recognizable alias → returns `resolve_openrouter_id` result
      (e.g. `openai/nemotron-ultra-550b` → `nvidia/nemotron-3-ultra-550b-a55b`).
-   - `--as` None, moniker → returns OR id of current backing model
-     (`openai/thinking` → `minimaxai/minimax-m3`).
+     Uses stable MODEL_ALIAS_MAP-backed aliases (which don't drift) — proxy-stable.
    - `--as` None, **managed/local** → returns `--model` unchanged (RED today:
      `resolve_openrouter_id("openai/qwen-local")` returns a non-None LiteLLM id).
      `openai/qwen-local` → `openai/qwen-local`.
    - `--as` None, unknown (no managed match, resolver None) → `--model` unchanged.
+   - (Removed: the moniker→OR-id value test, since the proxy-routed path is
+     covered end-to-end by test #8.)
 2. **`bare_model_name`** unit: `openai/x`→`x`, `minimaxai/minimax-m3`→`minimax-m3`,
    `nemotron-ultra-550b`→`nemotron-ultra-550b` (no slash).
 3. **`rewrite_log_model_name`** round-trip on a real (or fixture) `.eval`:
@@ -320,12 +327,22 @@ or extend existing).
    was rewritten but `model_usage` key is the routed name,
    `resolve_subject_from_log` returns the **recorded** model from `el.eval.model`.
 7. **`bench inspect` resolution (B2):** given rewritten logs, `inspect` finds them
-   whether queried by routing alias OR recorded OR id.
+   whether queried by routing alias OR recorded OR id. The round-trip test uses
+   **live resolution at setup** (`resolve_recorded_name("openai/thinking", None)`)
+   so it follows the proxy by design — a proxy rebind does not break it.
 8. **End-to-end (mocked `inspect_eval`):** `--model openai/thinking --as
    nemotron-ultra-550b` → `inspect_eval` called with `model="openai/thinking"`,
    and the resulting log's `eval.model` is `nemotron-ultra-550b`. Without
    `--as`: `inspect_eval` called with `model="openai/thinking"`, log records
-   `minimaxai/minimax-m3`.
+   the live-resolved backing model. Both assertions are **live-resolution**:
+   the expected recorded name is whatever `resolve_recorded_name` returns at
+   test time, so the test passes across proxy rebinds (the invariant under test
+   is "record-side = live-resolved backing model," not a specific model id).
+9. **B4 invariant** (rewritten from value-test): for every alias with a pricing
+   override entry where backing_id != pricing_id, `resolve_recorded_name(alias)`
+   must equal backing_id and never equal pricing_id. Proxy-stable: walks the
+   `model_overrides.json` at test time and asserts the invariant for every
+   divergent override.
 
 ## Blast Radius
 

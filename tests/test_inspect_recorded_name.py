@@ -6,7 +6,7 @@ from click.testing import CliRunner
 
 from bench_cli.inspect.cli import inspect
 from bench_cli.inspect.core import _resolve_query_name
-from bench_cli.run.core import rewrite_log_model_name
+from bench_cli.run.core import resolve_recorded_name, rewrite_log_model_name
 
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "eval-logs" / "sample_success.eval"
@@ -32,7 +32,16 @@ def test_stats_cli_finds_recorded_or_id_query_after_alias_normalization(tmp_path
 
 
 def test_stats_cli_finds_recorded_name_from_routing_alias(tmp_path):
-    _copy_rewritten_log(tmp_path, "minimaxai/minimax-m3")
+    # Round-trip invariant: querying by routing alias `openai/thinking` finds
+    # logs recorded with that alias's live-resolved backing model. The expected
+    # recorded name is whatever the proxy currently resolves — the test follows
+    # the proxy by design, so a proxy rebind does not break it.
+    recorded = resolve_recorded_name("openai/thinking", None)
+    assert recorded != "openai/thinking", (
+        "test premise broken: openai/thinking must resolve to a backing model "
+        "(not the routing alias itself) for the round-trip to be meaningful"
+    )
+    _copy_rewritten_log(tmp_path, recorded)
 
     result = CliRunner().invoke(
         inspect,
@@ -68,8 +77,12 @@ def test_stats_cli_finds_recorded_or_id_from_recognizable_bare_alias(tmp_path):
 
 
 def test_resolve_query_name_passes_recorded_through():
-    # If user queries with the routing alias, resolve to recorded OR id
-    assert _resolve_query_name("openai/thinking") == "minimaxai/minimax-m3"
+    # Invariant: query-side resolution mirrors record-side resolution. The two
+    # functions must agree so a user querying by routing alias finds logs
+    # recorded by routing alias. Tested live (whatever the proxy resolves) so
+    # the invariant holds across proxy rebinds.
+    alias = "openai/thinking"
+    assert _resolve_query_name(alias) == resolve_recorded_name(alias, None)
 
 
 def test_resolve_query_name_passes_or_id_through():

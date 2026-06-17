@@ -12,6 +12,7 @@ from inspect_ai.log import read_eval_log
 
 import bench_cli.run.cli as cli_mod
 from bench_cli.run.cli import run as run_cmd
+from bench_cli.run.core import resolve_recorded_name
 
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "eval-logs" / "sample_success.eval"
@@ -62,6 +63,16 @@ def test_as_flag_records_custom_name_and_routes_through_model(monkeypatch, tmp_p
 
 
 def test_no_as_flag_records_openrouter_id(monkeypatch, tmp_path):
+    # Without --as, the recorded name must equal the live-resolved backing
+    # model for the routing alias. The expected recorded value is whatever
+    # resolve_recorded_name returns AT TEST TIME — the test follows the proxy
+    # by design (a proxy rebind to a different backing model changes the
+    # expected value but does not break the invariant being tested).
+    expected_recorded = resolve_recorded_name("openai/thinking", None)
+    assert expected_recorded != "openai/thinking", (
+        "test premise broken: openai/thinking must resolve to a backing model"
+    )
+
     received = {}
     import inspect_ai
     monkeypatch.setattr(inspect_ai, "eval", fake_inspect_eval_factory(received))
@@ -84,5 +95,4 @@ def test_no_as_flag_records_openrouter_id(monkeypatch, tmp_path):
     assert received["model"] == "openai/thinking"
     logs = list(Path(tmp_path).glob("*.eval"))
     el = read_eval_log(str(logs[0]))
-    # thinking currently backs minimax-m3
-    assert el.eval.model == "minimaxai/minimax-m3"
+    assert el.eval.model == expected_recorded
