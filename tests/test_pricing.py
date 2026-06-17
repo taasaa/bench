@@ -459,14 +459,40 @@ class TestResolveAliasMapTier:
         assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") == "nvidia/nemotron-3-super-120b-a12b"
         assert resolve_openrouter_id("openai/nvidia-nemotron-3-nano-30b-a3b") == "nvidia/nemotron-3-nano-30b-a3b"
 
-    def test_sc10_omni_nan_correct(self):
-        """SC#10 NaN-correct: omni model's paid or_id is absent from cache -> scorer NaNs."""
+    def test_sc10_omni_nan_correct(self, tmp_path, monkeypatch):
+        """SC#10 NaN-correct: a model whose paid or_id is absent from the cache -> scorer NaNs.
+
+        Uses an isolated empty cache so the test is deterministic (it proves the NaN
+        *mechanism*: resolve→or_id present, but or_id NOT in cache → cost is None),
+        independent of whether any particular or_id happens to be manually priced in
+        the live cache. (nemotron-nano-omni-30b is the historical example: its paid
+        or_id was missing from the OpenRouter cache until SC#3 priced it manually.)
+        """
+        from bench_cli.pricing import litellm_config
+        from bench_cli.pricing.price_cache import OpenRouterCache
         from scorers.price_ratio import _resolve_and_price
-        # nemotron-nano-omni-30b resolves via litellm to a paid or_id that is MISSING
-        # from the cache -> no price -> cost is None (scorer will emit NaN)
+
+        empty = tmp_path / "empty.json"
+        empty.write_text("{}")
+        monkeypatch.setattr(
+            OpenRouterCache,
+            "__init__",
+            lambda self, **kw: self.__dict__.update(_cache_path=empty, _data=None),
+        )
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", tmp_path / "ov.json")
+        litellm_config._build_reverse_lookup.cache_clear()
+        # _resolve_and_price prices via the module-level _price_cache singleton
+        # (created at import); point it at the empty cache too, so the scorer's
+        # pricing path also misses.
+        import scorers.price_ratio as pr
+        monkeypatch.setattr(pr, "_price_cache", OpenRouterCache())
+
+        # Resolves via litellm to a paid or_id, but that or_id is absent from the
+        # empty cache -> no price -> cost is None (scorer emits NaN).
         class U:
             input_tokens = 100; output_tokens = 50
         cost, or_id, is_free, _ = _resolve_and_price("openai/nemotron-nano-omni-30b", U())
+        assert or_id == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"  # resolved
         assert cost is None  # NaN-correct: scorer will emit NaN
 
 
