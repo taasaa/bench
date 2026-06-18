@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bench_cli.compare import _geometric_mean
+from scorers.ratio_recompute import geometric_mean
 from bench_cli.discriminative.types import SubjectID, SubjectProfile
 
 
@@ -38,13 +38,13 @@ def compute_quality(profile: SubjectProfile) -> float:
 
     Uses geometric mean so that one cluster at 0.0 drags the whole score to 0.
     This is the non-compensatory principle: one zero poisons the product.
-    Reuses _geometric_mean from bench_cli.compare for consistency.
+    Reuses geometric_mean from scorers.ratio_recompute for consistency.
     """
     scored = [cs.correct for cs in profile.cluster_scores if cs.task_count > 0]
     if not scored:
         return 0.0
 
-    gm = _geometric_mean(scored)
+    gm = geometric_mean(scored)
     if math.isnan(gm):
         return 0.0
     return gm

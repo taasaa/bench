@@ -24,10 +24,11 @@ from bench_cli.resolver import bare_model_name
 from scorers.reference_model import get_reference_model_id
 from scorers.task_budgets import get_task_budget
 from scorers.baseline_store import BaselineStore
-from scorers.protocol import (
-    resolve_baseline_reference,
-    resolve_cost_reference,
-    RatioSource,
+from scorers.ratio_recompute import (
+    geometric_mean,
+    recompute_price_ratio,
+    recompute_time_ratio,
+    recompute_token_ratio,
 )
 
 # ---------------------------------------------------------------------------
@@ -322,8 +323,8 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
 
         budget = get_task_budget(task)
         # W3a: recompute token/time ratios from current references (not baked-in score values)
-        avg_token_ratio = _recompute_token_ratio(baseline_store, task, avg_tokens, budget)
-        avg_time_ratio = _recompute_time_ratio(baseline_store, task, avg_time, budget)
+        avg_token_ratio = recompute_token_ratio(baseline_store, task, avg_tokens, budget)
+        avg_time_ratio = recompute_time_ratio(baseline_store, task, avg_time, budget)
 
         token_suppressed = sum(1 for s in samples_list if s[5])
         time_suppressed = sum(1 for s in samples_list if s[6])
@@ -332,16 +333,11 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         valid_cost = [s[7] for s in samples_list if s[7] is not None]
         avg_cost_usd = sum(valid_cost) / len(valid_cost) if valid_cost else float("nan")
 
-        # W3a/W3b: recompute price ratio from the current cost reference
-        # (Tier-1 reference-model BaselineStore -> Tier-2 task_budget.reference_cost_usd)
-        ref_cost, _s, _ref = resolve_cost_reference(baseline_store, task)
-        if ref_cost is None and budget is not None:
-            ref_cost = budget.reference_cost_usd
-        if ref_cost is not None and valid_cost:
-            ratios = [ref_cost / c for c in valid_cost if c > 0]
-            avg_price_ratio = _geometric_mean(ratios) if ratios else float("nan")
-        else:
-            avg_price_ratio = float("nan")
+        # W3b: recompute price ratio from the current cost reference via the shared
+        # helper (Tier-1 BaselineStore -> Tier-2 task_budget.reference_cost_usd).
+        avg_price_ratio = recompute_price_ratio(
+            baseline_store, task, [s[7] for s in samples_list], budget
+        )
 
         # Tier breakdown: use first non-None from samples
         tier_bd = next((s[8] for s in samples_list if s[8] is not None), None)
@@ -430,48 +426,9 @@ def _fmt_avg_cost(cost: float) -> str:
     return f"${cost:.9f}"
 
 
-def _geometric_mean(vals: list[float]) -> float:
-    if not vals:
-        return float("nan")
-    for v in vals:
-        if v <= 0:
-            return float("nan")
-    log_sum = math.fsum(math.log(v) for v in vals)
-    return math.exp(log_sum / len(vals))
-
-
 # Documented calibration sources used when no reference model is registered.
 _TOKEN_LATENCY_DEFAULT_REF = "qwen-local"  # SYSTEM_DEFAULT_BUDGETS calibration source
 _COST_DEFAULT_REF = "minimax-m2.7"  # task_budgets.py reference_cost_usd source
-
-
-def _resolve_tiered_reference(baseline_store, task, metric_name, budget, budget_attr):
-    """Resolve reference value for a metric with Tier-1 (BaselineStore) -> Tier-2 (budget) precedence.
-
-    Returns (ref_value, source_was_baseline). If Tier-1 returns a BASELINE source, budget is ignored.
-    """
-    ref, source, _ = resolve_baseline_reference(baseline_store, task, "", metric_name)
-    if source is not RatioSource.BASELINE and budget is not None:
-        budget_val = getattr(budget, budget_attr, None)
-        if budget_val is not None:
-            ref = float(budget_val)
-    return ref, source is RatioSource.BASELINE
-
-
-def _recompute_ratio(baseline_store, task, avg_actual, budget, metric_name, budget_attr) -> float:
-    """Compute ref / actual ratio using tiered reference resolution."""
-    ref, _ = _resolve_tiered_reference(baseline_store, task, metric_name, budget, budget_attr)
-    return ref / avg_actual if avg_actual and avg_actual > 0 else float("nan")
-
-
-def _recompute_token_ratio(baseline_store, task, avg_tokens, budget):
-    """W3a: ref output_tokens / actual avg total tokens (Tier-1 -> Tier-2)."""
-    return _recompute_ratio(baseline_store, task, avg_tokens, budget, "output_tokens", "output_tokens")
-
-
-def _recompute_time_ratio(baseline_store, task, avg_time, budget):
-    """W3a: ref latency / actual avg seconds (Tier-1 -> Tier-2)."""
-    return _recompute_ratio(baseline_store, task, avg_time, budget, "latency_seconds", "latency_seconds")
 
 
 def _ratio_reference_labels() -> dict[str, str]:
@@ -625,11 +582,11 @@ def format_pillar_table(
 
         cells = [
             _fmt(sum(c_vals) / len(c_vals)) if c_vals else "  --",
-            _fmt_ratio(_geometric_mean(tr_vals)) if tr_vals else "  --",
-            _fmt_ratio(_geometric_mean(lr_vals)) if lr_vals else "  --",
+            _fmt_ratio(geometric_mean(tr_vals)) if tr_vals else "  --",
+            _fmt_ratio(geometric_mean(lr_vals)) if lr_vals else "  --",
             _fmt_tokens(sum(tok_vals) / len(tok_vals)) if tok_vals else "  --",
             _fmt_time(sum(time_vals) / len(time_vals)) if time_vals else "  --",
-            _fmt_cost_ratio(_geometric_mean(cr_vals)) if cr_vals else "  --",
+            _fmt_cost_ratio(geometric_mean(cr_vals)) if cr_vals else "  --",
             _fmt_avg_cost(sum(cost_vals) / len(cost_vals)) if cost_vals else "  --",
         ]
         for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
