@@ -14,10 +14,18 @@ from pathlib import Path
 import click
 
 from bench_cli.pricing.litellm_config import is_managed_model, resolve_openrouter_id
+from scorers.baseline_store import BaselineStore
+from scorers.protocol import resolve_cost_reference
+from scorers.task_budgets import get_task_budget
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _RESULTS_DIR = _PROJECT_ROOT / "results"
 _LOGS_DIR = _PROJECT_ROOT / "logs"
+
+# Shared BaselineStore for cost-reference recomputation in _load_model_data.
+# Cheap to construct (reads disk lazily per task on demand; store is currently
+# empty so load() short-circuits at the is_file() check).
+_BASELINE_STORE = BaselineStore()
 
 # Regex to extract task name from eval filename:
 # 2026-04-16T23-13-32-00-00_task-name_ID.eval
@@ -93,6 +101,44 @@ def _format_ratio(val: float | None) -> str:
     return f"{val:.3f}"
 
 
+def _geometric_mean(vals: list[float]) -> float:
+    """Geometric mean of positive values; nan if empty or any <= 0."""
+    if not vals or any(v <= 0 for v in vals):
+        return float("nan")
+    return math.exp(math.fsum(math.log(v) for v in vals) / len(vals))
+
+
+def _recompute_price_ratio_from_costs(
+    cost_samples: list[float | None],
+    is_free: bool,
+    task_name: str,
+    baseline_store: BaselineStore | None = None,
+) -> float:
+    """Recompute a task-level cost ratio from raw ``actual_cost_usd`` x the LIVE
+    cost reference, ignoring the baked-in ``price_ratio_scorer`` value.
+
+    Mirrors ``bench_cli.compare.core`` W3b: Tier-1 BaselineStore -> Tier-2
+    ``task_budget.reference_cost_usd``, geometric mean over per-sample ratios.
+    Returns ``inf`` for free models and ``nan`` when no usable cost/reference
+    data. Keeps model cards correct after a cost re-baseline (e.g. m2.7 -> m3)
+    without requiring a re-eval.
+    """
+    if is_free:
+        return float("inf")
+    valid = [c for c in cost_samples if isinstance(c, (int, float)) and c > 0]
+    if not valid:
+        return float("nan")
+    store = baseline_store if baseline_store is not None else BaselineStore()
+    ref_cost, _src, _ref = resolve_cost_reference(store, task_name)
+    if ref_cost is None:
+        budget = get_task_budget(task_name)
+        if budget is not None:
+            ref_cost = budget.reference_cost_usd
+    if ref_cost is None or ref_cost <= 0:
+        return float("nan")
+    return _geometric_mean([ref_cost / c for c in valid])
+
+
 def _load_model_data(
     log_dir: Path | None = None, model_filter: str | None = None
 ) -> dict[str, dict]:
@@ -144,6 +190,12 @@ def _load_model_data(
         n_samples = 0
         scores_by_scorer: dict[str, list[float]] = defaultdict(list)
         tier_breakdown: dict[str, dict] | None = None
+        # Raw per-sample actual_cost_usd + free flag, captured from the
+        # price_ratio_scorer metadata so we can recompute the cost ratio
+        # against the LIVE reference (see _recompute_price_ratio_from_costs).
+        cost_usd_samples: list[float | None] = []
+        price_is_free = False
+        has_price_scorer = False
 
         def _is_finite_number(v) -> bool:
             return isinstance(v, (int, float)) and not math.isnan(v) and not math.isinf(v)
@@ -160,12 +212,22 @@ def _load_model_data(
                         val = score.value if hasattr(score, "value") else score
                         if _is_finite_number(val):
                             scores_by_scorer[scorer_name].append(val)
-                    # Extract tier_breakdown from price_ratio_scorer metadata
-                    if tier_breakdown is None:
-                        pr_score = sample.scores.get("price_ratio_scorer")
-                        md = getattr(pr_score, "metadata", None)
-                        if isinstance(md, dict) and (tb := md.get("tier_breakdown")):
+                    # Pull price_ratio_scorer metadata once per sample:
+                    # tier_breakdown (for the card section) AND raw
+                    # actual_cost_usd / is_free (to recompute the ratio against
+                    # the LIVE reference, since the baked-in score value may be
+                    # stale after a cost re-baseline).
+                    has_price_scorer = True
+                    pr_score = sample.scores.get("price_ratio_scorer")
+                    md = getattr(pr_score, "metadata", None)
+                    if isinstance(md, dict):
+                        if tier_breakdown is None and (tb := md.get("tier_breakdown")):
                             tier_breakdown = tb
+                        if md.get("is_free"):
+                            price_is_free = True
+                        cost_usd_samples.append(md.get("actual_cost_usd"))
+                    else:
+                        cost_usd_samples.append(None)
 
         avg_scores = {
             k: round(sum(vals) / len(vals), 4)
@@ -173,6 +235,19 @@ def _load_model_data(
             if (filtered := [v for v in vals if _is_finite_number(v)])
             for vals in [filtered]
         }
+
+        # Overwrite the baked-in price_ratio_scorer with a value recomputed from
+        # raw actual_cost_usd x the LIVE cost reference (W3b). Drops the key
+        # entirely when the recompute is NaN (no usable cost data) so the column
+        # renders "--" instead of a stale/meaningless number.
+        if has_price_scorer:
+            recomputed = _recompute_price_ratio_from_costs(
+                cost_usd_samples, price_is_free, task_name, _BASELINE_STORE
+            )
+            if math.isnan(recomputed):
+                avg_scores.pop("price_ratio_scorer", None)
+            else:
+                avg_scores["price_ratio_scorer"] = round(recomputed, 4)
 
         if card_key not in model_data:
             model_data[card_key] = {
