@@ -753,6 +753,72 @@ class TestMultishotSolver:
         assert "config.py" in ctx
         assert "read_file" in ctx
 
+    def test_solver_preserves_usage_from_generate_fn(self, tmp_path):
+        """Regression: multishot_solver's tool-loop branch was rebuilding
+        state.output with only model= and completion=, dropping usage +
+        choices + stop_reason. Cost pillar was NaN on all multishot tasks
+        (f21, f23, u17, u18) as a result. After the fix, the ModelOutput
+        that generate_fn set on state.output must survive intact.
+
+        Failure mode (pre-fix): state.output.usage is None even though the
+        fake generate_fn attached a real ModelUsage. This test will fail
+        until the manual rebuild in multishot.py is removed.
+        """
+        from inspect_ai.model import (
+            ChatCompletionChoice,
+            ChatMessageAssistant,
+            ModelOutput,
+            ModelUsage,
+        )
+        from bench_cli.solvers.multishot import multishot_solver
+
+        # Set up fixture dir so the solver takes the tool-loop branch
+        # (max_turns=5 + fixture_path set), not the bare-generate fallback.
+        fixture_dir = tmp_path / "fixtures" / "scenario"
+        fixture_dir.mkdir(parents=True)
+        (fixture_dir / "config.py").write_text("X=1")
+
+        state = make_task_state(completion="initial", target="expected")
+        state.metadata = {"fixture_path": str(fixture_dir)}
+
+        # Fake generate_fn: returns a ModelOutput carrying full usage +
+        # choices + stop_reason. Mirrors what a real model call would set
+        # after the tool loop terminates.
+        final_usage = ModelUsage(input_tokens=42, output_tokens=17)
+        final_completion = "final response"
+
+        async def fake_generate(s):
+            s.output = ModelOutput(
+                model="test-model",
+                completion=final_completion,
+                usage=final_usage,
+                choices=[
+                    ChatCompletionChoice(
+                        message=ChatMessageAssistant(content=final_completion),
+                        stop_reason="stop",
+                    )
+                ],
+            )
+            return s
+
+        solver = multishot_solver(max_turns=5)
+        state = run_async(solver(state, fake_generate))
+
+        # The bug: state.output was rebuilt to only have model + completion.
+        # After the fix: usage, choices, and stop_reason must survive.
+        assert state.output is not None, "state.output should be set after solve"
+        assert state.output.usage is not None, (
+            "state.output.usage was dropped by multishot_solver rebuild — "
+            "cost pillar will be NaN on every multishot-routed task"
+        )
+        assert state.output.usage.input_tokens == 42
+        assert state.output.usage.output_tokens == 17
+        assert state.output.choices, "state.output.choices was dropped"
+        # stop_reason lives on ChatCompletionChoice (per OpenAI convention),
+        # not on ModelOutput. Verify it survived on the choice.
+        assert state.output.choices[0].stop_reason == "stop"
+        assert state.output.completion == final_completion
+
 
 # ---------------------------------------------------------------------------
 # Hybrid scorer tests
