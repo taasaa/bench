@@ -140,19 +140,6 @@ def multishot_solver(
         tool_solver = use_tools(*active_tools)
         state = await tool_solver(state, generate_fn)
         state = await generate_fn(state)
-
-        # Fix state.output — Inspect's tool loop doesn't update it
-        last_text = ""
-        for msg in reversed(state.messages):
-            text = getattr(msg, "text", None)
-            if text:
-                last_text = text
-                break
-
-        state.output = ModelOutput(
-            model=str(state.model),
-            completion=last_text,
-        )
         return state
 
     return solve
