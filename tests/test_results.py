@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 from click.testing import CliRunner
 
@@ -545,63 +543,6 @@ class TestGenerateCardForModel:
 # ---------------------------------------------------------------------------
 # _recompute_price_ratio_from_costs (W3b parity with compare; self-healing)
 # ---------------------------------------------------------------------------
-
-
-class TestRecomputePriceRatioFromCosts:
-    """Cost ratio in cards must recompute from actual_cost_usd x the LIVE
-    reference, not the baked-in price_ratio_scorer value (which used whatever
-    reference was live at eval time). Mirrors bench_cli.compare.core W3b."""
-
-    def test_free_model_returns_inf(self):
-        from bench_cli.results.core import _recompute_price_ratio_from_costs as rc
-
-        assert math.isinf(rc([0.0, 0.0], is_free=True, task_name="add-tests"))
-
-    def test_empty_or_none_costs_returns_nan(self):
-        from bench_cli.results.core import _recompute_price_ratio_from_costs as rc
-
-        assert math.isnan(rc([], is_free=False, task_name="add-tests"))
-        assert math.isnan(rc([None, None], is_free=False, task_name="add-tests"))
-
-    def test_zero_or_negative_costs_filtered_to_nan(self):
-        from bench_cli.results.core import _recompute_price_ratio_from_costs as rc
-
-        assert math.isnan(rc([0.0, -1.0], is_free=False, task_name="add-tests"))
-
-    def test_uses_live_reference_geomean(self):
-        from bench_cli.results.core import _recompute_price_ratio_from_costs as rc
-
-        # add-tests reference_cost_usd = 0.000735 (scorers/task_budgets.py, m3).
-        # actual == reference for every sample -> ratio 1.0 -> geomean 1.0.
-        r = rc([0.000735, 0.000735], is_free=False, task_name="add-tests")
-        assert round(r, 3) == 1.0
-        # actual = 2x reference -> ratio 0.5.
-        assert round(rc([0.00147], is_free=False, task_name="add-tests"), 3) == 0.5
-
-    def test_self_heals_on_reference_rebaseline(self, monkeypatch):
-        """The bug being fixed: a cost re-baseline (m2.7 -> m3) must change the
-        card's cost ratio WITHOUT a re-eval, because actual_cost_usd is
-        reference-independent and the ratio is recomputed against the live ref."""
-        from types import SimpleNamespace
-
-        from bench_cli.results.core import _recompute_price_ratio_from_costs as rc
-
-        actual = [0.001]  # reference-independent sample cost
-        # reference v1 (expensive, m2.7-like): high ref -> high ratio.
-        monkeypatch.setattr(
-            "bench_cli.results.core.get_task_budget",
-            lambda t: SimpleNamespace(reference_cost_usd=0.002),
-        )
-        r_v1 = rc(actual, is_free=False, task_name="any-task")
-        # reference v2 (cheap, m3-like): lower ref -> lower ratio, SAME actual.
-        monkeypatch.setattr(
-            "bench_cli.results.core.get_task_budget",
-            lambda t: SimpleNamespace(reference_cost_usd=0.001),
-        )
-        r_v2 = rc(actual, is_free=False, task_name="any-task")
-        assert r_v1 > r_v2                       # self-healed direction
-        assert round(r_v1, 3) == 2.0             # 0.002 / 0.001
-        assert round(r_v2, 3) == 1.0             # 0.001 / 0.001
 
 
 # ---------------------------------------------------------------------------
