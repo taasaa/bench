@@ -6,9 +6,9 @@
 
 **minimax/minimax-m3** achieves an overall correctness of **78%** across 25 evaluation tasks.
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
-Token efficiency is below benchmark (ratio 0.77), tending toward verbose output.
-Latency is fast (ratio 4.45).
-Cost efficiency is strong (ratio 2.49), cheaper than the benchmark reference.
+Token efficiency is below benchmark (ratio 0.76), tending toward verbose output.
+Latency is fast (ratio 4.46).
+Cost efficiency is strong (ratio 2.74), cheaper than the benchmark reference.
 
 **Strengths:** Excels at competence tasks (add-tests, f7-format-compliance, q1-verification-gate).
 
@@ -33,9 +33,9 @@ Cost efficiency is strong (ratio 2.49), cheaper than the benchmark reference.
 | Pillar | Score | Rating |
 |--------|-------|--------|
 | **Correctness** | 0.781 | good |
-| **Token Efficiency** | 0.765 | good |
-| **Latency** | 4.452 | excellent |
-| **Cost Efficiency** | 2.491 | excellent |
+| **Token Efficiency** | 0.764 | good |
+| **Latency** | 4.460 | excellent |
+| **Cost Efficiency** | 2.744 | excellent |
 
 > Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60
 > Ratio interpretation: > 1.0 = better than benchmark, < 1.0 = worse
@@ -74,7 +74,7 @@ Cost efficiency is strong (ratio 2.49), cheaper than the benchmark reference.
 | q3-answer-the-question | competence | verify_sh | 0.938 | 0.464 | 2.772 | 21.314 |
 | q4-root-cause | execution | -- | -- | 0.299 | 0.690 | 0.642 |
 | q5-safe-git-operations | competence | verify_sh | 0.583 | 0.475 | 1.388 | 1.463 |
-| u17-dirty-workspace-triage | universal | -- | -- | 0.164 | 1.014 | -- |
+| u17-dirty-workspace-triage | universal | -- | -- | 0.137 | 1.288 | 10.823 |
 | u18-resume-after-bad-attempt | universal | -- | -- | 0.187 | 0.823 | -- |
 | u7-git-safety | universal | llm_judge | 0.812 | 0.260 | 0.765 | 2.467 |
 | u8-edit-reliability | universal | llm_judge | 0.812 | 0.245 | 0.496 | 1.591 |
@@ -97,8 +97,8 @@ Cost efficiency is strong (ratio 2.49), cheaper than the benchmark reference.
 
 ## Token Usage
 
-- Total input: 188,039
-- Total output: 312,382
-- Avg input/sample: 1,139
-- Avg output/sample: 1,893
+- Total input: 188,908
+- Total output: 311,257
+- Avg input/sample: 1,144
+- Avg output/sample: 1,886
 
