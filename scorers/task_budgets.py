@@ -111,10 +111,10 @@ TASK_BUDGETS: dict[str, TaskBudget] = {
         output_tokens=2200, latency_seconds=55.0, reference_cost_usd=0.002397525
     ),
     "u17_dirty_workspace_triage": TaskBudget(
-        output_tokens=1500, latency_seconds=60.0, reference_cost_usd=None
+        output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.007419
     ),
     "u18_resume_after_bad_attempt": TaskBudget(
-        output_tokens=1500, latency_seconds=60.0, reference_cost_usd=None
+        output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.006267
     ),
 }
 
