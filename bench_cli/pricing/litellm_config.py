@@ -179,12 +179,19 @@ def _resolve_from_litellm(alias: str) -> str | None:
 def resolve_openrouter_id(alias: str) -> str | None:
     """Resolve a bench model alias to an OpenRouter ID present in the price cache.
 
+    The live LiteLLM proxy config (`~/dev/litellm/config.yaml`) is the primary
+    source of truth for routing. This resolver consults it first via
+    `_resolve_from_litellm()` so that recorded identity and pricing track the
+    model actually being called today, not a stale static alias.
+
     Resolution order:
-      1. Persistent overrides (human-validated slug corrections)
-      2. MODEL_ALIAS_MAP — deterministic static alias → OpenRouter id
-         (verified in cache; skipped for managed/local models)
-      3. LiteLLM config → verify slug is in OpenRouter cache (happy path)
-      4. If an override exists but the model was dropped from cache → error
+      0. Managed/local models (is_managed_model) — pricing-exempt, return None.
+      1. Persistent overrides (logs/pricing/model_overrides.json) — human-
+         validated slug corrections (e.g. :free → paid variant). Pricing only.
+      2. Live LiteLLM config — primary source of truth (parsed each call).
+      3. MODEL_ALIAS_MAP — catch-all for aliases the proxy can't auto-resolve.
+         Empty by design; update the proxy config first.
+      4. If an override exists but the model was dropped from cache → error.
 
     Returns:
         OpenRouter model ID that IS in the cache, or None if alias is unknown.
@@ -198,7 +205,14 @@ def resolve_openrouter_id(alias: str) -> str | None:
     cache = OpenRouterCache()
     all_prices = cache.get_all_prices()
 
-    # 1. Try persistent overrides first (e.g. :free → paid variant)
+    # 0. Managed/local models — pricing-exempt; resolve_recorded_name
+    #    short-circuits these in the caller, and pricing is skipped here.
+    if is_managed_model(alias):
+        return None
+
+    # 1. Try persistent overrides first (e.g. :free → paid variant).
+    #    Pricing-only; resolved ids here are intentional corrections, not
+    #    bindings to live routing. See logs/pricing/model_overrides.json.
     overrides = _load_overrides()
     override_id = overrides.get(alias)
     if override_id is not None:
@@ -210,21 +224,22 @@ def resolve_openrouter_id(alias: str) -> str | None:
             "Update the override or refresh the cache."
         )
 
-    # 2. MODEL_ALIAS_MAP — bench-canonical bench_alias → OpenRouter id.
-    #    Deterministic (static dict); only fires when the mapped id is in cache.
-    #    Skipped for managed/local models (they are pricing-exempt by design).
-    if not is_managed_model(alias):
-        mapped_id = MODEL_ALIAS_MAP.get(alias)
-        if mapped_id is not None and mapped_id in all_prices:
-            return mapped_id
-
-    # 3. Try LiteLLM config resolution — verify against cache
+    # 2. Live LiteLLM config — the proxy is the source of truth for routing.
     litellm_id = _resolve_from_litellm(alias)
     if litellm_id is not None and litellm_id in all_prices:
         return litellm_id
 
-    # LiteLLM resolved but slug not in cache, and no override — return the slug
-    # anyway so callers can decide (price gate will block, scorer will NaN)
+    # 3. MODEL_ALIAS_MAP catch-all (empty by design). Only fires when the proxy
+    #    has no model_name entry for the alias AND a human has explicitly added
+    #    an OR-id mapping here.
+    mapped_id = MODEL_ALIAS_MAP.get(alias)
+    if mapped_id is not None and mapped_id in all_prices:
+        return mapped_id
+
+    # LiteLLM resolved but slug not in cache, and no override or map entry —
+    # return the slug anyway so callers can decide (price gate will block,
+    # scorer will NaN). This preserves behavior for OR-ids that resolve live
+    # but aren't priced yet.
     if litellm_id is not None:
         return litellm_id
 
@@ -240,25 +255,23 @@ def resolve_backing_model_id(alias: str) -> str | None:
     override (logs/pricing/model_overrides.json) is pricing-only and must not
     leak into the recorded model identity (spec Non-Goal).
 
-    Resolution order (no step 1 override lookup):
-      1. MODEL_ALIAS_MAP — static alias -> OpenRouter id (if in cache).
-      2. LiteLLM config -> verify slug in cache (or return slug for caller to decide).
+    Resolution order (no override lookup; managed short-circuit lives in the
+    caller `resolve_recorded_name` so this function returns None for them):
+      1. Live LiteLLM config — primary source of truth.
+      2. MODEL_ALIAS_MAP catch-all (empty by design).
     """
-    from bench_cli.pricing.price_cache import OpenRouterCache
     from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
 
-    cache = OpenRouterCache()
-    all_prices = cache.get_all_prices()
-
-    # 1. MODEL_ALIAS_MAP (deterministic static), verified in cache
-    if not is_managed_model(alias):
-        mapped_id = MODEL_ALIAS_MAP.get(alias)
-        if mapped_id is not None and mapped_id in all_prices:
-            return mapped_id
-
-    # 2. LiteLLM config resolution
+    # 1. Live LiteLLM config — the proxy is the source of truth for routing.
     litellm_id = _resolve_from_litellm(alias)
-    return litellm_id  # may be None; caller decides
+
+    # 2. MODEL_ALIAS_MAP catch-all (empty by design).
+    mapped_id = MODEL_ALIAS_MAP.get(alias)
+    if mapped_id is not None and litellm_id is None:
+        return mapped_id
+
+    # May be None; caller (resolve_recorded_name) decides the fallback.
+    return litellm_id
 
 
 def is_managed_model(alias: str) -> bool:

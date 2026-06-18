@@ -1,6 +1,21 @@
 """Resolve user-supplied model names to canonical openai/<alias> form.
 
 Enables bare names like 'qwen-local' instead of requiring 'openai/qwen-local'.
+
+Bare-name candidates come from two sources, merged at import time:
+  1. The live LiteLLM proxy config (~/dev/litellm/config.yaml) — primary.
+     Every `model_name:` entry contributes its bare suffix (e.g. `qwen-local`,
+     `default`, `opus`). Stays in sync with routing automatically.
+  2. LOCAL_ONLY_ALIASES — a small hand-maintained constant for managed/local
+     aliases that don't have a `model_name:` entry in the proxy config (they
+     are short-circuited by `is_managed_model` and never routed, so they don't
+     need a proxy binding).
+
+Previously this module built the suffix map from MODEL_ALIAS_MAP. After the
+Y-inversion cleanup (2026-06-17), MODEL_ALIAS_MAP is a catch-all for OR-moniker
+resolution and is empty by design — using it for bare-name resolution would
+silently drop all live aliases. The proxy config is the right source for bare
+names (it's already a single source of truth for routing).
 """
 
 from __future__ import annotations
@@ -9,7 +24,16 @@ import difflib
 
 import click
 
-from bench_cli.pricing.model_aliases import MODEL_ALIAS_MAP
+from bench_cli.pricing.litellm_config import _load_litellm_alias_map
+
+
+# Managed/local aliases without a `model_name:` entry in the proxy config.
+# Listed explicitly here because the proxy parser can't see them. Keep minimal.
+LOCAL_ONLY_ALIASES = (
+    "openai/glm-local",
+    "openai/qwen3-coder-plus",
+    "openai/qwen3-max",
+)
 
 
 def bare_model_name(model: str) -> str:
@@ -23,9 +47,16 @@ def bare_model_name(model: str) -> str:
 
 
 def _build_suffix_map() -> dict[str, str]:
-    """Build {bare_suffix: canonical_key} from MODEL_ALIAS_MAP."""
+    """Build {bare_suffix: canonical_key} from live proxy config + local aliases.
+
+    Proxy keys come back bare (e.g. 'qwen-local'); we add the 'openai/' prefix
+    so resolve_model('qwen-local') -> 'openai/qwen-local'. Local-only entries
+    are already in openai/<bare> form.
+    """
     result: dict[str, str] = {}
-    for canonical in MODEL_ALIAS_MAP:
+    for bare in _load_litellm_alias_map():
+        result[bare] = f"openai/{bare}"
+    for canonical in LOCAL_ONLY_ALIASES:
         if "/" in canonical:
             suffix = canonical.split("/", 1)[1]
             result[suffix] = canonical

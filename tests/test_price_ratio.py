@@ -44,7 +44,7 @@ def test_price_ratio_uses_reference_model_cost(tmp_path, monkeypatch):
     scorer = price_ratio_scorer(task_budget=budget)
 
     state = MagicMock()
-    state.model = "openai/nvidia-nemotron-30b"  # the SUBJECT (a priced alias)
+    state.model = "openai/nemotron-ultra-550b"  # the SUBJECT (a priced alias)
     state.metadata = {"task_name": "add_tests"}
 
     class U:
@@ -67,7 +67,7 @@ def test_scorers_unchanged_when_no_reference_registered(tmp_path, monkeypatch):
     budget = TaskBudget(reference_cost_usd=0.001)
     scorer = price_ratio_scorer(task_budget=budget)
     state = MagicMock()
-    state.model = "openai/nvidia-nemotron-30b"
+    state.model = "openai/nemotron-ultra-550b"
     state.metadata = {"task_name": "add_tests"}
 
     class U:

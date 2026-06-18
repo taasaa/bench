@@ -28,11 +28,13 @@ from bench_cli.pricing.price_cache import CacheMiss, OpenRouterCache
 
 class TestModelAliases:
     def test_resolve_alias_known(self):
-        assert resolve_alias("openai/qwen-local") == "qwen/qwen3.5-35b-a3b"
-        assert resolve_alias("openai/gpt-4o") == "openai/gpt-4o"
-        assert resolve_alias("openai/opus") == "anthropic/claude-3-opus"
-        assert resolve_alias("openai/sonnet") == "anthropic/claude-3-sonnet"
-        assert resolve_alias("openai/gemini-2-5-pro") == "google/gemini-2.5-pro"
+        # MAP is empty by design (catch-all only). Live proxy + overrides drive
+        # actual resolution. resolve_alias() against an empty MAP returns None.
+        assert resolve_alias("openai/qwen-local") is None
+        assert resolve_alias("openai/gpt-4o") is None
+        assert resolve_alias("openai/opus") is None
+        assert resolve_alias("openai/sonnet") is None
+        assert resolve_alias("openai/gemini-2-5-pro") is None
 
     def test_resolve_alias_unknown(self):
         assert resolve_alias("openai/nonexistent-model") is None
@@ -42,22 +44,36 @@ class TestModelAliases:
         assert resolve_alias("qwen-local") is None
         assert resolve_alias("gpt-4o") is None
 
-    def test_alias_map_covers_required_models(self):
-        required = [
-            "openai/qwen-local",
-            "openai/gemma-4-e2-local",
-            "openai/gemma-4-26-local",
-            "openai/opus",
-            "openai/sonnet",
-            "openai/haiku",
-            "openai/opus-4",
-            "openai/sonnet-4",
-            "openai/haiku-4",
-            "openai/gpt-4o",
-            "openai/gpt-4o-mini",
-        ]
-        for alias in required:
-            assert alias in MODEL_ALIAS_MAP, f"Missing alias: {alias}"
+    def test_alias_map_empty_by_design(self):
+        """MODEL_ALIAS_MAP is a catch-all for aliases the live proxy can't
+        resolve. Live proxy + overrides are the primary sources. Empty by
+        design; any entry here must be a deliberate addition when the proxy
+        config has no model_name entry for the alias."""
+        assert MODEL_ALIAS_MAP == {}, (
+            "MODEL_ALIAS_MAP should be empty unless an alias can't be auto-"
+            "resolved by the live proxy config and needs an explicit OR id."
+        )
+
+    def test_catch_all_fires_when_live_proxy_returns_none(self, tmp_path, monkeypatch):
+        """A MAP entry acts as a catch-all: if live proxy returns None but
+        the MAP has an entry pointing to a cached OR id, the MAP value wins."""
+        from bench_cli.pricing import litellm_config
+        from bench_cli.pricing import model_aliases
+
+        # Find a real cached OR id to use as the catch-all target
+        from bench_cli.pricing.price_cache import OpenRouterCache
+        all_prices = OpenRouterCache().get_all_prices()
+        real_id = next(iter(all_prices))
+
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", tmp_path / "ov.json")
+        monkeypatch.setattr(model_aliases, "MODEL_ALIAS_MAP",
+                            {"openai/catch-all-test": real_id})
+        monkeypatch.setattr(litellm_config, "_resolve_from_litellm",
+                            lambda _alias: None)  # simulate proxy returns None
+        litellm_config._build_reverse_lookup.cache_clear()
+
+        result = resolve_openrouter_id("openai/catch-all-test")
+        assert result == real_id
 
     def test_is_free_model_false(self):
         info = PriceInfo("test/model", input_price=0.5, output_price=1.5, context_window=4096)
@@ -429,21 +445,27 @@ class TestIsManagedModel:
 
 
 class TestResolveAliasMapTier:
-    """D1: resolve_openrouter_id consults MODEL_ALIAS_MAP (verified in cache)."""
+    """Y-inversion: live LiteLLM proxy is the primary source; MAP is catch-all."""
 
-    def test_alias_map_entry_resolves_when_cached(self):
-        # openai/nvidia-nemotron-3-super-120b-a12b is priced in the 337-model cache
-        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") == "nvidia/nemotron-3-super-120b-a12b"
+    def test_live_proxy_is_primary_source(self):
+        """Aliases with a live proxy model_name entry resolve from the proxy,
+        not from MAP (which is empty)."""
+        # openai/nemotron-ultra-550b is in the live proxy config.
+        assert resolve_openrouter_id("openai/nemotron-ultra-550b") == "nvidia/nemotron-3-ultra-550b-a55b"
 
-    def test_alias_map_skipped_for_managed_models(self):
-        # qwen-local is managed -> tier skipped -> falls to litellm (not the map's qwen/qwen3.5-35b-a3b)
+    def test_managed_models_short_circuit_to_none(self):
+        """Managed/local models return None from resolve_openrouter_id (pricing-
+        exempt). They never resolve via MAP (which would return a paid OR id)."""
         from bench_cli.pricing.litellm_config import is_managed_model
         assert is_managed_model("openai/qwen-local")
-        # managed model never resolves via the alias map's paid or_id:
-        assert resolve_openrouter_id("openai/qwen-local") != MODEL_ALIAS_MAP["openai/qwen-local"]
+        assert resolve_openrouter_id("openai/qwen-local") is None
 
-    def test_alias_map_miss_falls_through(self, tmp_path, monkeypatch):
-        # alias in map but or_id NOT in cache -> falls through (returns None or litellm id)
+    def test_unknown_alias_returns_none(self):
+        """Alias not in proxy, not in MAP, not in overrides -> None."""
+        assert resolve_openrouter_id("openai/this-does-not-exist-xyz789") is None
+
+    def test_alias_not_in_proxy_no_map_falls_through(self, tmp_path, monkeypatch):
+        """Alias with no proxy model_name and no MAP entry -> None."""
         from bench_cli.pricing import litellm_config
         from bench_cli.pricing.price_cache import OpenRouterCache
         empty = tmp_path / "empty.json"; empty.write_text("{}")
@@ -451,13 +473,14 @@ class TestResolveAliasMapTier:
             lambda self, **kw: self.__dict__.update(_cache_path=empty, _data=None))
         monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", tmp_path / "ov.json")
         litellm_config._build_reverse_lookup.cache_clear()
-        # not managed, in map, but cache empty -> None
-        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") is None
+        # neither in proxy nor in MAP -> None
+        assert resolve_openrouter_id("openai/totally-unknown-alias-xyz") is None
 
-    def test_sc10_nemotron_subjects_priced(self):
-        """SC#10: the two 01cfd589 cost-anomaly subjects now resolve to cached, paid or_ids."""
-        assert resolve_openrouter_id("openai/nvidia-nemotron-3-super-120b-a12b") == "nvidia/nemotron-3-super-120b-a12b"
-        assert resolve_openrouter_id("openai/nvidia-nemotron-3-nano-30b-a3b") == "nvidia/nemotron-3-nano-30b-a3b"
+    def test_sc10_nemotron_subjects_priced_via_live_proxy(self):
+        """Nemotron-ultra-550b is in the live proxy and resolves to the paid
+        OR id (the two old SC#10 nemotron aliases are no longer in the proxy
+        config and have aged out — task 01cfd589 closed by proxy removal)."""
+        assert resolve_openrouter_id("openai/nemotron-ultra-550b") == "nvidia/nemotron-3-ultra-550b-a55b"
 
     def test_sc10_omni_nan_correct(self, tmp_path, monkeypatch):
         """SC#10 NaN-correct: a model whose paid or_id is absent from the cache -> scorer NaNs.

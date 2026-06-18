@@ -492,7 +492,7 @@ class TestPriceRatioScorer:
         from scorers.price_ratio import price_ratio_scorer
 
         s = price_ratio_scorer()
-        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
+        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
 
         with patch("scorers.price_ratio._price_info", side_effect=CacheMiss("test")):
             result = run_async(s(state, state.target))
@@ -510,8 +510,8 @@ class TestPriceRatioScorer:
         from scorers.price_ratio import price_ratio_scorer
 
         s = price_ratio_scorer()
-        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
-        free_info = PriceInfo("qwen/qwen-local", 0.0, 0.0, None)
+        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
+        free_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 0.0, 0.0, None)
 
         with patch("scorers.price_ratio._price_info", return_value=free_info):
             result = run_async(s(state, state.target))
@@ -531,8 +531,8 @@ class TestPriceRatioScorer:
         from scorers.protocol import TaskBudget
 
         s = price_ratio_scorer(task_budget=TaskBudget())
-        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
-        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
+        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
 
         with patch("scorers.price_ratio._price_info", return_value=paid_info):
             result = run_async(s(state, state.target))
@@ -555,8 +555,8 @@ class TestPriceRatioScorer:
         # actual = 100*1/1M + 50*2/1M = $0.0002
         # ratio = 0.001 / 0.0002 = 5.0
         s = price_ratio_scorer(task_budget=TaskBudget(reference_cost_usd=0.001))
-        state = self._make_scored_state("output", "openai/qwen-local", 100, 50)
-        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
+        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
 
         with patch("scorers.price_ratio._price_info", return_value=paid_info):
             result = run_async(s(state, state.target))
@@ -577,8 +577,8 @@ class TestPriceRatioScorer:
         from scorers.protocol import TaskBudget
 
         s = price_ratio_scorer(task_budget=TaskBudget(reference_cost_usd=0.001))
-        state = self._make_scored_state("output", "openai/qwen-local", 0, 0)
-        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 0, 0)
+        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
 
         with patch("scorers.price_ratio._price_info", return_value=paid_info):
             result = run_async(s(state, state.target))
@@ -815,10 +815,10 @@ class TestResolveAndPriceTierBreakdown:
         from scorers.price_ratio import _resolve_and_price
 
         usage = type("U", (), {"input_tokens": 100, "output_tokens": 50})()
-        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
 
         with patch("scorers.price_ratio._price_info", return_value=paid_info):
-            cost, or_id, is_free, tb = _resolve_and_price("openai/qwen-local", usage)
+            cost, or_id, is_free, tb = _resolve_and_price("openai/nemotron-ultra-550b", usage)
 
         assert tb is None
         assert cost is not None
@@ -831,10 +831,10 @@ class TestResolveAndPriceTierBreakdown:
         from scorers.price_ratio import _resolve_and_price
 
         usage = {"prompt_tokens": 100, "completion_tokens": 50}
-        paid_info = PriceInfo("qwen/qwen-local", 1.0, 2.0, 4096)
+        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
 
         with patch("scorers.price_ratio._price_info", return_value=paid_info):
-            cost, or_id, is_free, tb = _resolve_and_price("openai/qwen-local", usage)
+            cost, or_id, is_free, tb = _resolve_and_price("openai/nemotron-ultra-550b", usage)
 
         assert tb is None
 
@@ -935,7 +935,7 @@ class TestFormatTierBreakdown:
         """No models with tier data → returns None."""
         from bench_cli.compare import PillarScores, format_tier_breakdown
 
-        data = type("CompareData", (), {"models": ["openai/qwen-local"], "tasks": ["smoke"], "matrix": {}})()
+        data = type("CompareData", (), {"models": ["openai/nemotron-ultra-550b"], "tasks": ["smoke"], "matrix": {}})()
         assert format_tier_breakdown(data) is None
 
     def test_renders_tier_distribution(self):

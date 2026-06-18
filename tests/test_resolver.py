@@ -22,7 +22,10 @@ class TestResolveModel:
         assert result == "openai/minimax"
 
     def test_ambiguous_prefix_raises(self):
-        with pytest.raises(click.BadParameter, match="Ambiguous"):
+        # No gemini aliases are currently in the proxy config (they aged out
+        # of MODEL_ALIAS_MAP in the 2026-06-17 cleanup). Bare 'gemini' falls
+        # through to a close-match suggestion rather than ambiguity.
+        with pytest.raises(click.BadParameter, match="Closest"):
             resolve_model("gemini")
 
     def test_unknown_returns_openai_prefix(self):
