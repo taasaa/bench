@@ -600,6 +600,49 @@ class TestPriceRatioScorer:
 # ---------------------------------------------------------------------------
 
 
+class TestTaskBudgets:
+    """Pin the cost reference to the current benchmark (m3 as of 2026-06-18).
+
+    Catches accidental regression to a previous reference (m2.7, qwen-local)
+    or stale data. Tolerance is loose (within 1%) because the source of
+    truth is the live m3 eval logs; small drift across re-evaluations is OK.
+    """
+
+    def test_u17_reference_is_m3_baseline(self):
+        """u17 reference_cost_usd must be the m3 mean (~0.000737), not the
+        m2.7 value (0.007419). This is the canonical data-gap task; if
+        this drifts the cost pillar silently changes reference."""
+        from scorers.task_budgets import get_task_budget
+        b = get_task_budget("u17_dirty_workspace_triage")
+        assert b is not None
+        # m3 mean from 2026-06-18 eval: $0.000737. m2.7 was $0.007419.
+        assert b.reference_cost_usd == pytest.approx(0.000737, rel=0.01), (
+            f"u17 reference drifted to {b.reference_cost_usd}; "
+            "expected m3 baseline (~0.000737), not m2.7 (0.007419)"
+        )
+
+    def test_u18_reference_is_m3_baseline(self):
+        """u18 reference_cost_usd must be the m3 mean (~0.003001), not the
+        m2.7 value (0.006267)."""
+        from scorers.task_budgets import get_task_budget
+        b = get_task_budget("u18_resume_after_bad_attempt")
+        assert b is not None
+        assert b.reference_cost_usd == pytest.approx(0.003001, rel=0.01), (
+            f"u18 reference drifted to {b.reference_cost_usd}; "
+            "expected m3 baseline (~0.003001), not m2.7 (0.006267)"
+        )
+
+    def test_add_tests_reference_is_m3_baseline(self):
+        """Smoke check that the change is applied uniformly (single-line entry)."""
+        from scorers.task_budgets import get_task_budget
+        b = get_task_budget("add_tests")
+        assert b is not None
+        # m3 mean: $0.000735. m2.7 was $0.00101406.
+        assert b.reference_cost_usd == pytest.approx(0.000735, rel=0.01), (
+            f"add_tests reference drifted to {b.reference_cost_usd}"
+        )
+
+
 class TestLoadFixtures:
     """Unit tests for bench_cli.fixtures module."""
 
