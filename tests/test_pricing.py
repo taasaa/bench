@@ -44,15 +44,28 @@ class TestModelAliases:
         assert resolve_alias("qwen-local") is None
         assert resolve_alias("gpt-4o") is None
 
-    def test_alias_map_empty_by_design(self):
+    def test_alias_map_only_contains_proxy_unresolvable_aliases(self):
         """MODEL_ALIAS_MAP is a catch-all for aliases the live proxy can't
-        resolve. Live proxy + overrides are the primary sources. Empty by
-        design; any entry here must be a deliberate addition when the proxy
-        config has no model_name entry for the alias."""
-        assert MODEL_ALIAS_MAP == {}, (
-            "MODEL_ALIAS_MAP should be empty unless an alias can't be auto-"
-            "resolved by the live proxy config and needs an explicit OR id."
-        )
+        resolve. Live proxy + overrides are the primary sources. Every entry
+        here must be a deliberate addition for an alias the proxy config has
+        no model_name entry for (e.g. historical aliases removed from the
+        proxy but still present in the eval-log corpus)."""
+        from bench_cli.pricing import litellm_config
+
+        for alias, or_id in MODEL_ALIAS_MAP.items():
+            # Each MAP alias must NOT be resolvable by the live proxy —
+            # otherwise it shouldn't be here (proxy is source of truth).
+            proxy_id = litellm_config._resolve_from_litellm(alias)
+            assert proxy_id is None, (
+                f"MODEL_ALIAS_MAP[{alias!r}] = {or_id!r} but the live proxy "
+                f"already resolves this alias to {proxy_id!r}. Remove the MAP "
+                f"entry — the proxy is the source of truth."
+            )
+            # And must point to a real provider/slug OR id (not an openai/* alias).
+            assert "/" in or_id and not or_id.startswith("openai/"), (
+                f"MODEL_ALIAS_MAP[{alias!r}] = {or_id!r} is not a canonical "
+                f"provider/slug OR id."
+            )
 
     def test_catch_all_fires_when_live_proxy_returns_none(self, tmp_path, monkeypatch):
         """A MAP entry acts as a catch-all: if live proxy returns None but
