@@ -50,11 +50,17 @@ def is_moniker_alias(bench_alias: str) -> bool:
     """True if alias is a router-tier meta-moniker (default/thinking/heavy/...).
 
     Checks the BARE name (first segment stripped) so OR ids like
-    'minimaxai/minimax-m3' (bare 'minimax-m3') are correctly False.
+    'minimaxai/minimax-m3' (bare 'minimax-m3') are correctly False. Also handles
+    agent-eval composite keys 'model__agent__mode' by checking the model segment
+    (OpenRouter ids never contain '__'), so agent-eval cards of monikers like
+    'openai/default__claude__docker' are correctly excluded.
     """
     from bench_cli.resolver import bare_model_name
 
-    return bare_model_name(bench_alias) in _ROUTER_MONIKERS
+    # Agent-eval composite key: model is everything before the first '__'
+    # (OR ids use '-', never '__').
+    model_part = bench_alias.split("__", 1)[0] if "__" in bench_alias else bench_alias
+    return bare_model_name(model_part) in _ROUTER_MONIKERS
 
 
 def _build_pillar_map() -> dict[str, str]:
@@ -130,6 +136,12 @@ def _load_model_data(
         try:
             log = read_eval_log(str(eval_file))
         except Exception:
+            continue
+
+        # Skip non-success logs (parity with compare/core.py): started/error
+        # logs are abandoned or partial runs with no valid scores, and including
+        # them pollutes pillar averages (e.g. killed 0-sample runs -> corr 0.000).
+        if getattr(log, "status", None) != "success":
             continue
 
         model = log.eval.model if log.eval else "unknown"

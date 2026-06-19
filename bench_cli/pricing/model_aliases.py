@@ -37,7 +37,21 @@ from dataclasses import dataclass, field
 # config's model_list, AND (b) you want a specific OR id for it. Otherwise
 # the resolver falls through to "alias unchanged" (recognizable form).
 
-MODEL_ALIAS_MAP: dict[str, str] = {}
+MODEL_ALIAS_MAP: dict[str, str] = {
+    # Historical aliases removed from the live proxy config but still present
+    # in the eval-log corpus. Their OpenRouter ids are recoverable only here
+    # (the proxy no longer routes them), so this map preserves recorded
+    # identity + pricing for legacy cards. All ids verified in the OpenRouter
+    # price cache (logs/pricing/openrouter-models.json) at backfill time
+    # (2026-06-18). See SB task for recorded-model-identity backfill.
+    "openai/glm-plan-5-turbo": "z-ai/glm-5-turbo",
+    "openai/glm-plan-5.2": "z-ai/glm-5.2",
+    "openai/nvidia-devstral": "mistralai/devstral-2512",
+    "openai/nvidia-mistral-small4": "mistralai/mistral-small-2603",
+    "openai/nvidia-nemotron-30b": "nvidia/nemotron-3-nano-30b-a3b",
+    "openai/nvidia-qwen-next": "qwen/qwen3-next-80b-a3b-instruct",
+    "openai/fabric": "nvidia/nemotron-3-super-120b-a12b",
+}
 
 
 def resolve_alias(bench_alias: str) -> str | None:
