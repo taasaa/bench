@@ -38,3 +38,4 @@ Plans/
 .claude/settings.local.json
 .claude/worktrees/
 .coverage
+.pi-subagents/
