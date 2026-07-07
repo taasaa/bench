@@ -33,7 +33,7 @@ This is a **currently free model** (normal price $0.2500/M in, $0.5000/M out), m
 | **Correctness** | 0.838 | good |
 | **Token Efficiency** | 0.489 | weak |
 | **Latency** | 1.187 | excellent |
-| **Cost Efficiency** | FREE | excellent |
+| **Cost Efficiency** | 2.381 | excellent |
 
 > Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60
 > Ratio interpretation: > 1.0 = better than benchmark, < 1.0 = worse
@@ -42,9 +42,9 @@ This is a **currently free model** (normal price $0.2500/M in, $0.5000/M out), m
 
 | Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |
 |------|--------|--------|-------|-----------|------------|------------|
-| f1-multi-file-verify | analysis | hybrid_scorer | 0.750 | 0.732 | 1.473 | FREE |
-| q3-answer-the-question | competence | verify_sh | 0.938 | 0.538 | 1.608 | FREE |
-| q4-root-cause | execution | hybrid_scorer | 0.825 | 0.199 | 0.480 | FREE |
+| f1-multi-file-verify | analysis | hybrid_scorer | 0.750 | 0.732 | 1.473 | 4.325 |
+| q3-answer-the-question | competence | verify_sh | 0.938 | 0.538 | 1.608 | 1.585 |
+| q4-root-cause | execution | hybrid_scorer | 0.825 | 0.199 | 0.480 | 1.235 |
 
 ## Strengths & Weaknesses
 

@@ -8,7 +8,7 @@
 This model struggles with complex multi-step reasoning and should be paired with strong verification layers in any production pipeline.
 Token efficiency is reasonable (ratio 1.26), producing concise responses. 
 Latency is fast (ratio 16.11).
-Cost efficiency is strong (ratio 1.35), cheaper than the benchmark reference.
+Cost efficiency is strong (ratio 1.28), cheaper than the benchmark reference.
 
 **Strengths:** Excels at analysis tasks (f10-env-mismatch, f21-liars-codebase, f1-multi-file-verify).
 
@@ -33,7 +33,7 @@ Cost efficiency is strong (ratio 1.35), cheaper than the benchmark reference.
 | **Correctness** | 0.410 | weak |
 | **Token Efficiency** | 1.259 | excellent |
 | **Latency** | 16.106 | excellent |
-| **Cost Efficiency** | 1.347 | excellent |
+| **Cost Efficiency** | 1.280 | excellent |
 
 > Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60
 > Ratio interpretation: > 1.0 = better than benchmark, < 1.0 = worse
@@ -45,7 +45,7 @@ Cost efficiency is strong (ratio 1.35), cheaper than the benchmark reference.
 | f1-multi-file-verify | analysis | hybrid_scorer | 0.525 | 1.467 | 13.147 | 0.738 |
 | f10-env-mismatch | analysis | hybrid_scorer | 0.569 | 1.265 | 15.861 | 2.943 |
 | f19-admit-uncertainty | analysis | llm_judge | 0.000 | 0.856 | 11.609 | 0.655 |
-| f21-liars-codebase | analysis | hybrid_scorer | 0.544 | 1.448 | 23.809 | 1.050 |
+| f21-liars-codebase | analysis | hybrid_scorer | 0.544 | 1.448 | 23.809 | 0.782 |
 
 ## Strengths & Weaknesses
 

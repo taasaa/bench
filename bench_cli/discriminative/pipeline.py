@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from bench_cli.compare.core import _recalc_cost
+from bench_cli.pricing import reconstruct_cost_from_usage
 from bench_cli.discriminative.diagnostics import run_diagnostics
 from bench_cli.discriminative.phase3_types import MultiSubjectReport
 from bench_cli.discriminative.profiles import (
@@ -253,7 +253,7 @@ def _build_profile_for_subjects(
                             continue
                         inp = getattr(usage, "input_tokens", 0) or 0
                         out = getattr(usage, "output_tokens", 0) or 0
-                        cost = _recalc_cost(model_key, int(inp), int(out))
+                        cost = reconstruct_cost_from_usage(model_key, sample.model_usage, None)
                         if cost:
                             total_cost += cost
                         break

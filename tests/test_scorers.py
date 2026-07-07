@@ -487,15 +487,21 @@ class TestPriceRatioScorer:
         assert result.metadata.get("pillar") == "cost"
 
     def test_cache_miss_returns_nan_with_anomaly(self):
-        """Cache miss → anomaly=True, value=NaN."""
+        """No market price resolvable → anomaly=True, value=NaN.
+
+        Mocks BOTH the LiteLLM lookup (`resolve_market_price`) AND the OR cache
+        fallback (`_price_info`) so the test exercises the full "no price
+        anywhere" path.
+        """
         from bench_cli.pricing.price_cache import CacheMiss
         from scorers.price_ratio import price_ratio_scorer
 
         s = price_ratio_scorer()
         state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
 
-        with patch("scorers.price_ratio._price_info", side_effect=CacheMiss("test")):
-            result = run_async(s(state, state.target))
+        with patch("scorers.price_ratio.resolve_market_price", return_value=None):
+            with patch("scorers.price_ratio._price_info", side_effect=CacheMiss("test")):
+                result = run_async(s(state, state.target))
 
         import math
 
@@ -503,24 +509,39 @@ class TestPriceRatioScorer:
         assert result.metadata.get("anomaly") is True
 
     def test_free_model_returns_inf(self):
-        """Free model (price=0) → value=inf, is_free=True."""
-        from unittest.mock import patch
+        """No paid-variant price resolvable anywhere → NaN with anomaly.
 
-        from bench_cli.pricing.model_aliases import PriceInfo
+        The legacy "cost_ratio=inf (FREE)" shortcut is gone: a model whose
+        market price is genuinely 0/0 (managed/local OR benchmark-only entry
+        with no paid variant) should render as "--" in the cost pillar, not
+        "FREE", so the display never hides a missing-data condition.
+
+        Mocks BOTH `resolve_market_price` (LiteLLM path) AND `_price_info`
+        (OR cache fallback) so neither can resolve a paid-variant price.
+        """
+        from bench_cli.pricing.price_cache import CacheMiss
         from scorers.price_ratio import price_ratio_scorer
 
         s = price_ratio_scorer()
-        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
-        free_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 0.0, 0.0, None)
+        # Use a :free alias so is_free_access=True in the metadata.
+        state = self._make_scored_state(
+            "output", "openai/nemotron-super-120b-free", 100, 50
+        )
 
-        with patch("scorers.price_ratio._price_info", return_value=free_info):
-            result = run_async(s(state, state.target))
+        with patch("scorers.price_ratio.resolve_market_price", return_value=None):
+            with patch("scorers.price_ratio._price_info", side_effect=CacheMiss("test")):
+                result = run_async(s(state, state.target))
 
         import math
 
-        assert math.isinf(result.value)
+        assert math.isnan(result.value), (
+            "No paid-variant price must yield NaN, not inf"
+        )
+        assert result.metadata.get("actual_cost_usd") is None
+        # is_free=True (informational: model IS accessed free) but cost_ratio
+        # must be NaN (anomaly), never inf ("FREE" shortcut is deprecated).
         assert result.metadata.get("is_free") is True
-        assert result.metadata.get("actual_cost_usd") == 0.0
+        assert result.metadata.get("anomaly") is True
 
     def test_no_reference_cost_returns_nan(self):
         """TaskBudget with no reference_cost_usd → NaN, records actual_cost only."""
@@ -544,10 +565,15 @@ class TestPriceRatioScorer:
         assert result.metadata.get("cost_ratio") is None
 
     def test_with_reference_cost_returns_ratio(self):
-        """reference_cost_usd set → cost_ratio = ref/actual."""
+        """reference_cost_usd set → cost_ratio = ref/actual.
+
+        The pricing layer (LiteLLM config or OpenRouter cache) is the source of
+        truth. The test mocks `resolve_market_price` directly so the assertion
+        stays decoupled from the real LiteLLM config (which gets updated as
+        model prices drift).
+        """
         from unittest.mock import patch
 
-        from bench_cli.pricing.model_aliases import PriceInfo
         from scorers.price_ratio import price_ratio_scorer
         from scorers.protocol import TaskBudget
 
@@ -556,9 +582,11 @@ class TestPriceRatioScorer:
         # ratio = 0.001 / 0.0002 = 5.0
         s = price_ratio_scorer(task_budget=TaskBudget(reference_cost_usd=0.001))
         state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
-        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
 
-        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+        with patch(
+            "scorers.price_ratio.resolve_market_price",
+            return_value=(1.0, 2.0),
+        ):
             result = run_async(s(state, state.target))
 
         assert result.value == pytest.approx(5.0)

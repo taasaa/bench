@@ -283,6 +283,134 @@ def is_managed_model(alias: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# Market price resolution — single source of truth for cost-pillar pricing.
+#
+# Contract: every cost calculation in bench MUST use the model's DEFAULT
+# (paid-tier) market price, regardless of how the user currently accesses it.
+# A model that's free today via NIM/OpenRouter :free quota might cost money
+# tomorrow; the cost pillar must compare on price-as-it-would-be, not price-as-
+# the-user-pays-right-now.
+#
+# Resolution order:
+#   1. LiteLLM config (~/dev/litellm/config.yaml) — authoritative. The
+#      `model_info.input_cost_per_token` / `output_cost_per_token` fields
+#      must hold the DEFAULT paid-tier price; bench does this for :free
+#      aliases too, so no special-casing is needed here.
+#   2. OpenRouter cache — for models NOT in the local LiteLLM proxy (e.g.
+#      benchmark-only entries). :free variants are auto-resolved to the
+#      paid variant (strip ":free" suffix).
+#   3. None — caller treats as anomaly (NaN), never as "FREE".
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _load_litellm_pricing_map() -> dict[str, tuple[float, float]]:
+    """Load LiteLLM pricing into {model_name: (input_per_M, output_per_M)}.
+
+    Keyed by BOTH the bench alias (model_name) AND the OpenRouter id (the
+    stripped `litellm_params.model` value) so callers that only have the OR
+    id (e.g. card regen from recorded-identity logs) can still resolve
+    pricing without a reverse-lookup dance.
+
+    Returns empty dict if config is missing or invalid.
+    """
+    if not _LITELLM_CONFIG_PATH.is_file():
+        return {}
+    try:
+        with open(_LITELLM_CONFIG_PATH) as f:
+            config = yaml.safe_load(f)
+    except (yaml.YAMLError, OSError):
+        return {}
+
+    result: dict[str, tuple[float, float]] = {}
+    for entry in config.get("model_list", []):
+        if not isinstance(entry, dict):
+            continue
+        model_name = entry.get("model_name", "")
+        model_info = entry.get("model_info", {})
+        litellm_params = entry.get("litellm_params", {})
+        if not model_name or not isinstance(model_info, dict):
+            continue
+        inp = model_info.get("input_cost_per_token")
+        out = model_info.get("output_cost_per_token")
+        if inp is None or out is None:
+            continue
+        # LiteLLM stores per-token; convert to per-million (bench convention).
+        price = (float(inp) * 1_000_000, float(out) * 1_000_000)
+        result[model_name.lower()] = price
+        # Also key by the OpenRouter id (stripped provider prefix from the
+        # litellm_model path) so log-driven lookups work directly.
+        litellm_model = litellm_params.get("model", "") if isinstance(litellm_params, dict) else ""
+        _, _, openrouter_id = litellm_model.partition("/")
+        if openrouter_id:
+            result[openrouter_id.lower()] = price
+    return result
+
+
+def get_litellm_market_price(alias: str) -> tuple[float, float] | None:
+    """Return (input_price_per_M, output_price_per_M) from the LiteLLM config.
+
+    Strips the "openai/" prefix and matches case-insensitively against
+    `model_name` entries in ~/dev/litellm/config.yaml. Returns None if the
+    alias isn't configured or has no pricing fields set.
+    """
+    if not alias:
+        return None
+    lookup_key = alias[len(_OPENAI_PREFIX):] if alias.startswith(_OPENAI_PREFIX) else alias
+    return _load_litellm_pricing_map().get(lookup_key.lower())
+
+
+def resolve_market_price(
+    alias: str | None = None,
+    or_id: str | None = None,
+) -> tuple[float, float] | None:
+    """Resolve the model's DEFAULT market price (per-M USD) for cost calculations.
+
+    Always returns the paid-tier price, regardless of whether the user is
+    currently accessing the model free (e.g. NIM quota, OpenRouter :free).
+    Never returns "0.0 / 0.0" for a known model — if both sources miss,
+    returns None so the caller can flag an anomaly instead of rendering
+    "FREE" (which is reserved for managed/local models with genuinely no
+    market price).
+
+    Resolution order:
+      1. LiteLLM config pricing for `alias` (authoritative for proxied models).
+      2. OpenRouter cache for `or_id` (or alias-resolved or_id), with :free
+         auto-resolved to the paid variant.
+      3. None — caller records anomaly (NaN), does not show "FREE".
+    """
+    # 1. LiteLLM config — covers proxied models (NIM, direct, :free variants
+    #    we explicitly priced at the paid-tier rate).
+    if alias:
+        litellm_price = get_litellm_market_price(alias)
+        if litellm_price is not None:
+            return litellm_price
+
+    # 2. OpenRouter cache — covers unproxied benchmark-only entries. Strip
+    #    ":free" suffix so we get the paid variant's real price, not $0/$0.
+    target_or_id = or_id
+    if target_or_id is None and alias is not None:
+        target_or_id = resolve_openrouter_id(alias)
+    if target_or_id is None:
+        return None
+    try:
+        from bench_cli.pricing.price_cache import OpenRouterCache
+
+        cache = OpenRouterCache()
+        paid_id = target_or_id.replace(":free", "") if ":free" in target_or_id else target_or_id
+        price_info = cache.get_price(paid_id)
+    except Exception:
+        return None
+
+    if price_info.input_price == 0.0 and price_info.output_price == 0.0:
+        # Both zero — only acceptable for genuinely-free models (rare).
+        # Treat as no price so the caller doesn't accidentally claim "FREE"
+        # for a model that should have a paid-tier price.
+        return None
+    return (price_info.input_price, price_info.output_price)
+
+
 def get_router_tiers(alias: str) -> list[str] | None:
     """Return ordered list of tier names for a router model, or None if not a router.
 

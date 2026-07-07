@@ -22,7 +22,11 @@ from typing import Any
 from inspect_ai.scorer import Score, Target, mean, scorer
 from inspect_ai.solver import TaskState
 
-from bench_cli.pricing.litellm_config import resolve_openrouter_id
+from bench_cli.pricing.litellm_config import (
+    is_managed_model,
+    resolve_market_price,
+    resolve_openrouter_id,
+)
 from bench_cli.pricing.model_aliases import PriceInfo
 from scorers.baseline_store import BaselineStore
 from scorers.protocol import resolve_cost_reference
@@ -68,17 +72,51 @@ def _extract_tokens(usage: Any) -> tuple[int, int]:
 
 
 def _price_from_alias(alias: str, inp: int, out: int) -> tuple[float | None, str | None, bool]:
-    """Resolve alias, get price, compute cost. Returns (cost_usd, or_id, is_free)."""
+    """Resolve alias → market price → cost. Returns (cost_usd, or_id, is_free).
+
+    Uses `resolve_market_price` (LiteLLM config → OpenRouter cache with :free
+    → paid resolution). Never returns $0 cost for a known model — a model with
+    no resolvable price returns (None, or_id, False) so the caller marks the
+    sample as anomalous, not as "FREE".
+
+    `is_free` is INFORMATIONAL only — it tells callers the model is currently
+    accessed free (via NIM quota or OpenRouter :free) so the card can show the
+    "(currently free)" annotation. It does NOT gate the cost path, because the
+    cost pillar MUST use the paid-tier market price regardless.
+    """
     or_model_id = resolve_openrouter_id(alias)
-    if or_model_id is None:
-        return None, None, False
-    try:
-        price_info = _price_info(or_model_id)
-    except CacheMiss:
-        return None, or_model_id, False
-    except Exception:
-        return None, or_model_id, False
-    return price_info.cost_per_sample(inp, out), or_model_id, price_info.is_free
+    market_price = resolve_market_price(alias=alias, or_id=or_model_id)
+    # Informational: is this model accessed free? Detect via :free OR id suffix
+    # OR managed/local alias. Computed BEFORE pricing resolution so the flag
+    # reflects the access path even when market price is found.
+    is_free_access = bool(or_model_id and ":free" in or_model_id) or _alias_is_managed(alias)
+    if market_price is None:
+        if or_model_id is None:
+            return None, None, is_free_access
+        # OR id resolves but no LiteLLM price — try OpenRouter cache directly
+        # (covers benchmark-only entries not in the LiteLLM proxy).
+        try:
+            price_info = _price_info(or_model_id)
+        except Exception:
+            return None, or_model_id, is_free_access
+        if price_info.input_price == 0.0 and price_info.output_price == 0.0:
+            # $0/$0 cache hit (typically a :free variant with no paid price
+            # resolved) — caller flags anomaly, not "FREE".
+            return None, or_model_id, True
+        cost = price_info.cost_per_sample(inp, out)
+        return cost, or_model_id, is_free_access or price_info.is_free
+    input_price, output_price = market_price
+    cost = (inp * input_price + out * output_price) / 1_000_000
+    return cost, or_model_id, is_free_access
+
+
+def _alias_is_managed(alias: str) -> bool:
+    """Cheap local copy of `is_managed_model` to avoid an import cycle."""
+    if alias.endswith("-local"):
+        return True
+    if alias in ("openai/glm-local", "openai/qwen3-coder-plus", "openai/qwen3-max"):
+        return True
+    return False
 
 
 def _resolve_and_price(
@@ -152,46 +190,37 @@ def _score_free_model_with_paid_price(
     task_budget: TaskBudgetType | None,
     baseline_store: "BaselineStore | None",
 ) -> Score:
-    """Score a free model using its paid variant's price.
+    """Fallback for models flagged is_free by the market-price resolver.
 
-    For :free variants, compute what the cost WOULD be at the paid variant's
-    real price, then compute the cost_ratio against the reference. This gives
-    a meaningful capability/price comparison (not "infinitely cheap") while
-    preserving the is_free=True metadata flag.
+    `_price_from_alias` already uses `resolve_market_price`, which strips
+    ":free" suffixes and consults the LiteLLM config (which we maintain at
+    the paid-tier price). The only path that reaches THIS function is when
+    `_price_from_alias` returned is_free=True — i.e. the market price is
+    0/0 — and we still need to compute a cost ratio from the reference.
+
+    Strategy: try the OpenRouter cache for the paid variant one more time
+    (covers benchmark-only :free entries not in the LiteLLM proxy). If that
+    also fails, return NaN with anomaly=True — NEVER "FREE", NEVER cost_ratio=inf.
+    A model with unknown market price should render as "--" in the display,
+    not as the misleading word "FREE".
     """
     from inspect_ai.scorer import Score
 
-    # Get the original OR ID (the :free variant) and resolve the paid variant
     or_model_id = resolve_openrouter_id(model_alias)
-    if or_model_id is None:
-        # Can't resolve -> fall back to the old behavior (free shortcut)
-        return Score(
-            value=float("inf"),
-            explanation="cost_ratio=inf, actual_cost=$0.00 (FREE)",
-            metadata={
-                "pillar": "cost",
-                "cost_ratio": None,
-                "actual_cost_usd": 0.0,
-                "reference_cost_usd": None,
-                "is_free": True,
-                "anomaly": False,
-                "tier_breakdown": None,
-            },
-        )
+    paid_price = _resolve_paid_variant_price(or_model_id) if or_model_id else None
 
-    paid_price = _resolve_paid_variant_price(or_model_id)
-    if paid_price is None:
-        # No paid variant found -> fall back to the old behavior (free shortcut)
+    if paid_price is None or (paid_price.input_price == 0.0 and paid_price.output_price == 0.0):
         return Score(
-            value=float("inf"),
-            explanation="cost_ratio=inf, actual_cost=$0.00 (FREE)",
+            value=float("nan"),
+            explanation="cost_ratio=N/A, note=is_free flagged but no paid-variant price resolvable",
             metadata={
                 "pillar": "cost",
                 "cost_ratio": None,
-                "actual_cost_usd": 0.0,
+                "actual_cost_usd": None,
                 "reference_cost_usd": None,
                 "is_free": True,
-                "anomaly": False,
+                "paid_or_id": (or_model_id or "").replace(":free", "") or None,
+                "anomaly": True,
                 "tier_breakdown": None,
             },
         )
@@ -216,7 +245,6 @@ def _score_free_model_with_paid_price(
         reference_cost = task_budget.reference_cost_usd
 
     if reference_cost is None or actual_cost == 0:
-        # No reference or zero tokens -> record actual cost, skip ratio
         return Score(
             value=float("nan"),
             explanation=f"cost_ratio=N/A, actual_cost=${actual_cost:.6f} (paid price; model currently free), note={'no reference cost set' if reference_cost is None else 'zero tokens'}",
@@ -226,7 +254,7 @@ def _score_free_model_with_paid_price(
                 "actual_cost_usd": actual_cost,
                 "reference_cost_usd": reference_cost,
                 "is_free": True,
-                "paid_or_id": or_model_id.replace(":free", ""),
+                "paid_or_id": or_model_id.replace(":free", "") if or_model_id else None,
                 "anomaly": reference_cost is None,
                 "tier_breakdown": None,
             },
@@ -242,7 +270,7 @@ def _score_free_model_with_paid_price(
             "actual_cost_usd": actual_cost,
             "reference_cost_usd": reference_cost,
             "is_free": True,
-            "paid_or_id": or_model_id.replace(":free", ""),
+            "paid_or_id": or_model_id.replace(":free", "") if or_model_id else None,
             "anomaly": False,
             "tier_breakdown": None,
         },
@@ -268,30 +296,45 @@ def price_ratio_scorer(
 
     async def score(state: TaskState, target: Target) -> Score:
         usage = state.output.usage if state.output else None
+        model_alias = str(state.model)
 
-        actual_cost, _, is_free, tier_breakdown = _resolve_and_price(str(state.model), usage)
+        actual_cost, _, is_free, tier_breakdown = _resolve_and_price(model_alias, usage)
 
+        # No market price resolvable. Distinguish:
+        #   - managed/local model → genuinely free, return NaN with is_free=True
+        #     (display layer renders "FREE").
+        #   - unknown/unpriced model → anomaly, return NaN with is_free=<informational>
+        #     (display layer renders "--"). Never "FREE" for a model that
+        #     should have a paid-tier price.
         if actual_cost is None:
+            genuinely_free = is_managed_model(model_alias)
             return Score(
                 value=float("nan"),
-                explanation="cost_ratio=N/A, note=price unavailable",
+                explanation=(
+                    "cost_ratio=N/A, note=price unavailable"
+                    if not genuinely_free
+                    else "cost_ratio=N/A, note=managed/local model — no market price"
+                ),
                 metadata={
                     "pillar": "cost",
                     "cost_ratio": None,
                     "actual_cost_usd": None,
                     "reference_cost_usd": None,
-                    "is_free": False,
-                    "anomaly": True,
+                    "is_free": genuinely_free or is_free,  # informational union
+                    "anomaly": not genuinely_free,
                     "tier_breakdown": tier_breakdown,
                 },
             )
 
-        # Free model: resolve the paid variant's price (e.g. strip :free suffix)
-        # so the cost_ratio reflects what this model WOULD cost at its real
-        # market price, not an "infinitely cheap" artifact of $0.
+        # Free model: still compute at paid-tier market price. The market-price
+        # path above already does this when LiteLLM config has pricing for the
+        # alias (which is the recommended setup for :free variants). The legacy
+        # _score_free_model_with_paid_price fallback below only fires if the
+        # alias has no LiteLLM pricing but has a :free OpenRouter id with a
+        # resolvable paid variant.
         if is_free:
             return _score_free_model_with_paid_price(
-                state, model_alias=str(state.model), task_budget=task_budget,
+                state, model_alias=model_alias, task_budget=task_budget,
                 baseline_store=baseline_store,
             )
 

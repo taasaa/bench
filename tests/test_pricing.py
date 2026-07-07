@@ -522,6 +522,11 @@ class TestResolveAliasMapTier:
         # pricing path also misses.
         import scorers.price_ratio as pr
         monkeypatch.setattr(pr, "_price_cache", OpenRouterCache())
+        # Also force the LiteLLM config to return no pricing for this alias so
+        # the test exercises the OR-cache-miss path (the historical failure
+        # mode for nemotron-nano-omni-30b before SC#3 priced it manually).
+        monkeypatch.setattr(litellm_config, "get_litellm_market_price", lambda alias: None)
+        litellm_config._load_litellm_pricing_map.cache_clear()
 
         # Resolves via litellm to a paid or_id, but that or_id is absent from the
         # empty cache -> no price -> cost is None (scorer emits NaN).

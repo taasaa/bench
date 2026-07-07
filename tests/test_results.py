@@ -47,7 +47,9 @@ class TestFormatRatio:
     def test_special_values(self):
         assert _format_ratio(None) == "--"
         assert _format_ratio(float("nan")) == "--"
-        assert _format_ratio(float("inf")) == "FREE"
+        # inf renders as "--" (anomaly). "FREE" is reserved for managed/local
+        # models and rendered by the display layer via the `managed_only` flag.
+        assert _format_ratio(float("inf")) == "--"
 
     def test_numeric(self):
         assert _format_ratio(1.234) == "1.234"

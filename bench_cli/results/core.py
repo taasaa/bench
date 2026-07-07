@@ -112,11 +112,14 @@ def _rating(score: float) -> str:
 
 
 def _format_ratio(val: float | None) -> str:
-    """Format a ratio value, handling NaN and None."""
-    if val is None or math.isnan(val):
+    """Format a ratio value, handling NaN, None, and inf.
+
+    Returns "--" for any invalid (NaN/None/inf) value. The literal "FREE" is
+    reserved for managed/local models with no market price, and is rendered
+    by the display layer using the separate `meta["free"]` flag, NOT here.
+    """
+    if val is None or math.isnan(val) or math.isinf(val):
         return "--"
-    if math.isinf(val):
-        return "FREE"
     return f"{val:.3f}"
 
 
@@ -188,6 +191,10 @@ def _load_model_data(
         def _is_finite_number(v) -> bool:
             return isinstance(v, (int, float)) and not math.isnan(v) and not math.isinf(v)
 
+        # Track per-sample model_usage so we can reconstruct cost for free-model
+        # logs that have actual_cost_usd=0 baked in (pre-fix scorer behavior).
+        per_sample_model_usage: list[dict] = []
+
         if log.samples:
             for sample in log.samples:
                 n_samples += 1
@@ -199,6 +206,10 @@ def _load_model_data(
                         sample_total_tokens += getattr(usage, "total_tokens", 0) or 0
                 total_tokens_sum += sample_total_tokens
                 total_working_time += getattr(sample, "working_time", 0.0) or 0.0
+                # Keep per-sample model_usage for cost reconstruction below.
+                per_sample_model_usage.append(
+                    dict(sample.model_usage) if hasattr(sample, "model_usage") and sample.model_usage else {}
+                )
                 if hasattr(sample, "scores") and sample.scores:
                     for scorer_name, score in sample.scores.items():
                         seen_scorers.add(scorer_name)
@@ -244,6 +255,17 @@ def _load_model_data(
                     recompute_time_ratio(_BASELINE_STORE, task_name, avg_time), 4
                 )
         if "price_ratio_scorer" in seen_scorers:
+            # Reconstruct cost for samples where the baked-in value is 0/None
+            # (typical for old free-model logs). Cost pillar must reflect
+            # default paid-tier price, not $0. `model` is the recorded OR id
+            # (e.g. "nvidia/nemotron-3-super-120b-a12b:free"); pass it as
+            # `or_id` so the pricing lookup uses the LiteLLM reverse-key map.
+            from bench_cli.pricing import reconstruct_cost_from_usage
+
+            cost_usd_samples = [
+                reconstruct_cost_from_usage(None, usage, cost, or_id=model)
+                for usage, cost in zip(per_sample_model_usage, cost_usd_samples)
+            ]
             avg_scores["price_ratio_scorer"] = round(
                 recompute_price_ratio(_BASELINE_STORE, task_name, cost_usd_samples), 4
             )
@@ -577,10 +599,12 @@ def _get_model_metadata(bench_alias: str) -> dict:
         "input_price": input_price,
         "output_price": output_price,
         "has_price": has_price,
-        # A model is "free" if it's local/managed OR its own price is $0/$0
-        # (the :free fallback above may have overwritten the displayed price
-        # with the paid variant's price, so check own_price_is_zero).
+        # "free" covers both :free access variants AND managed/local models —
+        # drives the "(currently free)" annotation in the Overview Pricing line.
+        # The cell display layer uses "managed_only" instead, so :free variants
+        # with resolved paid-tier pricing show real ratios, not "FREE".
         "free": is_managed_model(bench_alias) or own_price_is_zero,
+        "managed_only": is_managed_model(bench_alias),
         "litellm_model": litellm_model,
     }
 
@@ -689,8 +713,8 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
         f"| **Latency** | {_format_ratio(pillars['time_ratio'])} "
         f"| {_rating(pillars['time_ratio'])} |"
     )
-    cost_display = "FREE" if meta["free"] else _format_ratio(pillars["price_ratio"])
-    cost_rating = "excellent" if meta["free"] else _rating(pillars["price_ratio"])
+    cost_display = "FREE" if meta["managed_only"] else _format_ratio(pillars["price_ratio"])
+    cost_rating = "excellent" if meta["managed_only"] else _rating(pillars["price_ratio"])
     lines.append(f"| **Cost Efficiency** | {cost_display} | {cost_rating} |")
     lines.append("")
     lines.append("> Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60")
@@ -722,17 +746,10 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
         tok = _format_ratio(s.get("token_ratio_scorer"))
         time_r = _format_ratio(s.get("time_ratio_scorer"))
         price = _format_ratio(s.get("price_ratio_scorer"))
-        # For free models, the price_ratio_scorer now uses the paid variant's
-        # price (see _score_free_model_with_paid_price), so the per-task ratio
-        # is a real number reflecting capability/price tradeoff at market price.
-        # Only show "FREE" if the score is the legacy inf-free shortcut OR
-        # the model is managed/local (where pricing is N/A by design).
-        import math as _math
-        pr_val = s.get("price_ratio_scorer")
-        if pr_val is not None and _math.isinf(pr_val):
-            price = "FREE"
-        elif meta["free"] and "price_ratio_scorer" in s:
-            # Managed/local models have no price at all -> show "FREE"
+        # Show "FREE" only for managed/local models with no market price. For
+        # :free access variants with resolvable pricing, the scorer returns a
+        # finite ratio at the paid-tier price — show that, not "FREE".
+        if price == "--" and meta["managed_only"] and "price_ratio_scorer" in s:
             price = "FREE"
 
         lines.append(

@@ -33,7 +33,7 @@ This is a **currently free model** (normal price $0.2000/M in, $0.8000/M out), m
 | **Correctness** | 0.836 | good |
 | **Token Efficiency** | 0.179 | weak |
 | **Latency** | 0.862 | good |
-| **Cost Efficiency** | FREE | excellent |
+| **Cost Efficiency** | 0.395 | weak |
 
 > Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60
 > Ratio interpretation: > 1.0 = better than benchmark, < 1.0 = worse
@@ -42,10 +42,10 @@ This is a **currently free model** (normal price $0.2000/M in, $0.8000/M out), m
 
 | Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |
 |------|--------|--------|-------|-----------|------------|------------|
-| f1-multi-file-verify | analysis | hybrid_scorer | 0.581 | 0.262 | 0.415 | FREE |
-| q3-answer-the-question | competence | verify_sh | 0.938 | 0.088 | 0.376 | FREE |
-| q4-root-cause | execution | hybrid_scorer | 0.825 | 0.128 | 0.405 | FREE |
-| u17-dirty-workspace-triage | universal | hybrid_scorer | 1.000 | 0.238 | 2.253 | FREE |
+| f1-multi-file-verify | analysis | hybrid_scorer | 0.581 | 0.262 | 0.415 | 0.483 |
+| q3-answer-the-question | competence | verify_sh | 0.938 | 0.088 | 0.376 | 0.199 |
+| q4-root-cause | execution | hybrid_scorer | 0.825 | 0.128 | 0.405 | 0.443 |
+| u17-dirty-workspace-triage | universal | hybrid_scorer | 1.000 | 0.238 | 2.253 | 0.453 |
 
 ## Strengths & Weaknesses
 

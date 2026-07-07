@@ -31,34 +31,10 @@ from scorers.ratio_recompute import (
     recompute_token_ratio,
 )
 
-# ---------------------------------------------------------------------------
-# Model pricing (hardcoded / user-provided — not from KiloCode cache)
-# Used to recalculate actual_cost_usd for models whose prices weren't
-# captured correctly in eval log scorer metadata.
-# ---------------------------------------------------------------------------
-_MANUAL_PRICES: dict[str, tuple[float, float]] = {
-    # model_alias → (input_price_per_M, output_price_per_M)
-    # Covers all models evaluated before the per-token→per-M cache fix.
-    "openai/default": (0.30, 1.20),
-    "openai/nvidia-mistral-small4": (0.15, 0.60),
-    "openai/nvidia-nemotron-30b": (0.05, 0.20),
-    "openai/nvidia-devstral": (0.40, 2.00),
-    "openai/nvidia-qwen-next": (0.455, 1.82),
-    "openai/gemma-4-26-local": (0.08, 0.35),
-    "openai/qwen-local": (0.1625, 1.30),
-}
-
-
-def _recalc_cost(model_alias: str, input_tokens: int, output_tokens: int) -> float | None:
-    """Recalculate actual cost using manual price table.
-
-    Returns None if model is not in _MANUAL_PRICES.
-    """
-    prices = _MANUAL_PRICES.get(model_alias)
-    if prices is None:
-        return None
-    inp_price, out_price = prices
-    return input_tokens * inp_price / 1_000_000 + output_tokens * out_price / 1_000_000
+# Cost recalculation lives in bench_cli.pricing.reconstruct_cost_from_usage.
+# The old hardcoded _MANUAL_PRICES table is gone — the LiteLLM config is the
+# source of truth for proxied models, and `resolve_market_price` reads from
+# it directly. See scorers/price_ratio.py for the new contract.
 
 
 @dataclass
@@ -165,22 +141,16 @@ def _extract_from_scorers(
         if isinstance(cost_val, (int, float)):
             actual_cost_usd = float(cost_val)
 
-    # Fall back to manual price recalculation if scorer didn't capture cost
-    # or if the cached cost is from the old per-token cache (pre-fix values are ~1e-10).
+    # Fall back to live market-price recalculation if scorer didn't capture cost
+    # or if the cached cost is from the old per-token cache (pre-fix values are
+    # ~1e-10), or for old free-model logs where actual_cost_usd=0 is baked in.
     if actual_cost_usd is None or (actual_cost_usd is not None and actual_cost_usd < 1e-6):
         if sample_model_usage and model_alias:
-            # Find the primary model usage (exclude 'openai/judge')
-            primary = None
-            if model_alias in sample_model_usage:
-                primary = sample_model_usage[model_alias]
-            elif len(sample_model_usage) == 1:
-                primary = next(iter(sample_model_usage.values()))
-            if primary is not None:
-                inp = getattr(primary, "input_tokens", 0) or 0
-                out = getattr(primary, "output_tokens", 0) or 0
-                recalc = _recalc_cost(model_alias, int(inp), int(out))
-                if recalc is not None:
-                    actual_cost_usd = recalc
+            from bench_cli.pricing import reconstruct_cost_from_usage
+
+            recalc = reconstruct_cost_from_usage(model_alias, sample_model_usage, actual_cost_usd)
+            if recalc is not None and recalc > 1e-6:
+                actual_cost_usd = recalc
 
     # Extract tier_breakdown from price_ratio_scorer metadata
     tier_breakdown: dict[str, dict] | None = None
@@ -411,9 +381,15 @@ def _fmt_tokens(tokens: float) -> str:
 
 
 def _fmt_cost_ratio(val: float) -> str:
-    """Format a cost ratio value (higher = cheaper)."""
-    if math.isinf(val):
-        return "FREE"
+    """Format a cost ratio value (higher = cheaper).
+
+    Returns "--" for invalid values (NaN/inf). The "FREE" label is reserved
+    for managed/local models (rendered by the display layer using a separate
+    flag), not for `inf` ratios — `inf` means the scorer hit the legacy
+    "free shortcut" path and should render as "--", not "FREE".
+    """
+    if math.isinf(val) or math.isnan(val):
+        return "  --"
     return _fmt_ratio(val) + "x"
 
 
@@ -422,7 +398,7 @@ def _fmt_avg_cost(cost: float) -> str:
     if math.isnan(cost):
         return "  --"
     if math.isinf(cost):
-        return "FREE"
+        return "  --"
     return f"${cost:.9f}"
 
 
