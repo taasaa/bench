@@ -1,6 +1,6 @@
 # openai/qwen-local
 
-> `openai/qwen-local` | Local | FREE | Evaluated 2026-04-17 → 2026-04-20
+> `openai/qwen-local` | Local | FREE | Evaluated 2026-04-11 → 2026-04-20
 
 ## Summary
 
@@ -8,9 +8,9 @@
 Adequate for assisted coding workflows where human review catches errors, but not recommended for autonomous agent use without supervision.
 Token efficiency is below benchmark (ratio 0.69), tending toward verbose output.
 Latency is slower than benchmark (ratio 0.81).
-This is a **free model** running locally, making it cost-optimal for any use case.
+This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use case.
 
-**Strengths:** Excels at competence tasks (f23-ghost-constraint, f9-cascading-failure, add-tests).
+**Strengths:** Excels at competence tasks (add-tests, f23-ghost-constraint, f9-cascading-failure).
 
 **Weaknesses:** Struggles with competence tasks (f22-error-spiral, f12-surgical-fix, f18-direct-answer-first).
 
@@ -20,12 +20,12 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 
 | Metric | Value |
 |--------|-------|
-| **Evaluated** | 2026-04-17 → 2026-04-20 |
-| **Tasks** | 32 eval tasks, 140 samples (1 smoke) |
+| **Evaluated** | 2026-04-11 → 2026-04-20 |
+| **Tasks** | 36 eval tasks, 160 samples (1 smoke) |
 | **Provider** | Local |
 | **Hosting** | local |
 | **Context Window** | 262,144 tokens |
-| **Pricing** | $0.00 (free, local) |
+| **Pricing** | $0.00 (free) |
 | **Status** | FREE |
 
 ## Overall Scores
@@ -45,6 +45,7 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 | Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |
 |------|--------|--------|-------|-----------|------------|------------|
 | add-tests | competence | verify_sh | 1.000 | 0.834 | 0.604 | FREE |
+| edit-file | ? | -- | -- | -- | -- | -- |
 | f1-multi-file-verify | analysis | llm_judge | 0.800 | 0.499 | 0.430 | FREE |
 | f10-env-mismatch | analysis | llm_judge | 0.850 | 0.360 | 0.417 | FREE |
 | f11-intermittent-bug | execution | llm_judge | 0.900 | 0.336 | 0.392 | FREE |
@@ -69,6 +70,8 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 | f7-format-compliance | competence | verify_sh | 0.400 | 1.065 | 0.816 | FREE |
 | f8-negative-constraint | execution | verify_sh | 1.000 | 1.138 | 1.023 | FREE |
 | f9-cascading-failure | analysis | llm_judge | 1.000 | 0.428 | 0.410 | FREE |
+| find-replace | ? | -- | -- | -- | -- | -- |
+| fix-bug | ? | -- | -- | -- | -- | -- |
 | q1-verification-gate | competence | verify_sh | 1.000 | 0.964 | 0.963 | FREE |
 | q2-do-not-touch | competence | verify_sh | 1.000 | 1.029 | 1.061 | FREE |
 | q3-answer-the-question | competence | verify_sh | 0.938 | 0.069 | 0.139 | FREE |
@@ -76,17 +79,18 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 | q5-safe-git-operations | competence | verify_sh | 0.750 | 0.748 | 0.558 | FREE |
 | u7-git-safety | universal | llm_judge | 0.495 | 0.262 | 0.440 | FREE |
 | u8-edit-reliability | universal | llm_judge | 0.650 | 0.280 | 0.512 | FREE |
+| write-function | ? | -- | -- | -- | -- | -- |
 
 ## Strengths & Weaknesses
 
-### Top 5 Tasks (by correctness)
+### Top Tasks (by correctness)
+1. **add-tests** — 1.000
 1. **f23-ghost-constraint** — 1.000
 1. **f9-cascading-failure** — 1.000
-1. **add-tests** — 1.000
 1. **q1-verification-gate** — 1.000
 1. **q2-do-not-touch** — 1.000
 
-### Bottom 5 Tasks (by correctness)
+### Bottom Tasks (by correctness)
 1. **f22-error-spiral** — 0.375
 1. **f12-surgical-fix** — 0.333
 1. **f18-direct-answer-first** — 0.333
@@ -95,8 +99,8 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 
 ## Token Usage
 
-- Total input: 145,870
-- Total output: 205,184
-- Avg input/sample: 1,041
-- Avg output/sample: 1,465
+- Total input: 147,192
+- Total output: 212,171
+- Avg input/sample: 919
+- Avg output/sample: 1,326
 

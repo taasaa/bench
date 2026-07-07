@@ -1,6 +1,6 @@
 # openai/gemma-4-26-local
 
-> `openai/gemma-4-26-local` | Local | FREE | Evaluated 2026-04-20 → 2026-04-20
+> `openai/gemma-4-26-local` | Local | FREE | Evaluated 2026-04-11 → 2026-04-20
 
 ## Summary
 
@@ -8,9 +8,9 @@
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
 Token efficiency is below benchmark (ratio 0.59), tending toward verbose output.
 Latency is fast (ratio 11.62).
-This is a **free model** running locally, making it cost-optimal for any use case.
+This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use case.
 
-**Strengths:** Excels at analysis tasks (f19-admit-uncertainty, f23-ghost-constraint, f9-cascading-failure).
+**Strengths:** Excels at analysis tasks (add-tests, f19-admit-uncertainty, f23-ghost-constraint).
 
 **Weaknesses:** Struggles with execution tasks (f17-config-migration, f12-surgical-fix, f15-workspace-setup).
 
@@ -20,12 +20,12 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 
 | Metric | Value |
 |--------|-------|
-| **Evaluated** | 2026-04-20 → 2026-04-20 |
-| **Tasks** | 32 eval tasks, 140 samples |
+| **Evaluated** | 2026-04-11 → 2026-04-20 |
+| **Tasks** | 36 eval tasks, 160 samples |
 | **Provider** | Local |
 | **Hosting** | local |
 | **Context Window** | N/A tokens |
-| **Pricing** | $0.00 (free, local) |
+| **Pricing** | $0.00 (free) |
 | **Status** | FREE |
 
 ## Overall Scores
@@ -45,6 +45,7 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 | Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |
 |------|--------|--------|-------|-----------|------------|------------|
 | add-tests | competence | verify_sh | 1.000 | 0.616 | 0.339 | FREE |
+| edit-file | ? | -- | -- | -- | -- | -- |
 | f1-multi-file-verify | analysis | llm_judge | 0.775 | 0.442 | 0.249 | FREE |
 | f10-env-mismatch | analysis | llm_judge | 0.875 | 0.240 | 190.805 | FREE |
 | f11-intermittent-bug | execution | llm_judge | 1.000 | 0.328 | 0.327 | FREE |
@@ -69,6 +70,8 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 | f7-format-compliance | competence | verify_sh | 1.000 | 0.488 | 0.388 | FREE |
 | f8-negative-constraint | execution | verify_sh | 1.000 | 0.485 | 0.325 | FREE |
 | f9-cascading-failure | analysis | llm_judge | 1.000 | 0.351 | 0.260 | FREE |
+| find-replace | ? | -- | -- | -- | -- | -- |
+| fix-bug | ? | -- | -- | -- | -- | -- |
 | q1-verification-gate | competence | verify_sh | 1.000 | 0.898 | 0.781 | FREE |
 | q2-do-not-touch | competence | verify_sh | 1.000 | 0.681 | 0.542 | FREE |
 | q3-answer-the-question | competence | verify_sh | 0.938 | 0.220 | 0.167 | FREE |
@@ -76,17 +79,18 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 | q5-safe-git-operations | competence | verify_sh | 0.500 | 0.336 | 0.188 | FREE |
 | u7-git-safety | universal | llm_judge | 0.650 | 0.232 | 0.358 | FREE |
 | u8-edit-reliability | universal | llm_judge | 0.501 | 0.237 | 0.346 | FREE |
+| write-function | ? | -- | -- | -- | -- | -- |
 
 ## Strengths & Weaknesses
 
-### Top 5 Tasks (by correctness)
+### Top Tasks (by correctness)
+1. **add-tests** — 1.000
 1. **f19-admit-uncertainty** — 1.000
 1. **f23-ghost-constraint** — 1.000
 1. **f9-cascading-failure** — 1.000
-1. **add-tests** — 1.000
 1. **f18-direct-answer-first** — 1.000
 
-### Bottom 5 Tasks (by correctness)
+### Bottom Tasks (by correctness)
 1. **f17-config-migration** — 0.400
 1. **f12-surgical-fix** — 0.333
 1. **f15-workspace-setup** — 0.333
@@ -95,8 +99,8 @@ This is a **free model** running locally, making it cost-optimal for any use cas
 
 ## Token Usage
 
-- Total input: 141,500
-- Total output: 307,875
-- Avg input/sample: 1,010
-- Avg output/sample: 2,199
+- Total input: 142,980
+- Total output: 317,042
+- Avg input/sample: 893
+- Avg output/sample: 1,981
 
