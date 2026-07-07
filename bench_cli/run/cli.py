@@ -114,10 +114,13 @@ def _write_run_summary(path: Path, *, bench_alias: str, results: list) -> None:
 )
 @click.option(
     "--tier",
-    type=click.Choice(["quick", "full"]),
+    type=click.Choice(["quick", "full", "viability"]),
     default="quick",
     show_default=True,
-    help="Task tier: quick (verification) or full (all eval tasks).",
+    help=(
+        "Task tier: quick (verification smoke only), full (all 34 eval tasks), "
+        "or viability (4-task diagnostic subset, one per pillar, ~3-8 min)."
+    ),
 )
 @click.option(
     "--agent",

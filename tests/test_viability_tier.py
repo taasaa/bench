@@ -237,3 +237,39 @@ class TestDiscoverTasksViabilityBranch:
         # Order must NOT match VIABILITY_TASKS (which is a fixed curated order).
         viability_specs = _discover_viability_tasks(viability_tasks_root, None, None)
         assert specs != viability_specs
+
+
+# ---------------------------------------------------------------------------
+# CLI surface
+# ---------------------------------------------------------------------------
+
+
+class TestViabilityCliSurface:
+    def test_viability_in_click_choice(self):
+        from bench_cli.run.cli import run
+
+        # Walk the Click options on the `run` command and find the --tier option.
+        tier_param = next(p for p in run.params if p.name == "tier")
+        assert "viability" in tier_param.type.choices
+
+    def test_help_text_mentions_viability(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "viability" in result.output
+
+    def test_list_tasks_viability(self, viability_tasks_root):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--tier", "viability", "--list-tasks"])
+        assert result.exit_code == 0, result.output
+        assert "q3-answer-the-question" in result.output
+        assert "q4-root-cause" in result.output
+        assert "f1-multi-file-verify" in result.output
+        assert "u17-dirty-workspace-triage" in result.output
+        assert "4 task(s) found" in result.output
+
+    def test_unknown_tier_still_rejected(self, viability_tasks_root):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run", "--tier", "bogus", "--list-tasks"])
+        assert result.exit_code != 0
+        assert "Invalid value" in result.output or "Unknown tier" in result.output

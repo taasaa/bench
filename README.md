@@ -8,6 +8,7 @@ Standalone local LLM and AI agent evaluation system. Run eval tasks against mode
 # Model eval
 python -m bench_cli run --tier full --model openai/qwen-local
 python -m bench_cli run --concurrency 4 --tier full
+python -m bench_cli run --tier viability --model openai/<new-model>  # 4-task diagnostic pass
 python -m bench_cli run --model openai/thinking --as nemotron-ultra-550b  # route via moniker, record recognizable name
 
 # Resume note: re-running an existing model now records its OpenRouter id (e.g.
