@@ -20,6 +20,20 @@ TIER_DIRS: dict[str, list[str]] = {
     "full": ["competence", "execution", "analysis", "universal"],
 }
 
+# Viability tier: a curated 4-task subset that demonstrates model viability
+# across all 4 main pillars (competence / execution / analysis / universal)
+# in a few minutes. Each task is verify_sh-based (deterministic, no judge
+# variance), small-sample (4-7), no Docker, no agent. Use this to decide
+# whether a model is worth a full 34-task run. Order is fixed: each task
+# answers one pillar-level question (can you answer / reason / verify /
+# handle real-world mess?).
+VIABILITY_TASKS: tuple[str, ...] = (
+    "q3-answer-the-question",      # competence:  can you actually answer the question?
+    "q4-root-cause",               # execution:   can you reason about code, not just patch?
+    "f1-multi-file-verify",        # analysis:    can you check claims against reality?
+    "u17-dirty-workspace-triage",  # universal:   can you handle real-world mess?
+)
+
 DEFAULT_MODEL = "openai/default"
 
 # Regex to extract the task token from an eval-log filename:
@@ -96,6 +110,54 @@ def _requires_docker(task_py: Path) -> bool:
     return bool(re.search(r'sandbox\s*=\s*["\']docker["\']', content))
 
 
+def _discover_viability_tasks(
+    tasks_root: Path,
+    max_tasks: int | None,
+    task_filter: str | None,
+) -> list[str]:
+    """Return Inspect task specs for the viability tier.
+
+    Resolves each name in ``VIABILITY_TASKS`` by searching all pillar subdirs
+    under ``tasks_root`` (not a fixed-pillar lookup), so a future ``tasks/``
+    reorganization that moves a viability task to a different pillar won't
+    break this tier. Raises ``click.ClickException`` if a hardcoded task
+    name is missing — that means ``VIABILITY_TASKS`` is stale.
+
+    Args:
+        tasks_root: Path to the ``tasks/`` directory.
+        max_tasks: If set, cap the returned list to this many entries.
+        task_filter: If set, only include the task whose directory name matches.
+
+    Returns:
+        List of relative task spec paths, e.g.
+        ``["tasks/competence/q3-answer-the-question/task.py", ...]``
+    """
+    specs: list[str] = []
+    for name in VIABILITY_TASKS:
+        if task_filter is not None and name != task_filter:
+            continue
+        found: Path | None = None
+        for sub in sorted(p for p in tasks_root.iterdir() if p.is_dir()):
+            candidate = sub / name / "task.py"
+            if candidate.is_file():
+                found = candidate
+                break
+        if found is None:
+            raise click.ClickException(
+                f"Viability task '{name}' not found under {tasks_root}/. "
+                "Update VIABILITY_TASKS in bench_cli/run/core.py."
+            )
+        # Return a path relative to CWD (tasks_root.parent) so the spec
+        # matches the format Inspect expects: "tasks/<sub>/<name>/task.py".
+        # Works whether tasks_root is a relative Path("tasks") (production)
+        # or an absolute tmp_path/tasks (tests via monkeypatch.chdir).
+        specs.append(str(found.relative_to(tasks_root.parent)))
+
+    if max_tasks is not None and max_tasks >= 0:
+        specs = specs[:max_tasks]
+    return specs
+
+
 def _discover_tasks(
     tier: str,
     max_tasks: int | None = None,
@@ -113,15 +175,19 @@ def _discover_tasks(
     Parameters
     ----------
     tier:
-        ``"quick"`` or ``"full"`` -- selects which task directories to scan.
+        ``"quick"`` runs verification/smoke only; ``"full"`` runs all 34
+        eval tasks across the 4 main pillars; ``"viability"`` runs a
+        curated 4-task diagnostic subset (one per pillar).
     max_tasks:
         If set, cap the returned list to this many entries.
     task_filter:
         If set, select only the task whose directory name matches.
-        Matches as a suffix (e.g. ``"smoke"`` matches ``"smoke"`` and
-        ``"agent_smoke"``).  Use ``--list-tasks`` first to see all names.
+        Matches exactly (e.g. ``"smoke"`` matches only ``"smoke"`` and
+        not ``"agent_smoke"``).  Use ``--list-tasks`` first to see all names.
     """
     tasks_root = Path("tasks")
+    if tier == "viability":
+        return _discover_viability_tasks(tasks_root, max_tasks, task_filter)
     dirs = TIER_DIRS.get(tier)
     if dirs is None:
         raise click.BadParameter(f"Unknown tier {tier!r}", param_hint="--tier")
