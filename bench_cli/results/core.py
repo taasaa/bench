@@ -76,8 +76,13 @@ def _slug_from_alias(bench_alias: str) -> str:
     Slug = the recorded full name with '/' -> '-'. The recorded name is the
     OpenRouter id (e.g. 'minimaxai/minimax-m3') or an --as value; either way
     we slug the whole string. NEVER calls resolve_openrouter_id.
+
+    For agent-eval composite keys (model__agent__mode), strip the agent suffix
+    before slugging to avoid double-suffix in filenames.
     """
-    return bench_alias.replace("/", "-")
+    # Strip agent suffix if present (model__agent__mode -> model)
+    model_part = bench_alias.split("__", 1)[0] if "__" in bench_alias else bench_alias
+    return model_part.replace("/", "-")
 
 
 def _real_model_name(bench_alias: str) -> str:
@@ -86,8 +91,13 @@ def _real_model_name(bench_alias: str) -> str:
     Mirrors _slug_from_alias's source so name and slug always agree. The
     recorded OR id already carries the provider; display it in full (the
     compare table strips to bare via bare_model_name elsewhere).
+
+    For agent-eval composite keys (model__agent__mode), strip the agent suffix
+    to avoid showing agent info in the model name (it's shown separately).
     """
-    return bench_alias
+    # Strip agent suffix if present (model__agent__mode -> model)
+    model_part = bench_alias.split("__", 1)[0] if "__" in bench_alias else bench_alias
+    return model_part
 
 
 def _rating(score: float) -> str:
@@ -324,6 +334,8 @@ def _generate_summary(
     task_scores: list[tuple[str, float, str]],
     bench_alias: str,
     free: bool = False,
+    input_price: float = 0.0,
+    output_price: float = 0.0,
 ) -> str:
     """Generate a mechanical summary of model performance.
 
@@ -331,6 +343,8 @@ def _generate_summary(
         free: True if the model is free (managed local OR $0/$0 via the price
             cache). When True, the cost section says "FREE" instead of showing
             a 0.00 ratio that would suggest the model is infinitely expensive.
+        input_price: Real input price per million tokens (from paid variant for :free).
+        output_price: Real output price per million tokens (from paid variant for :free).
     """
 
     task_scores.sort(key=lambda x: x[1], reverse=True)
@@ -394,7 +408,13 @@ def _generate_summary(
         lines.append(f"Latency is slower than benchmark (ratio {time_r:.2f}).")
 
     # Cost
-    if free:
+    if free and (input_price > 0.0 or output_price > 0.0):
+        # Free model with real prices from paid variant
+        lines.append(
+            f"This is a **currently free model** (normal price ${input_price:.4f}/M in, "
+            f"${output_price:.4f}/M out), making it cost-optimal for any use case."
+        )
+    elif free:
         lines.append(
             "This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use case."
         )
@@ -498,13 +518,19 @@ def _get_model_metadata(bench_alias: str) -> dict:
         from bench_cli.pricing.litellm_config import _load_litellm_alias_map
 
         litellm_map = _load_litellm_alias_map()
-        if lookup_key in litellm_map:
+        # Build reverse map: openrouter_id -> model_name
+        reverse_map = {v: k for k, v in litellm_map.items()}
+        # Resolve bench_alias to LiteLLM model_name
+        # bench_alias might be an OpenRouter ID (e.g. "nvidia/nemotron-3-super-120b-a12b:free")
+        # or a LiteLLM alias (e.g. "nemotron-super-120b-free")
+        litellm_model_name = reverse_map.get(lookup_key, lookup_key)
+        if litellm_model_name in litellm_map:
             litellm_path = Path.home() / "dev" / "litellm" / "config.yaml"
             if litellm_path.is_file():
                 with open(litellm_path) as f:
                     config = yaml.safe_load(f)
                 for entry in config.get("model_list", []):
-                    if entry.get("model_name", "").lower() == lookup_key:
+                    if entry.get("model_name", "").lower() == litellm_model_name.lower():
                         ctx_window = entry.get("model_info", {}).get("max_input_tokens")
                         break
     except Exception:
@@ -523,11 +549,24 @@ def _get_model_metadata(bench_alias: str) -> dict:
             if bench_alias in cache.get_all_prices()
             else resolve_openrouter_id(bench_alias)
         )
+        # Track whether the model's OWN price (before any :free fallback) is $0/$0
+        own_price_is_zero = False
         if or_id:
             price_info = cache.get_price(or_id)
             input_price = price_info.input_price
             output_price = price_info.output_price
             has_price = True
+            # If model is :free ($0/$0), also fetch the paid variant's real price
+            # so the card can display the actual market price with "(currently free)"
+            # annotation. The paid variant is the same model id without ":free".
+            if input_price == 0.0 and output_price == 0.0 and ":free" in or_id:
+                own_price_is_zero = True
+                paid_or_id = or_id.replace(":free", "")
+                if paid_or_id in cache.get_all_prices():
+                    paid_info = cache.get_price(paid_or_id)
+                    if paid_info.input_price > 0.0 or paid_info.output_price > 0.0:
+                        input_price = paid_info.input_price
+                        output_price = paid_info.output_price
     except Exception:
         pass
 
@@ -538,11 +577,10 @@ def _get_model_metadata(bench_alias: str) -> dict:
         "input_price": input_price,
         "output_price": output_price,
         "has_price": has_price,
-        # A model is "free" if it's local/managed OR has $0 in + $0 out via the
-        # price cache. Both OpenRouter `:free` and local aliases qualify.
-        "free": is_managed_model(bench_alias) or (
-            has_price and input_price == 0.0 and output_price == 0.0
-        ),
+        # A model is "free" if it's local/managed OR its own price is $0/$0
+        # (the :free fallback above may have overwritten the displayed price
+        # with the paid variant's price, so check own_price_is_zero).
+        "free": is_managed_model(bench_alias) or own_price_is_zero,
         "litellm_model": litellm_model,
     }
 
@@ -577,7 +615,10 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     meta = _get_model_metadata(bench_alias)
     task_scores = _extract_task_scores(eval_tasks)
     summary = _generate_summary(
-        real_name, pillars, task_scores, bench_alias, free=meta["free"]
+        real_name, pillars, task_scores, bench_alias,
+        free=meta["free"],
+        input_price=meta["input_price"],
+        output_price=meta["output_price"],
     )
 
     total_samples = sum(t["samples"] for t in eval_tasks.values())
@@ -616,7 +657,12 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     lines.append(f"| **Hosting** | {meta['hosting']} |")
     ctx_str = f"{meta['ctx_window']:,}" if meta["ctx_window"] else "N/A"
     lines.append(f"| **Context Window** | {ctx_str} tokens |")
-    if meta["free"]:
+    if meta["free"] and meta["has_price"]:
+        # Free model with real prices from paid variant: show real price + annotation
+        lines.append(
+            f"| **Pricing** | ${meta['input_price']:.4f}/M in, ${meta['output_price']:.4f}/M out (currently free) |"
+        )
+    elif meta["free"]:
         lines.append("| **Pricing** | $0.00 (free) |")
     elif meta["has_price"]:
         lines.append(
@@ -676,7 +722,17 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
         tok = _format_ratio(s.get("token_ratio_scorer"))
         time_r = _format_ratio(s.get("time_ratio_scorer"))
         price = _format_ratio(s.get("price_ratio_scorer"))
-        if meta["free"] and "price_ratio_scorer" in s:
+        # For free models, the price_ratio_scorer now uses the paid variant's
+        # price (see _score_free_model_with_paid_price), so the per-task ratio
+        # is a real number reflecting capability/price tradeoff at market price.
+        # Only show "FREE" if the score is the legacy inf-free shortcut OR
+        # the model is managed/local (where pricing is N/A by design).
+        import math as _math
+        pr_val = s.get("price_ratio_scorer")
+        if pr_val is not None and _math.isinf(pr_val):
+            price = "FREE"
+        elif meta["free"] and "price_ratio_scorer" in s:
+            # Managed/local models have no price at all -> show "FREE"
             price = "FREE"
 
         lines.append(

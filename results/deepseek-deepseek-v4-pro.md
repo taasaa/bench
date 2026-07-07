@@ -24,7 +24,7 @@ Cost efficiency is strong (ratio 1.43), cheaper than the benchmark reference.
 | **Tasks** | 34 eval tasks, 165 samples |
 | **Provider** | API |
 | **Hosting** | API |
-| **Context Window** | N/A tokens |
+| **Context Window** | 1,000,000 tokens |
 | **Pricing** | $0.4350/M in, $0.8700/M out |
 | **Status** | paid |
 

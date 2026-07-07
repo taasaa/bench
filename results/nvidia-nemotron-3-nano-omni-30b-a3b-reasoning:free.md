@@ -8,7 +8,7 @@
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
 Token efficiency is below benchmark (ratio 0.49), tending toward verbose output.
 Latency is competitive (ratio 1.19).
-This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use case.
+This is a **currently free model** (normal price $0.2500/M in, $0.5000/M out), making it cost-optimal for any use case.
 
 **Strengths:** Excels at competence tasks (q3-answer-the-question, q4-root-cause, f1-multi-file-verify).
 
@@ -22,8 +22,8 @@ This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use
 | **Tasks** | 3 eval tasks, 12 samples |
 | **Provider** | NVIDIA NIM |
 | **Hosting** | NVIDIA NIM |
-| **Context Window** | N/A tokens |
-| **Pricing** | $0.00 (free) |
+| **Context Window** | 256,000 tokens |
+| **Pricing** | $0.2500/M in, $0.5000/M out (currently free) |
 | **Status** | FREE |
 
 ## Overall Scores

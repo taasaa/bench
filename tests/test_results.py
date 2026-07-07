@@ -10,6 +10,7 @@ from bench_cli.results import (
     _extract_task_scores,
     _format_ratio,
     _generate_summary,
+    _get_model_metadata,
     _rating,
     _real_model_name,
     _slug_from_alias,
@@ -651,3 +652,112 @@ class TestMonikerSkip:
         from bench_cli.results.core import is_moniker_alias
         assert is_moniker_alias(f"openai/{moniker}") is True
         assert is_moniker_alias("openai/nvidia-nemotron-30b") is False
+
+
+# ---------------------------------------------------------------------------
+# Bug abf30d98: Card generator double-suffix
+# ---------------------------------------------------------------------------
+
+
+class TestDoubleSuffixFix:
+    """When bench_alias contains __agent__mode, card filename should not duplicate it."""
+
+    def test_slug_strips_agent_suffix(self):
+        """_slug_from_alias strips agent suffix before slugging."""
+        from bench_cli.results.core import _slug_from_alias
+        assert _slug_from_alias("openai/qwen-local__claude__local") == "openai-qwen-local"
+        assert "__" not in _slug_from_alias("openai/qwen-local__claude__local")
+
+    def test_real_name_strips_agent_suffix(self):
+        """_real_model_name strips agent suffix for display."""
+        from bench_cli.results.core import _real_model_name
+        assert _real_model_name("openai/qwen-local__claude__local") == "openai/qwen-local"
+
+    def test_slug_unchanged_for_model_only(self):
+        """Pure model alias (no agent) is unchanged."""
+        from bench_cli.results.core import _slug_from_alias
+        assert _slug_from_alias("openai/qwen-local") == "openai-qwen-local"
+
+    def test_card_filename_no_double_suffix(self, tmp_path, monkeypatch):
+        """Composite-key bench_alias produces model__agent__mode.md, not model__agent__mode__agent__mode.md."""
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+
+        bench_alias = "openai/qwen-local__claude__local"
+        model_data = {
+            "tasks": {
+                "add-tests": {
+                    "date": "2026-04-20", "samples": 1, "input_tokens": 1,
+                    "output_tokens": 1, "scores": {"verify_sh": 1.0},
+                }
+            },
+            "dates": ["2026-04-20"], "total_input": 1, "total_output": 1,
+            "agent": "claude", "agent_mode": "local",
+        }
+        path = generate_card(bench_alias, model_data, tmp_path)
+        assert path is not None
+        assert path.name == "openai-qwen-local__claude__local.md"
+        assert path.name.count("__") == 2
+
+
+# ---------------------------------------------------------------------------
+# Bug 3eb95373: Context Window N/A
+# ---------------------------------------------------------------------------
+
+
+class TestContextWindowFix:
+    """_get_model_metadata should find max_input_tokens from LiteLLM config."""
+
+    def test_context_window_via_openrouter_id(self):
+        """bench_alias as OpenRouter ID should resolve to LiteLLM model_name."""
+        meta = _get_model_metadata("nvidia/nemotron-3-super-120b-a12b:free")
+        assert meta["ctx_window"] == 1_000_000
+
+    def test_context_window_via_alias(self):
+        """bench_alias as LiteLLM alias also resolves correctly."""
+        meta = _get_model_metadata("openai/nemotron-super-120b-free")
+        assert meta["ctx_window"] == 1_000_000
+
+    def test_context_window_kimi(self):
+        meta = _get_model_metadata("openai/kimi-2.6")
+        assert meta["ctx_window"] == 256_000
+
+    def test_context_window_unknown_model_is_none(self):
+        """Unknown models return None for ctx_window (no crash)."""
+        meta = _get_model_metadata("openai/totally-unknown-model-xyz-zzz")
+        assert meta["ctx_window"] is None
+
+
+# ---------------------------------------------------------------------------
+# Bug 6e261c18: Free model pricing line
+# ---------------------------------------------------------------------------
+
+
+class TestFreeModelPricingFix:
+    """Free models should show real price with '(currently free)' annotation."""
+
+    def test_free_model_meta_has_paid_prices(self):
+        """:free variant metadata should include the paid variant's real price."""
+        meta = _get_model_metadata("nvidia/nemotron-3-super-120b-a12b:free")
+        assert meta["free"] is True
+        assert meta["has_price"] is True
+        assert meta["input_price"] > 0.0
+        assert meta["output_price"] > 0.0
+
+    def test_free_model_card_shows_real_price(self, tmp_path, monkeypatch):
+        """Card Overview table shows real price with '(currently free)'."""
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+        model_data = {
+            "tasks": {
+                "q3-answer-the-question": {
+                    "date": "2026-07-07", "samples": 4, "input_tokens": 100,
+                    "output_tokens": 200, "scores": {"verify_sh": 0.938},
+                },
+            },
+            "dates": ["2026-07-07"], "total_input": 100, "total_output": 200,
+        }
+        path = generate_card("nvidia/nemotron-3-super-120b-a12b:free", model_data, tmp_path)
+        content = path.read_text()
+        overview_section = content.split("## Overview")[1].split("##")[0]
+        assert "(currently free)" in overview_section
+        assert "$0.0800/M in" in overview_section
+        assert "$0.4500/M out" in overview_section

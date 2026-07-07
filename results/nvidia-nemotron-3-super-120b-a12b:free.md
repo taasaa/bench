@@ -8,7 +8,7 @@
 This model demonstrates strong reliability across task categories, making it suitable for production use where accuracy is critical.
 Token efficiency is below benchmark (ratio 0.35), tending toward verbose output.
 Latency is competitive (ratio 1.09).
-This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use case.
+This is a **currently free model** (normal price $0.0800/M in, $0.4500/M out), making it cost-optimal for any use case.
 
 **Strengths:** Excels at universal tasks (u17-dirty-workspace-triage, q4-root-cause, q3-answer-the-question).
 
@@ -22,8 +22,8 @@ This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use
 | **Tasks** | 4 eval tasks, 16 samples |
 | **Provider** | NVIDIA NIM |
 | **Hosting** | NVIDIA NIM |
-| **Context Window** | N/A tokens |
-| **Pricing** | $0.00 (free) |
+| **Context Window** | 1,000,000 tokens |
+| **Pricing** | $0.0800/M in, $0.4500/M out (currently free) |
 | **Status** | FREE |
 
 ## Overall Scores

@@ -118,3 +118,65 @@ def test_token_ratio_uses_reference_baseline_when_registered(tmp_path, monkeypat
     assert score.metadata["reference_tokens"] == 200  # reference (not budget 508)
     assert score.metadata["reference_source"] == RatioSource.BASELINE.value
     assert score.metadata["reference_model"] == "openai/minimax-m3"
+
+
+# ---------------------------------------------------------------------------
+# Bug 8a68338a: Score free models at real (paid) price, not $0
+# ---------------------------------------------------------------------------
+
+
+def test_free_model_price_ratio_uses_paid_variant():
+    """For :free models, price_ratio_scorer should use the paid variant's price
+    to compute a meaningful cost_ratio (not inf)."""
+    import math
+    from unittest.mock import MagicMock, patch
+    from scorers.price_ratio import price_ratio_scorer
+    from scorers.protocol import TaskBudget
+
+    # Mock the OpenRouter cache: :free variant -> $0, paid variant -> real price
+    free_price = MagicMock(
+        kilo_model_id="nvidia/nemotron-3-super-120b-a12b:free",
+        input_price=0.0, output_price=0.0, context_window=None,
+        is_free=True,
+        cost_per_sample=lambda i, o: 0.0,
+    )
+    paid_price = MagicMock(
+        kilo_model_id="nvidia/nemotron-3-super-120b-a12b",
+        input_price=0.08, output_price=0.45, context_window=None,
+        is_free=False,
+        cost_per_sample=lambda i, o: (i * 0.08 / 1_000_000) + (o * 0.45 / 1_000_000),
+    )
+
+    cache_mock = MagicMock()
+    def get_price(model_id):
+        if ":free" in model_id:
+            return free_price
+        return paid_price
+    cache_mock.get_price = get_price
+
+    with patch("scorers.price_ratio._price_cache", cache_mock):
+        with patch("scorers.price_ratio.resolve_openrouter_id",
+                   return_value="nvidia/nemotron-3-super-120b-a12b:free"):
+            budget = TaskBudget(reference_cost_usd=0.001)
+            scorer_fn = price_ratio_scorer(task_budget=budget)
+
+            state = MagicMock()
+            state.model = "openai/nemotron-super-120b-free"
+            state.metadata = {"task_name": "add_tests"}
+
+            class U:
+                input_tokens = 1_000_000
+                output_tokens = 1_000_000
+
+            state.output.usage = U()
+            score = _run(scorer_fn(state, MagicMock()))
+
+            # cost_ratio should be finite (paid variant's price used), not inf
+            assert not math.isinf(score.value), \
+                f"Expected finite cost_ratio, got inf. Metadata: {score.metadata}"
+            assert not math.isnan(score.value), \
+                f"Expected finite cost_ratio, got nan"
+            # actual_cost should be positive (computed from paid variant's price)
+            assert score.metadata["actual_cost_usd"] > 0
+            assert score.metadata["is_free"] is True  # model IS free, just priced at paid rate
+            assert score.metadata["paid_or_id"] == "nvidia/nemotron-3-super-120b-a12b"

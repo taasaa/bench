@@ -129,6 +129,126 @@ def _resolve_and_price(
     return _price_from_alias(model_alias, inp, out) + (None,)
 
 
+def _resolve_paid_variant_price(or_model_id: str) -> PriceInfo | None:
+    """For :free OpenRouter variants, resolve the paid variant's price.
+
+    OpenRouter :free variants are promotional — the real market price is the
+    same model without the :free suffix. This returns the paid variant's
+    PriceInfo so the cost_ratio can reflect actual capability/price tradeoffs
+    regardless of current promo status. Returns None if no paid variant found.
+    """
+    if ":free" not in or_model_id:
+        return None
+    paid_id = or_model_id.replace(":free", "")
+    try:
+        return _price_info(paid_id)
+    except Exception:
+        return None
+
+
+def _score_free_model_with_paid_price(
+    state: TaskState,
+    model_alias: str,
+    task_budget: TaskBudgetType | None,
+    baseline_store: "BaselineStore | None",
+) -> Score:
+    """Score a free model using its paid variant's price.
+
+    For :free variants, compute what the cost WOULD be at the paid variant's
+    real price, then compute the cost_ratio against the reference. This gives
+    a meaningful capability/price comparison (not "infinitely cheap") while
+    preserving the is_free=True metadata flag.
+    """
+    from inspect_ai.scorer import Score
+
+    # Get the original OR ID (the :free variant) and resolve the paid variant
+    or_model_id = resolve_openrouter_id(model_alias)
+    if or_model_id is None:
+        # Can't resolve -> fall back to the old behavior (free shortcut)
+        return Score(
+            value=float("inf"),
+            explanation="cost_ratio=inf, actual_cost=$0.00 (FREE)",
+            metadata={
+                "pillar": "cost",
+                "cost_ratio": None,
+                "actual_cost_usd": 0.0,
+                "reference_cost_usd": None,
+                "is_free": True,
+                "anomaly": False,
+                "tier_breakdown": None,
+            },
+        )
+
+    paid_price = _resolve_paid_variant_price(or_model_id)
+    if paid_price is None:
+        # No paid variant found -> fall back to the old behavior (free shortcut)
+        return Score(
+            value=float("inf"),
+            explanation="cost_ratio=inf, actual_cost=$0.00 (FREE)",
+            metadata={
+                "pillar": "cost",
+                "cost_ratio": None,
+                "actual_cost_usd": 0.0,
+                "reference_cost_usd": None,
+                "is_free": True,
+                "anomaly": False,
+                "tier_breakdown": None,
+            },
+        )
+
+    # Compute cost using paid variant's price
+    usage = state.output.usage if state.output else None
+    if isinstance(usage, dict) and ("prompt_tokens" in usage or "completion_tokens" in usage):
+        inp = usage.get("prompt_tokens", 0) or 0
+        out = usage.get("completion_tokens", 0) or 0
+    elif hasattr(usage, "input_tokens"):
+        inp = getattr(usage, "input_tokens", 0) or 0
+        out = getattr(usage, "output_tokens", 0) or 0
+    else:
+        inp, out = 0, 0
+
+    actual_cost = paid_price.cost_per_sample(inp, out)
+
+    # Resolve reference cost
+    task_name = (state.metadata or {}).get("task_name", "") if state.metadata else ""
+    reference_cost, _src, _ref = resolve_cost_reference(baseline_store, task_name)
+    if reference_cost is None and task_budget is not None:
+        reference_cost = task_budget.reference_cost_usd
+
+    if reference_cost is None or actual_cost == 0:
+        # No reference or zero tokens -> record actual cost, skip ratio
+        return Score(
+            value=float("nan"),
+            explanation=f"cost_ratio=N/A, actual_cost=${actual_cost:.6f} (paid price; model currently free), note={'no reference cost set' if reference_cost is None else 'zero tokens'}",
+            metadata={
+                "pillar": "cost",
+                "cost_ratio": None,
+                "actual_cost_usd": actual_cost,
+                "reference_cost_usd": reference_cost,
+                "is_free": True,
+                "paid_or_id": or_model_id.replace(":free", ""),
+                "anomaly": reference_cost is None,
+                "tier_breakdown": None,
+            },
+        )
+
+    cost_ratio = reference_cost / actual_cost
+    return Score(
+        value=cost_ratio,
+        explanation=f"cost_ratio={cost_ratio:.3f}, actual_cost=${actual_cost:.6f} (paid price; model currently free), reference_cost=${reference_cost:.6f}",
+        metadata={
+            "pillar": "cost",
+            "cost_ratio": cost_ratio,
+            "actual_cost_usd": actual_cost,
+            "reference_cost_usd": reference_cost,
+            "is_free": True,
+            "paid_or_id": or_model_id.replace(":free", ""),
+            "anomaly": False,
+            "tier_breakdown": None,
+        },
+    )
+
+
 @scorer(metrics=[mean()])
 def price_ratio_scorer(
     task_budget: TaskBudgetType | None = None,
@@ -166,20 +286,13 @@ def price_ratio_scorer(
                 },
             )
 
-        # Free model shortcut
+        # Free model: resolve the paid variant's price (e.g. strip :free suffix)
+        # so the cost_ratio reflects what this model WOULD cost at its real
+        # market price, not an "infinitely cheap" artifact of $0.
         if is_free:
-            return Score(
-                value=float("inf"),
-                explanation=f"cost_ratio=inf, actual_cost=$0.00 (FREE)",
-                metadata={
-                    "pillar": "cost",
-                    "cost_ratio": None,
-                    "actual_cost_usd": 0.0,
-                    "reference_cost_usd": None,
-                    "is_free": True,
-                    "anomaly": False,
-                    "tier_breakdown": tier_breakdown,
-                },
+            return _score_free_model_with_paid_price(
+                state, model_alias=str(state.model), task_budget=task_budget,
+                baseline_store=baseline_store,
             )
 
         # Resolve reference cost — Tier 1: reference-model BaselineStore (W3b),

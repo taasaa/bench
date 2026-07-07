@@ -1,10 +1,10 @@
-# openai/qwen-local__claude__local + claude (local)
+# openai/qwen-local + claude (local)
 
 > `openai/qwen-local__claude__local` | API | paid | agent: claude/local | Evaluated 2026-04-23 → 2026-04-23
 
 ## Summary
 
-**openai/qwen-local__claude__local** achieves an overall correctness of **0%** across 0 evaluation tasks.
+**openai/qwen-local** achieves an overall correctness of **0%** across 0 evaluation tasks.
 This model struggles with complex multi-step reasoning and should be paired with strong verification layers in any production pipeline.
 Token efficiency is below benchmark (ratio 0.00), tending toward verbose output.
 Latency is slower than benchmark (ratio 0.00).
