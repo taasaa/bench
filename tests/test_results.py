@@ -246,7 +246,11 @@ class TestGenerateSummary:
     def test_free_model(self):
         pillars = {"correctness": 0.72, "token_ratio": 0.8, "time_ratio": 0.5, "price_ratio": 0.0}
         task_scores = [("task-a", 0.8, "competence")]
-        summary = _generate_summary("test/model", pillars, task_scores, "openai/qwen-local")
+        # free=True now drives the "free model" cost text (was is_managed_model
+        # which only caught local models; OpenRouter :free variants need the flag).
+        summary = _generate_summary(
+            "test/model", pillars, task_scores, "openai/qwen-local", free=True
+        )
         assert "free model" in summary
 
     def test_weak_model(self):
@@ -256,14 +260,25 @@ class TestGenerateSummary:
         assert "struggles" in summary
 
     def test_strengths_and_weaknesses(self):
+        # With 6+ tasks, both Strengths and Weaknesses appear in the summary.
+        # With <= 5 tasks, only Strengths (Weaknesses would be a duplicate).
         pillars = {"correctness": 0.80, "token_ratio": 1.0, "time_ratio": 1.0, "price_ratio": 1.0}
         task_scores = [
             ("good-task", 0.95, "competence"),
             ("bad-task", 0.40, "execution"),
+            ("ok-task-1", 0.80, "analysis"),
+            ("ok-task-2", 0.70, "universal"),
+            ("ok-task-3", 0.65, "competence"),
+            ("ok-task-4", 0.60, "execution"),
         ]
         summary = _generate_summary("test/model", pillars, task_scores, "openai/nvidia-devstral")
         assert "Strengths:" in summary
         assert "Weaknesses:" in summary
+        # Reverse: with 2 tasks, no Weaknesses should appear (would be dup of Strengths).
+        small = [task_scores[0], task_scores[1]]
+        small_summary = _generate_summary("test/model", pillars, small, "openai/nvidia-devstral")
+        assert "Strengths:" in small_summary
+        assert "Weaknesses:" not in small_summary
 
 
 # ---------------------------------------------------------------------------
@@ -543,6 +558,84 @@ class TestGenerateCardForModel:
 # ---------------------------------------------------------------------------
 # _recompute_price_ratio_from_costs (W3b parity with compare; self-healing)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Hybrid-scorer support (regression: q4/f1/u17 etc. use hybrid_scorer, not
+# verify_sh/llm_judge; prior code only recognized the latter two and produced
+# cards showing "1 evaluation tasks" for viability-scale runs).
+# ---------------------------------------------------------------------------
+
+
+class TestHybridScorer:
+    def _task(self, name: str, scores: dict) -> dict:
+        return {
+            "tasks": {
+                name: {
+                    "date": "2026-07-07",
+                    "samples": 4,
+                    "input_tokens": 1000,
+                    "output_tokens": 500,
+                    "scores": scores,
+                }
+            },
+            "dates": ["2026-07-07"],
+            "total_input": 1000,
+            "total_output": 500,
+        }
+
+    def test_extract_recognizes_hybrid_scorer(self):
+        tasks = self._task("q4-root-cause", {"hybrid_scorer": 0.825, "token_ratio_scorer": 0.2})["tasks"]
+        result = _extract_task_scores(tasks)
+        assert len(result) == 1
+        assert result[0] == ("q4-root-cause", 0.825, "execution")
+
+    def test_pillar_correctness_counts_hybrid_scorer(self):
+        tasks = {
+            "q3": {"date": "2026-07-07", "samples": 4, "input_tokens": 0, "output_tokens": 0,
+                   "scores": {"verify_sh": 0.938}},
+            "q4": {"date": "2026-07-07", "samples": 4, "input_tokens": 0, "output_tokens": 0,
+                   "scores": {"hybrid_scorer": 0.825}},
+        }
+        pillars = _compute_pillar_scores(tasks)
+        # Mean of 0.938 and 0.825 = 0.8815 -> 0.882
+        assert pillars["correctness"] == round((0.938 + 0.825) / 2, 3)
+
+    def test_viability_scale_card_lists_all_4_tasks(self, tmp_path, monkeypatch):
+        """Full viability run with hybrid_scorer tasks: card must show 4 tasks, not 1."""
+        monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
+        model_data = {
+            "tasks": {
+                "q3-answer-the-question": {
+                    "date": "2026-07-07", "samples": 4, "input_tokens": 100, "output_tokens": 200,
+                    "scores": {"verify_sh": 0.938, "token_ratio_scorer": 0.5, "time_ratio_scorer": 1.0},
+                },
+                "q4-root-cause": {
+                    "date": "2026-07-07", "samples": 4, "input_tokens": 100, "output_tokens": 200,
+                    "scores": {"hybrid_scorer": 0.825, "token_ratio_scorer": 0.5, "time_ratio_scorer": 1.0},
+                },
+                "f1-multi-file-verify": {
+                    "date": "2026-07-07", "samples": 4, "input_tokens": 100, "output_tokens": 200,
+                    "scores": {"hybrid_scorer": 0.700, "token_ratio_scorer": 0.5, "time_ratio_scorer": 1.0},
+                },
+                "u17-dirty-workspace-triage": {
+                    "date": "2026-07-07", "samples": 4, "input_tokens": 100, "output_tokens": 200,
+                    "scores": {"hybrid_scorer": 1.0, "token_ratio_scorer": 0.5, "time_ratio_scorer": 1.0},
+                },
+            },
+            "dates": ["2026-07-07"],
+            "total_input": 400,
+            "total_output": 800,
+        }
+        path = generate_card("openai/nemotron-super-120b-free", model_data, tmp_path)
+        content = path.read_text()
+        # Bug was: "across 1 evaluation tasks" -- now should be 4
+        assert "across 4 evaluation tasks" in content
+        # All 4 tasks must appear in the per-task table
+        for t in ("q3-answer-the-question", "q4-root-cause", "f1-multi-file-verify", "u17-dirty-workspace-triage"):
+            assert t in content
+        # Scorer column should show "hybrid_scorer" for the hybrid tasks
+        assert "hybrid_scorer" in content
 
 
 # ---------------------------------------------------------------------------

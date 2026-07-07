@@ -268,6 +268,12 @@ def _load_model_data(
     return model_data
 
 
+# Scorers that contribute to the correctness pillar. A task's scores dict has
+# exactly one of these (verify_sh for verify-only tasks, llm_judge for
+# judge-only tasks, hybrid_scorer for tasks with both verify.sh and judge.md).
+_CORRECTNESS_SCORERS = ("verify_sh", "llm_judge", "hybrid_scorer")
+
+
 def _compute_pillar_scores(tasks: dict[str, dict]) -> dict[str, float]:
     """Compute 4-pillar averages across tasks."""
     correct_scores = []
@@ -277,7 +283,7 @@ def _compute_pillar_scores(tasks: dict[str, dict]) -> dict[str, float]:
 
     for task_data in tasks.values():
         s = task_data["scores"]
-        correct_scores.extend(s[k] for k in ["verify_sh", "llm_judge"] if k in s)
+        correct_scores.extend(s[k] for k in _CORRECTNESS_SCORERS if k in s)
         if "token_ratio_scorer" in s:
             v = s["token_ratio_scorer"]
             if not math.isnan(v) and not math.isinf(v):
@@ -305,7 +311,7 @@ def _extract_task_scores(tasks: dict[str, dict]) -> list[tuple[str, float, str]]
     task_scores = []
     for task_name, td in tasks.items():
         s = td["scores"]
-        for k in ["verify_sh", "llm_judge"]:
+        for k in _CORRECTNESS_SCORERS:
             if k in s:
                 task_scores.append((task_name, s[k], pillar_map.get(task_name, "?")))
                 break
@@ -317,19 +323,27 @@ def _generate_summary(
     pillars: dict[str, float],
     task_scores: list[tuple[str, float, str]],
     bench_alias: str,
+    free: bool = False,
 ) -> str:
-    """Generate a mechanical summary of model performance."""
+    """Generate a mechanical summary of model performance.
+
+    Args:
+        free: True if the model is free (managed local OR $0/$0 via the price
+            cache). When True, the cost section says "FREE" instead of showing
+            a 0.00 ratio that would suggest the model is infinitely expensive.
+    """
 
     task_scores.sort(key=lambda x: x[1], reverse=True)
     top = task_scores[:5]
-    bottom = task_scores[-5:]
+    # Only show distinct "weakness" tasks when there are enough to split from
+    # the top. With <= 5 tasks, top and bottom overlap so listing them as
+    # "struggles with" the same tasks is noise.
+    bottom = task_scores[-5:] if len(task_scores) > 5 else []
 
     correct = pillars["correctness"]
     tok = pillars["token_ratio"]
     time_r = pillars["time_ratio"]
     price_r = pillars["price_ratio"]
-
-    free = is_managed_model(bench_alias)
 
     # Build summary paragraphs
     lines = []
@@ -382,7 +396,7 @@ def _generate_summary(
     # Cost
     if free:
         lines.append(
-            "This is a **free model** running locally, making it cost-optimal for any use case."
+            "This is a **free model** ($0/M in, $0/M out), making it cost-optimal for any use case."
         )
     elif price_r >= 1.0:
         lines.append(
@@ -524,7 +538,11 @@ def _get_model_metadata(bench_alias: str) -> dict:
         "input_price": input_price,
         "output_price": output_price,
         "has_price": has_price,
-        "free": is_managed_model(bench_alias),
+        # A model is "free" if it's local/managed OR has $0 in + $0 out via the
+        # price cache. Both OpenRouter `:free` and local aliases qualify.
+        "free": is_managed_model(bench_alias) or (
+            has_price and input_price == 0.0 and output_price == 0.0
+        ),
         "litellm_model": litellm_model,
     }
 
@@ -558,7 +576,9 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     pillars = _compute_pillar_scores(eval_tasks)
     meta = _get_model_metadata(bench_alias)
     task_scores = _extract_task_scores(eval_tasks)
-    summary = _generate_summary(real_name, pillars, task_scores, bench_alias)
+    summary = _generate_summary(
+        real_name, pillars, task_scores, bench_alias, free=meta["free"]
+    )
 
     total_samples = sum(t["samples"] for t in eval_tasks.values())
     total_in = sum(t["input_tokens"] for t in eval_tasks.values())
@@ -597,7 +617,7 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
     ctx_str = f"{meta['ctx_window']:,}" if meta["ctx_window"] else "N/A"
     lines.append(f"| **Context Window** | {ctx_str} tokens |")
     if meta["free"]:
-        lines.append("| **Pricing** | $0.00 (free, local) |")
+        lines.append("| **Pricing** | $0.00 (free) |")
     elif meta["has_price"]:
         lines.append(
             f"| **Pricing** | ${meta['input_price']:.4f}/M in, ${meta['output_price']:.4f}/M out |"
@@ -643,15 +663,15 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
         s = td["scores"]
         pillar = pillar_map.get(task_name, "?")
 
-        # Determine scorer type
+        # Determine scorer type (use the same scorer list as the pillars so
+        # hybrid tasks render correctly in the per-task table).
         scorer = "--"
         score_val = "--"
-        if "verify_sh" in s:
-            scorer = "verify_sh"
-            score_val = f"{s['verify_sh']:.3f}"
-        elif "llm_judge" in s:
-            scorer = "llm_judge"
-            score_val = f"{s['llm_judge']:.3f}"
+        for k in _CORRECTNESS_SCORERS:
+            if k in s:
+                scorer = k
+                score_val = f"{s[k]:.3f}"
+                break
 
         tok = _format_ratio(s.get("token_ratio_scorer"))
         time_r = _format_ratio(s.get("time_ratio_scorer"))
@@ -716,17 +736,21 @@ def generate_card(bench_alias: str, model_data: dict, log_dir: Path | None = Non
 
     # Strengths & Weaknesses (reusing task_scores from _extract_task_scores)
     ranked_scores = sorted(task_scores, key=lambda x: x[1], reverse=True)
+    n_tasks = len(ranked_scores)
 
     lines.append("## Strengths & Weaknesses")
     lines.append("")
-    lines.append("### Top 5 Tasks (by correctness)")
+    lines.append("### Top Tasks (by correctness)")
     for name, score, _ in ranked_scores[:5]:
         lines.append(f"1. **{name}** — {score:.3f}")
     lines.append("")
-    lines.append("### Bottom 5 Tasks (by correctness)")
-    for name, score, _ in ranked_scores[-5:]:
-        lines.append(f"1. **{name}** — {score:.3f}")
-    lines.append("")
+    # Skip the bottom list when there aren't enough tasks to split from the
+    # top without overlap (otherwise it's just a duplicate of the strengths).
+    if n_tasks > 5:
+        lines.append("### Bottom Tasks (by correctness)")
+        for name, score, _ in ranked_scores[-5:]:
+            lines.append(f"1. **{name}** — {score:.3f}")
+        lines.append("")
 
     # Token usage
     avg_in = total_in // max(total_samples, 1)
