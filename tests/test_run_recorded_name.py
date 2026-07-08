@@ -37,6 +37,7 @@ def test_as_flag_records_custom_name_and_routes_through_model(monkeypatch, tmp_p
     import inspect_ai
     monkeypatch.setattr(inspect_ai, "eval", fake_inspect_eval_factory(received))
     monkeypatch.setattr(cli_mod, "_check_price_gate", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli_mod, "resolve_provider", lambda *_args, **_kwargs: "test-provider")
 
     runner = CliRunner()
     result = runner.invoke(
@@ -77,6 +78,7 @@ def test_no_as_flag_records_openrouter_id(monkeypatch, tmp_path):
     import inspect_ai
     monkeypatch.setattr(inspect_ai, "eval", fake_inspect_eval_factory(received))
     monkeypatch.setattr(cli_mod, "_check_price_gate", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli_mod, "resolve_provider", lambda *_args, **_kwargs: "test-provider")
 
     runner = CliRunner()
     result = runner.invoke(

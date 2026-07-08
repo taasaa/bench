@@ -48,7 +48,12 @@ _FNAME_RE = re.compile(r"(\d{4}-\d{2}-\d{2}T[\d-]+)_(.+)_([A-Za-z0-9]+)\.eval")
 # ---------------------------------------------------------------------------
 
 
-def _completed_tasks(log_dir: str, bench_alias: str, spec_dirs: set[str]) -> set[str]:
+def _completed_tasks(
+    log_dir: str,
+    bench_alias: str,
+    spec_dirs: set[str],
+    provider: str | None = None,
+) -> set[str]:
     """Task dir-names (hyphenated) that already have a status='success'
     log for ``bench_alias``.
 
@@ -57,6 +62,13 @@ def _completed_tasks(log_dir: str, bench_alias: str, spec_dirs: set[str]) -> set
 
     Only status='success' counts -- errored/started/partial logs are always
     re-run so a killed run recovers past its failure point.
+
+    Provider-aware dedup (2026-07-07): if a log has a `bench_provider` in
+    its header metadata AND it differs from ``provider``, it is treated as
+    a DIFFERENT run and NOT marked done — different providers must not
+    replace one another under the same recorded identity. Logs without
+    `bench_provider` (pre-feature runs) are matched by recorded identity
+    alone and a one-time warning is emitted to the first spec_dirs hit.
     """
     from inspect_ai.log import list_eval_logs, read_eval_log
 
@@ -64,6 +76,7 @@ def _completed_tasks(log_dir: str, bench_alias: str, spec_dirs: set[str]) -> set
     if not log_path.is_dir():
         return set()
     done: set[str] = set()
+    warned_legacy = False
     try:
         infos = list_eval_logs(log_dir=str(log_path))
     except Exception:
@@ -79,8 +92,28 @@ def _completed_tasks(log_dir: str, bench_alias: str, spec_dirs: set[str]) -> set
             el = read_eval_log(info, header_only=True)
         except Exception:
             continue
-        if el.eval and el.eval.model == bench_alias and el.status == "success":
-            done.add(task_token)
+        if not (el.eval and el.eval.model == bench_alias and el.status == "success"):
+            continue
+
+        # Provider-aware dedup.
+        if provider is not None:
+            existing = (el.eval.metadata or {}).get("bench_provider")
+            if existing is not None and existing != provider:
+                # Different provider on the same recorded identity. Do NOT
+                # skip — this is a distinct run that must be kept.
+                continue
+            if existing is None and not warned_legacy:
+                import sys
+
+                print(
+                    f"Warning: found existing log for '{bench_alias}' without "
+                    f"bench_provider metadata; assuming same provider "
+                    f"('{provider}'). Use --no-resume or delete the log to "
+                    f"force a re-run.",
+                    file=sys.stderr,
+                )
+                warned_legacy = True
+        done.add(task_token)
     return done
 
 
@@ -401,6 +434,7 @@ def _resolve_task(
     agent: str | None = None,
     agent_mode: str | None = None,
     cc_model: str | None = None,
+    provider: str | None = None,
 ) -> Task:
     """Load a task spec (path or name) and inject bench_task_dir into its metadata.
 
@@ -460,6 +494,13 @@ def _resolve_task(
         if sample.metadata is None:
             sample.metadata = {}
         sample.metadata["bench_task_dir"] = task_dir
+
+        # bench_provider (2026-07-07): the brand the user pays, derived
+        # strictly from ~/dev/litellm/config.yaml. Mirrors bench_agent
+        # pattern. Eval-level metadata also gets it (via inspect_eval
+        # metadata= kwarg) so dedup can read it in header_only mode.
+        if provider is not None:
+            sample.metadata["bench_provider"] = provider
 
         if agent is not None:
             sample.metadata["bench_agent"] = agent

@@ -18,6 +18,7 @@ from bench_cli.run.core import (
     _resolve_task,
     parse_model_arg,
 )
+from bench_cli.provider import format_provider_error, resolve_provider
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +39,55 @@ def _status_path(log_dir: str, bench_alias: str) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     safe = bench_alias.replace("/", "_")
     return d / f"{safe}.{_time.strftime('%H%M%S')}.status.jsonl"
+
+
+def _check_provider_collision(
+    log_dir: str, recorded_name: str, new_provider: str
+) -> dict | None:
+    """Return a collision descriptor if any existing log for `recorded_name`
+    has a different `bench_provider` in its header metadata.
+
+    Provider attribution is per-run. If a log already exists under the
+    same recorded identity from a different provider, the new run MUST
+    not silently replace it. The caller hard-stops with this info and
+    forces an explicit decision (--as, --no-resume, or delete).
+
+    Logs with no `bench_provider` in the header (pre-feature runs) are
+    treated as "unknown provider" and ignored here — they may legitimately
+    belong to the new provider and the user-facing fix is the per-task
+    dedup behavior in `_completed_tasks` (which warns-once).
+
+    Args:
+        log_dir: directory containing .eval logs
+        recorded_name: the model identity this run will record
+        new_provider: the provider this run will record
+
+    Returns:
+        None if no collision; otherwise a dict with
+        {path, existing_provider} describing the first conflict found.
+    """
+    from inspect_ai.log import list_eval_logs, read_eval_log
+
+    p = Path(log_dir)
+    if not p.is_dir():
+        return None
+    try:
+        infos = list_eval_logs(log_dir=str(p))
+    except Exception:
+        return None
+    for info in infos:
+        try:
+            el = read_eval_log(info, header_only=True)
+        except Exception:
+            continue
+        if el.eval is None or el.eval.model != recorded_name:
+            continue
+        existing = (el.eval.metadata or {}).get("bench_provider") if el.eval else None
+        if existing is None:
+            continue  # legacy log, no provider in header — skip
+        if existing != new_provider:
+            return {"path": str(info), "existing_provider": existing}
+    return None
 
 
 def _append_heartbeat(
@@ -358,8 +408,41 @@ def run(
 
     # Pre-flight price gate -- block if model has no known price.
     _check_price_gate(bench_alias)
+
+    # Pre-flight provider gate. Provider = the brand the user is paying
+    # for service from; resolved strictly from ~/dev/litellm/config.yaml.
+    # Recorded in eval-level metadata for header-only dedup + per-sample
+    # metadata for symmetry with bench_agent. Hard-stop on unresolvable
+    # (Tasa's "no silent defaults" rule).
+    provider = resolve_provider(bench_alias)
+    if provider is None:
+        raise click.ClickException(format_provider_error(bench_alias))
+    click.echo(f"Provider: {provider}")
     for s in specs:
         click.echo(f"  • {s}")
+
+    # Pre-flight collision check: scan existing logs for the same
+    # recorded_name but a different provider. If found, hard-stop so the
+    # user makes an explicit decision (--as to disambiguate, --no-resume
+    # to force, or delete the conflicting log). Reads header_only to keep
+    # this cheap against large log dirs.
+    collision = _check_provider_collision(log_dir, recorded_name, provider)
+    if collision is not None:
+        raise click.ClickException(
+            f"Provider collision detected for model '{recorded_name}'.\n"
+            f"\n"
+            f"Existing log '{collision['path']}' was recorded with "
+            f"provider '{collision['existing_provider']}', but this run is "
+            f"provider '{provider}'. Different providers must not replace one "
+            f"another in the same recorded identity.\n"
+            f"\n"
+            f"To fix:\n"
+            f"  • Use --as <name> to disambiguate this run (changes the "
+            f"recorded identity), OR\n"
+            f"  • Pass --no-resume to force a fresh run and overwrite, OR\n"
+            f"  • Remove the conflicting log at:\n"
+            f"      {collision['path']}"
+        )
 
     # 2. Resolve solver and sandbox.
     solver = None
@@ -374,10 +457,12 @@ def run(
     # W1a: cross-run resume (default-on). Skip (model, task) pairs that
     # already have a status='success' log, unless --no-resume. Filtering
     # happens BEFORE task resolution so we don't even load completed tasks.
+    # Provider-aware: a log with a different bench_provider is a distinct
+    # run and must be kept (see _completed_tasks).
     run_specs = specs
     if not no_resume:
         spec_dirs = {Path(s).parent.name for s in specs}
-        done = _completed_tasks(log_dir, recorded_name, spec_dirs)
+        done = _completed_tasks(log_dir, recorded_name, spec_dirs, provider=provider)
         run_specs = [s for s in specs if Path(s).parent.name not in done]
         skipped = len(specs) - len(run_specs)
         if skipped:
@@ -398,7 +483,9 @@ def run(
     # find verify.sh without any filesystem gymnastics.
     display_mode = _choose_display(no_tui)
     tasks_with_metadata = [
-        _resolve_task(spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model)
+        _resolve_task(
+            spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model, provider=provider
+        )
         for spec in run_specs
     ]
 
@@ -426,6 +513,7 @@ def run(
                 max_samples=max_samples_val,
                 max_retries=max_retries,
                 display=display_mode,
+                metadata={"bench_provider": provider},
             )
             all_results.extend(result)
             if recorded_name != routed_name:
@@ -470,6 +558,7 @@ def run(
             max_samples=max_samples_val,
             max_retries=max_retries,
             display=display_mode,
+            metadata={"bench_provider": provider},
         )
         if recorded_name != routed_name:
             for r in results:

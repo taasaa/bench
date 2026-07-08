@@ -160,7 +160,7 @@ class TestRunIntegration:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run.cli._check_price_gate"):
+                with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
                     result = runner.invoke(
                         cli, ["run", "--model", "openai/default", "--tier", "quick"]
                     )
@@ -216,7 +216,7 @@ class TestRunIntegration:
                 )
                 mock_eval.return_value = [fake_log]
                 with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
-                    with patch("bench_cli.run.cli._check_price_gate"):
+                    with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
                         result = runner.invoke(cli, ["run", "--agent", "claude", "--tier", "quick"])
 
         assert result.exit_code == 0, result.output
@@ -260,10 +260,11 @@ def _run_with_mocked_eval(tasks_root, monkeypatch, extra_args):
         mock_eval.return_value = [fake_log]
         with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
             with patch("bench_cli.run.cli._check_price_gate"):
-                result = runner.invoke(
-                    cli,
-                    ["run", "--model", "openai/default", "--tier", "quick"] + list(extra_args),
-                )
+                with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
+                    result = runner.invoke(
+                        cli,
+                        ["run", "--model", "openai/default", "--tier", "quick"] + list(extra_args),
+                    )
     return result, mock_eval
 
 
@@ -508,7 +509,7 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run.cli._check_price_gate"):
+                with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
                     result = runner.invoke(cli, ["run", "--tier", "quick", "--concurrency", "4"])
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
@@ -533,7 +534,7 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run.cli._check_price_gate"):
+                with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
                     result = runner.invoke(cli, ["run", "--tier", "quick", "--sequential"])
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
@@ -559,7 +560,7 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run.cli._check_price_gate"):
+                with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
                     result = runner.invoke(
                         cli,
                         [
@@ -595,7 +596,7 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run.cli._check_price_gate"):
+                with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
                     result = runner.invoke(cli, ["run", "--tier", "quick"])
         assert result.exit_code == 0, result.output
         mock_eval.assert_called_once()
@@ -621,7 +622,7 @@ class TestConcurrencyFlags:
             )
             mock_eval.return_value = [fake_log]
             with patch("bench_cli.run.cli._resolve_task", return_value=fake_task):
-                with patch("bench_cli.run.cli._check_price_gate"):
+                with patch("bench_cli.run.cli.resolve_provider", return_value="test-provider"):
                     result = runner.invoke(cli, ["run", "--tier", "quick", "--concurrency", "1"])
         assert result.exit_code == 0, result.output
         call_kwargs = mock_eval.call_args[1]

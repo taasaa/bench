@@ -51,6 +51,7 @@ def test_run_resume_short_circuits_when_all_done(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cli_mod, "_discover_tasks", lambda *a, **k: [fake_spec])
     monkeypatch.setattr(cli_mod, "_check_price_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(cli_mod, "resolve_provider", lambda *_a, **_k: "test-provider")
     monkeypatch.setattr(cli_mod, "_resolve_task", lambda *a, **k: Task(dataset=None))
     monkeypatch.setattr(cli_mod, "_completed_tasks", lambda *a, **k: {"f23-ghost-constraint"})
 
@@ -85,6 +86,7 @@ def test_run_no_resume_dispatches_despite_success_logs(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cli_mod, "_discover_tasks", lambda *a, **k: [fake_spec])
     monkeypatch.setattr(cli_mod, "_check_price_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(cli_mod, "resolve_provider", lambda *_a, **_k: "test-provider")
     monkeypatch.setattr(cli_mod, "_resolve_task", lambda *a, **k: Task(dataset=None))
     def boom(*a, **k):
         raise AssertionError("_completed_tasks must not be called under --no-resume")
