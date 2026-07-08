@@ -1,14 +1,14 @@
 # nvidia/nemotron-3-super-120b-a12b
 
-> `nvidia/nemotron-3-super-120b-a12b` | NVIDIA NIM | paid | Evaluated 2026-04-22 → 2026-04-22
+> `nvidia/nemotron-3-super-120b-a12b` | NVIDIA NIM | paid | Evaluated 2026-04-22 → 2026-07-08
 
 ## Summary
 
-**nvidia/nemotron-3-super-120b-a12b** achieves an overall correctness of **81%** across 34 evaluation tasks.
+**nvidia/nemotron-3-super-120b-a12b** achieves an overall correctness of **80%** across 34 evaluation tasks.
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
 Token efficiency is reasonable (ratio 1.03), producing concise responses. 
-Latency is competitive (ratio 1.67).
-Cost efficiency is strong (ratio 4.41), cheaper than the benchmark reference.
+Latency is competitive (ratio 1.76).
+Cost efficiency is strong (ratio 4.43), cheaper than the benchmark reference.
 
 **Strengths:** Excels at competence tasks (add-tests, f12-surgical-fix, f7-format-compliance).
 
@@ -20,11 +20,11 @@ Cost efficiency is strong (ratio 4.41), cheaper than the benchmark reference.
 
 | Metric | Value |
 |--------|-------|
-| **Evaluated** | 2026-04-22 → 2026-04-22 |
+| **Evaluated** | 2026-04-22 → 2026-07-08 |
 | **Tasks** | 34 eval tasks, 165 samples |
 | **Provider** | NVIDIA NIM |
 | **Hosting** | NVIDIA NIM |
-| **Context Window** | N/A tokens |
+| **Context Window** | 1,000,000 tokens |
 | **Pricing** | $0.0800/M in, $0.4500/M out |
 | **Status** | paid |
 
@@ -32,10 +32,10 @@ Cost efficiency is strong (ratio 4.41), cheaper than the benchmark reference.
 
 | Pillar | Score | Rating |
 |--------|-------|--------|
-| **Correctness** | 0.811 | good |
-| **Token Efficiency** | 1.034 | excellent |
-| **Latency** | 1.673 | excellent |
-| **Cost Efficiency** | 4.414 | excellent |
+| **Correctness** | 0.803 | good |
+| **Token Efficiency** | 1.033 | excellent |
+| **Latency** | 1.757 | excellent |
+| **Cost Efficiency** | 4.427 | excellent |
 
 > Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60
 > Ratio interpretation: > 1.0 = better than benchmark, < 1.0 = worse
@@ -45,7 +45,7 @@ Cost efficiency is strong (ratio 4.41), cheaper than the benchmark reference.
 | Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |
 |------|--------|--------|-------|-----------|------------|------------|
 | add-tests | competence | verify_sh | 1.000 | 1.461 | 2.454 | 6.116 |
-| f1-multi-file-verify | analysis | hybrid_scorer | 0.775 | 0.530 | 0.849 | 4.373 |
+| f1-multi-file-verify | analysis | hybrid_scorer | 0.750 | 0.468 | 0.907 | 3.242 |
 | f10-env-mismatch | analysis | hybrid_scorer | 0.869 | 0.269 | 0.374 | 10.059 |
 | f11-intermittent-bug | execution | hybrid_scorer | 0.942 | 0.295 | 0.397 | 2.734 |
 | f12-surgical-fix | competence | verify_sh | 1.000 | 2.697 | 2.736 | 2.984 |
@@ -71,10 +71,10 @@ Cost efficiency is strong (ratio 4.41), cheaper than the benchmark reference.
 | f9-cascading-failure | analysis | hybrid_scorer | 0.869 | 0.288 | 0.347 | 2.229 |
 | q1-verification-gate | competence | verify_sh | 0.917 | 1.598 | 5.111 | 13.135 |
 | q2-do-not-touch | competence | verify_sh | 1.000 | 0.993 | 1.001 | 3.421 |
-| q3-answer-the-question | competence | verify_sh | 0.938 | 0.495 | 1.312 | 1.790 |
-| q4-root-cause | execution | hybrid_scorer | 0.883 | 0.223 | 0.298 | 1.802 |
+| q3-answer-the-question | competence | verify_sh | 0.938 | 0.481 | 2.442 | 1.794 |
+| q4-root-cause | execution | hybrid_scorer | 0.825 | 0.232 | 0.733 | 1.857 |
 | q5-safe-git-operations | competence | verify_sh | 0.417 | 0.867 | 0.932 | 6.494 |
-| u17-dirty-workspace-triage | universal | hybrid_scorer | 1.000 | 0.173 | 0.699 | 0.581 |
+| u17-dirty-workspace-triage | universal | hybrid_scorer | 0.838 | 0.179 | 1.909 | 2.093 |
 | u18-resume-after-bad-attempt | universal | hybrid_scorer | 0.856 | 0.098 | 0.306 | 1.349 |
 | u7-git-safety | universal | llm_judge | 0.688 | 0.218 | 0.447 | 1.961 |
 | u8-edit-reliability | universal | llm_judge | 0.812 | 0.201 | 0.492 | 1.872 |
@@ -97,8 +97,8 @@ Cost efficiency is strong (ratio 4.41), cheaper than the benchmark reference.
 
 ## Token Usage
 
-- Total input: 243,838
-- Total output: 246,742
-- Avg input/sample: 1,477
-- Avg output/sample: 1,495
+- Total input: 242,941
+- Total output: 243,687
+- Avg input/sample: 1,472
+- Avg output/sample: 1,476
 

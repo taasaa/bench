@@ -1,16 +1,16 @@
 # nvidia/nemotron-3-super-120b-a12b:free
 
-> `nvidia/nemotron-3-super-120b-a12b:free` | NVIDIA NIM | FREE | Evaluated 2026-07-07 → 2026-07-07
+> `nvidia/nemotron-3-super-120b-a12b:free` | NVIDIA NIM | FREE | Evaluated 2026-07-07 → 2026-07-08
 
 ## Summary
 
-**nvidia/nemotron-3-super-120b-a12b:free** achieves an overall correctness of **89%** across 4 evaluation tasks.
-This model demonstrates strong reliability across task categories, making it suitable for production use where accuracy is critical.
-Token efficiency is below benchmark (ratio 0.35), tending toward verbose output.
-Latency is competitive (ratio 1.09).
+**nvidia/nemotron-3-super-120b-a12b:free** achieves an overall correctness of **84%** across 4 evaluation tasks.
+Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
+Token efficiency is below benchmark (ratio 0.36), tending toward verbose output.
+Latency is competitive (ratio 1.54).
 This is a **currently free model** (normal price $0.0800/M in, $0.4500/M out), making it cost-optimal for any use case.
 
-**Strengths:** Excels at universal tasks (u17-dirty-workspace-triage, q4-root-cause, q3-answer-the-question).
+**Strengths:** Excels at competence tasks (q3-answer-the-question, q4-root-cause, f1-multi-file-verify).
 
 **Recommended for:** General coding assistance, code review, and automated workflows where cost-efficiency matters.
 
@@ -18,7 +18,7 @@ This is a **currently free model** (normal price $0.0800/M in, $0.4500/M out), m
 
 | Metric | Value |
 |--------|-------|
-| **Evaluated** | 2026-07-07 → 2026-07-07 |
+| **Evaluated** | 2026-07-07 → 2026-07-08 |
 | **Tasks** | 4 eval tasks, 16 samples |
 | **Provider** | NVIDIA NIM |
 | **Hosting** | NVIDIA NIM |
@@ -30,10 +30,10 @@ This is a **currently free model** (normal price $0.0800/M in, $0.4500/M out), m
 
 | Pillar | Score | Rating |
 |--------|-------|--------|
-| **Correctness** | 0.890 | good |
-| **Token Efficiency** | 0.352 | weak |
-| **Latency** | 1.089 | excellent |
-| **Cost Efficiency** | 1.994 | excellent |
+| **Correctness** | 0.841 | good |
+| **Token Efficiency** | 0.364 | weak |
+| **Latency** | 1.542 | excellent |
+| **Cost Efficiency** | 2.357 | excellent |
 
 > Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60
 > Ratio interpretation: > 1.0 = better than benchmark, < 1.0 = worse
@@ -42,23 +42,23 @@ This is a **currently free model** (normal price $0.0800/M in, $0.4500/M out), m
 
 | Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |
 |------|--------|--------|-------|-----------|------------|------------|
-| f1-multi-file-verify | analysis | hybrid_scorer | 0.681 | 0.465 | 0.987 | 3.571 |
-| q3-answer-the-question | competence | verify_sh | 0.938 | 0.555 | 1.201 | 2.016 |
-| q4-root-cause | execution | hybrid_scorer | 0.942 | 0.225 | 0.662 | 1.680 |
-| u17-dirty-workspace-triage | universal | hybrid_scorer | 1.000 | 0.163 | 1.508 | 0.707 |
+| f1-multi-file-verify | analysis | hybrid_scorer | 0.794 | 0.526 | 1.290 | 4.231 |
+| q3-answer-the-question | competence | verify_sh | 0.938 | 0.540 | 2.802 | 1.907 |
+| q4-root-cause | execution | hybrid_scorer | 0.883 | 0.195 | 0.648 | 1.282 |
+| u17-dirty-workspace-triage | universal | hybrid_scorer | 0.750 | 0.195 | 1.426 | 2.008 |
 
 ## Strengths & Weaknesses
 
 ### Top Tasks (by correctness)
-1. **u17-dirty-workspace-triage** — 1.000
-1. **q4-root-cause** — 0.942
 1. **q3-answer-the-question** — 0.938
-1. **f1-multi-file-verify** — 0.681
+1. **q4-root-cause** — 0.883
+1. **f1-multi-file-verify** — 0.794
+1. **u17-dirty-workspace-triage** — 0.750
 
 ## Token Usage
 
-- Total input: 50,866
-- Total output: 28,228
-- Avg input/sample: 3,179
-- Avg output/sample: 1,764
+- Total input: 45,725
+- Total output: 27,642
+- Avg input/sample: 2,857
+- Avg output/sample: 1,727
 
