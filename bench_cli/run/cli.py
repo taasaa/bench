@@ -86,7 +86,12 @@ def _check_provider_collision(
         if existing is None:
             continue  # legacy log, no provider in header — skip
         if existing != new_provider:
-            return {"path": str(info), "existing_provider": existing}
+            # info.name is the on-disk filename (e.g. "...eval"). Fall back
+            # to the repr if it's missing (shouldn't happen, but defensive).
+            return {
+                "path": getattr(info, "name", None) or repr(info),
+                "existing_provider": existing,
+            }
     return None
 
 
