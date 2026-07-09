@@ -373,8 +373,17 @@ def run(
     # identity sent to the proxy (the --model value).
     from bench_cli.run.core import resolve_recorded_name, rewrite_log_model_name
 
-    routed_name = bench_alias
-    recorded_name = resolve_recorded_name(routed_name, as_name)
+    # routed_name is passed to Inspect AI as `model=...`. Inspect requires the
+    # `<service>/<name>` format (e.g. `openai/go-kimi-k2.7-code`) to pick the
+    # OpenAI provider; it then strips the service prefix before sending to the
+    # proxy, so the proxy sees the bare alias (e.g. `go-kimi-k2.7-code`) which
+    # matches the YAML `model_name:`. Both `openai/<x>` and `<x>` user input
+    # forms work — if the user omits the prefix, we add it.
+    if "/" not in bench_alias:
+        routed_name = f"openai/{bench_alias}"
+    else:
+        routed_name = bench_alias
+    recorded_name = resolve_recorded_name(bench_alias, as_name)
     if recorded_name != routed_name:
         click.echo(
             f"Recording model as '{recorded_name}' (routing through '{routed_name}')."
