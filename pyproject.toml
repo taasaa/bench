@@ -23,8 +23,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "inspect-ai>=0.3.205",
-    "openai>=1.0",
+    "inspect-ai>=0.3.245,<0.4",
+    "openai>=2.40.0",
     "click>=8.0",
     "python-dotenv>=1.0",
 ]
@@ -34,7 +34,7 @@ bench = "bench_cli.main:cli"
 
 [project.optional-dependencies]
 agent = [
-    "inspect-swe>=0.2.46",
+    "inspect-swe>=0.2.65",
     "anthropic>=0.30",
 ]
 dev = [

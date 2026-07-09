@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import click
 from inspect_ai import Task
@@ -276,6 +278,134 @@ def parse_model_arg(model: str) -> tuple[str, str | None]:
     return model, None
 
 
+# ---------------------------------------------------------------------------
+# Model routing (0.3.245 upgrade)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ModelRoute:
+    """Resolved model routing contract for one bench run.
+
+    Centralizes the (alias -> multi-headed routing) decision so the CLI
+    doesn't have to manually thread routed_name / recorded_name /
+    pricing_alias / provider_alias / model_args / config_overrides
+    through five separate variables and four separate sites.
+
+    Field semantics:
+      * bench_alias       : the exact --model string the user typed
+                            (may carry the [override] suffix BEFORE
+                            parse_model_arg strips it; here it is the
+                            bare alias, used for echo-back).
+      * routed_name       : the inspect_ai.eval(model=...) value. Inspect
+                            strips the openai/ prefix before sending the
+                            remainder to the proxy.
+      * recorded_name     : the eval.eval.model written into the .eval
+                            log file (--as>resolved>fallback chain).
+      * pricing_alias     : the LiteLLM-side alias used by _check_price_gate
+                            and the override-save block. For chatgpt/*
+                            routing this is the BARE alias (chatgpt/gpt-5.5),
+                            not the openai-api provider string, so
+                            overrides and pricing lookups stay on the
+                            canonical side.
+      * provider_alias    : the alias passed to resolve_provider() to
+                            attribute the run to a vendor/brand.
+      * model_args        : extra kwargs threaded into inspect_ai.eval(...).
+      * config_overrides  : GenerateConfig overlay (e.g. extra_body for
+                            chatgpt/* streaming usage tracking).
+    """
+
+    bench_alias: str
+    routed_name: str
+    recorded_name: str
+    pricing_alias: str
+    provider_alias: str
+    model_args: dict[str, Any] = field(default_factory=dict)
+    config_overrides: dict[str, Any] = field(default_factory=dict)
+
+
+def _strip_openai_prefix(alias: str) -> str:
+    """Strip a leading `openai/` from a routed alias, if present.
+
+    Centralized here so the routing logic doesn't accidentally disagree
+    with `bench_cli/provider._strip_openai_prefix`. Kept as a private
+    duplicate rather than imported across modules to avoid a bench_cli
+    internal cycle (provider.py already imports from litellm_config).
+    """
+    return alias[len("openai/"):] if alias.startswith("openai/") else alias
+
+
+def build_model_route(bench_alias: str, as_name: str | None) -> ModelRoute:
+    """Resolve user model input into Inspect routing + bench attribution.
+
+    Normal aliases use Inspect's native OpenAI provider (`openai/<alias>`).
+    ChatGPT/Codex LiteLLM aliases must use Inspect's OpenAI-compatible
+    provider with streaming because LiteLLM's `chatgpt/*` route fails for
+    non-streaming calls.
+
+    Args:
+      bench_alias: the --model value AFTER parse_model_arg() has stripped
+                   the optional [override] suffix (override handling lives
+                   in cli.py, not in routing).
+      as_name:     the --as override (or None).
+
+    Returns:
+      ModelRoute dataclass with all routing fields populated.
+    """
+    bare_alias = _strip_openai_prefix(bench_alias)
+
+    # ChatGPT/Codex LiteLLM routes: must go through openai-api with
+    # streaming + stream_options.include_usage=True, or Inspect forces
+    # Responses API which LiteLLM rejects with 500. Proven-working
+    # incantation is openai-api/openai/<bare> + stream=True + extra_body
+    # stream_options. The bare alias (chatgpt/gpt-5.5) is what the
+    # proxy's model_name and the LiteLLM config talk, so price gate
+    # and override save must use it too.
+    if bare_alias.startswith("chatgpt/"):
+        routed_name = f"openai-api/openai/{bare_alias}"
+        recorded_name = resolve_recorded_name(bare_alias, as_name)
+        return ModelRoute(
+            bench_alias=bench_alias,
+            routed_name=routed_name,
+            recorded_name=recorded_name,
+            pricing_alias=bare_alias,
+            provider_alias=bare_alias,
+            model_args={"stream": True},
+            config_overrides={
+                "extra_body": {"stream_options": {"include_usage": True}}
+            },
+        )
+
+    # Normal path: bare alias OR prefixed alias. If the user gave a bare
+    # alias (`go-kimi-k2.7-code`) Inspect needs the `openai/` prefix to
+    # pick the OpenAI provider. Prefixed (`openai/go-kimi-k2.7-code`) is
+    # passed through unchanged.
+    if "/" not in bench_alias:
+        routed_name = f"openai/{bench_alias}"
+        pricing_alias = bench_alias
+        provider_alias = bench_alias
+    else:
+        routed_name = bench_alias
+        pricing_alias = bench_alias
+        provider_alias = bench_alias
+
+    recorded_name = resolve_recorded_name(pricing_alias, as_name)
+    return ModelRoute(
+        bench_alias=bench_alias,
+        routed_name=routed_name,
+        recorded_name=recorded_name,
+        pricing_alias=pricing_alias,
+        provider_alias=provider_alias,
+        # 0.3.245 upgrade: OpenAIAPI.is_latest_model() returns True for any
+        # non-gpt / non-codex / non-o-series / non-deep-research model name,
+        # which forces responses_api=True and routes to /v1/responses. Most
+        # non-gpt bench backends (opencode, kilocode, nvidia_nim, openrouter,
+        # anthropic, ...) are Chat-Completions-only and 404 on /v1/responses.
+        # Pin responses_api=False so the OpenAI provider uses Chat Completions.
+        model_args={"responses_api": False},
+    )
+
+
 def resolve_recorded_name(routed_name: str, as_name: str | None) -> str:
     """Compute the model identity to record in eval logs.
 
@@ -435,6 +565,8 @@ def _resolve_task(
     agent_mode: str | None = None,
     cc_model: str | None = None,
     provider: str | None = None,
+    config_overrides_extra: dict | None = None,
+    pricing_alias: str | None = None,
 ) -> Task:
     """Load a task spec (path or name) and inject bench_task_dir into its metadata.
 
@@ -507,6 +639,13 @@ def _resolve_task(
             sample.metadata["bench_agent_mode"] = agent_mode
             sample.metadata["bench_cc_model"] = cc_model
 
+        # Pricing-alias injection (0.3.245 upgrade): scorers/price_ratio.py
+        # reads state.metadata["bench_pricing_alias"] first so streaming
+        # openai-api routes (chatgpt/gpt-5.5) get priced under the normalized
+        # LiteLLM alias, not the routed Inspect provider name.
+        if pricing_alias is not None:
+            sample.metadata["bench_pricing_alias"] = pricing_alias
+
         # Inject fixture path from dataset.json "fixture" field.
         # The fixture field specifies a scenario_id under fixtures/.
         fixture_id = sample.metadata.get("fixture") if isinstance(sample.metadata, dict) else None
@@ -537,7 +676,7 @@ def _resolve_task(
     # minutes.  Default OpenAI SDK timeout is 600s which is fine, but some
     # proxy configs or model servers impose shorter limits.  Setting
     # attempt_timeout=300 gives the model 5 minutes per attempt before retry.
-    from inspect_ai._eval.task.run import GenerateConfig
+    from inspect_ai.model import GenerateConfig
 
     orig_config = task_obj.config
     config_overrides: dict = {}
@@ -545,6 +684,13 @@ def _resolve_task(
         config_overrides["timeout"] = 600
     if orig_config is None or getattr(orig_config, "attempt_timeout", None) is None:
         config_overrides["attempt_timeout"] = 300
+    # Merge extra overrides (e.g. stream_options.include_usage for chatgpt/*
+    # streaming routes) on top of the bench defaults. Caller-provided
+    # extras must NOT clobber defaults that the bench infra relies on, but
+    # they should layer cleanly when both timeout AND stream-options are
+    # forced by the same caller.
+    if config_overrides_extra:
+        config_overrides.update(config_overrides_extra)
     config = GenerateConfig(**config_overrides)
 
     return Task(
@@ -558,12 +704,22 @@ def _resolve_task(
         config=config,
         model_roles=task_obj.model_roles,
         sandbox=task_obj.sandbox,
+        # Additive Inspect 0.3.245 Task fields. Preserved via getattr so
+        # older task.py sources that don't set them don't blow up during
+        # reconstruction. Defaults are sentinel-None to match the upstream
+        # Task constructor's documented contract.
+        checkpoint=getattr(task_obj, "checkpoint", None),
+        on_checkpoint=getattr(task_obj, "on_checkpoint", None),
+        on_resume=getattr(task_obj, "on_resume", None),
         approval=task_obj.approval,
         epochs=task_obj.epochs,
         fail_on_error=task_obj.fail_on_error,
         continue_on_fail=task_obj.continue_on_fail,
+        # 0.3.245: score_on_error and turn_limit are new fields too.
+        score_on_error=getattr(task_obj, "score_on_error", None),
         message_limit=task_obj.message_limit,
         token_limit=task_obj.token_limit,
+        turn_limit=getattr(task_obj, "turn_limit", None),
         time_limit=task_obj.time_limit,
         working_limit=task_obj.working_limit,
         cost_limit=task_obj.cost_limit,
@@ -573,6 +729,9 @@ def _resolve_task(
         version=task_obj.version,
         metadata=dict(task_obj.metadata or {}),
         tags=task_obj.tags,
+        # 0.3.245: new viewer field. Preserve with getattr so older task
+        # sources without it still reconstruct cleanly.
+        viewer=getattr(task_obj, "viewer", None),
     )
 
 

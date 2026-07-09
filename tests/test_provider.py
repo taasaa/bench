@@ -277,6 +277,27 @@ def test_format_provider_error_is_actionable():
     assert "Cannot determine provider" in msg  # clear why
 
 
+def test_chatgpt_transport_without_explicit_credential_returns_chatgpt(tmp_path):
+    """Proxy entry with `model: chatgpt/...` and NO inline credentials -> provider 'chatgpt'.
+
+    Codex/ChatGPT LiteLLM endpoints declare the ChatGPT transport with
+    NEITHER litellm_credential_name NOR inline api_key/api_base — auth
+    happens via the locally-cached ~/.chatgpt_token/ OAuth flow. Without
+    this fallback (placed in the no-credential fall-through branch, NOT
+    the inline-credentials branch) the resolver would hard-stop and
+    break all chatgpt/* bench runs.
+    """
+    cfg = """\
+model_list:
+  - model_name: chatgpt/gpt-5.5
+    litellm_params:
+      model: chatgpt/gpt-5.5
+"""
+    p = _write_config(tmp_path, cfg)
+    with _patch_config_path(p):
+        assert resolve_provider("chatgpt/gpt-5.5") == "chatgpt"
+
+
 def test_format_provider_error_strips_openai_prefix():
     """The model_name in the suggested fix uses the bare alias, not openai/X."""
     msg = format_provider_error("openai/foo-bar")

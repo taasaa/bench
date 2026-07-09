@@ -622,6 +622,48 @@ class TestPriceRatioScorer:
         cost = info.cost_per_sample(1000, 2000)
         assert cost == pytest.approx(0.0125)
 
+    def test_bench_pricing_alias_overrides_state_model(self):
+        """streaming `openai-api/openai/chatgpt/gpt-5.5` must price via the
+        normalized LiteLLM alias (`chatgpt/gpt-5.5`), not the routed name.
+
+        The 0.3.245 chatgpt streaming route threads an Inspect-style
+        `openai-api/openai/<alias>` routed name. bench_cli.run.core injects
+        the bare alias (chatgpt/gpt-5.5) into sample.metadata as
+        `bench_pricing_alias` so price_ratio_scorer resolves the price under
+        the same key LiteLLM config / override-save use.
+        """
+        from unittest.mock import patch
+
+        from scorers.price_ratio import price_ratio_scorer
+        from scorers.protocol import TaskBudget
+
+        seen = {}
+
+        def fake_resolve_and_price(model_alias, usage):
+            seen["model_alias"] = model_alias
+            return 0.0002, None, False, None
+
+        s = price_ratio_scorer(task_budget=TaskBudget(reference_cost_usd=0.001))
+        state = self._make_scored_state(
+            "output",
+            "openai-api/openai/chatgpt/gpt-5.5",
+            100,
+            50,
+        )
+        state.metadata = {
+            "bench_pricing_alias": "chatgpt/gpt-5.5",
+            "task_name": "smoke",
+        }
+
+        with patch(
+            "scorers.price_ratio._resolve_and_price",
+            side_effect=fake_resolve_and_price,
+        ):
+            result = run_async(s(state, state.target))
+
+        assert seen["model_alias"] == "chatgpt/gpt-5.5"
+        assert result.value == pytest.approx(5.0)
+
 
 # ---------------------------------------------------------------------------
 # Fixture loading tests

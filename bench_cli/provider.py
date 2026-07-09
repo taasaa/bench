@@ -167,6 +167,18 @@ def resolve_provider(routed_name: str) -> str | None:
     if params.get("api_key") or params.get("api_base"):
         return _provider_from_inline_credentials(params)
 
+    # 4b. chatgpt/* transport fallback (0.3.245 upgrade). The Codex/ChatGPT
+    # LiteLLM endpoint declares `model: chatgpt/gpt-5.5` WITHOUT inline
+    # api_key/api_base or a litellm_credential_name — it authenticates via
+    # ~/.chatgpt_token/ OAuth. So the check must live in the fall-through
+    # path, NOT inside the inline-credentials branch above (where it would
+    # be unreachable for the real proxy config). Surface the transport as
+    # the provider so per-provider analysis attributes these runs to
+    # `chatgpt` rather than hard-stopping on missing credentials.
+    model_field = params.get("model")
+    if isinstance(model_field, str) and model_field.startswith("chatgpt/"):
+        return "chatgpt"
+
     # 5. Proxy entry exists but has no credential info whatsoever.
     return None
 

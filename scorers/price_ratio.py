@@ -296,7 +296,16 @@ def price_ratio_scorer(
 
     async def score(state: TaskState, target: Target) -> Score:
         usage = state.output.usage if state.output else None
-        model_alias = str(state.model)
+        # Pricing-alias override (0.3.245 upgrade): prefer the normalized
+        # LiteLLM-side alias that bench_cli.run.core injects into every
+        # sample's metadata. Falls back to state.model for legacy logs
+        # (pre-routing-change runs) and for any future route that doesn't
+        # set the key.
+        model_alias = (
+            (state.metadata or {}).get("bench_pricing_alias")
+            if state.metadata
+            else None
+        ) or str(state.model)
 
         actual_cost, _, is_free, tier_breakdown = _resolve_and_price(model_alias, usage)
 

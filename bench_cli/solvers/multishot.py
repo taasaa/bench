@@ -13,8 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from inspect_ai.model import ModelOutput
-from inspect_ai.solver import Generate, Solver, generate, solver, use_tools
-from inspect_ai.solver._task_state import TaskState
+from inspect_ai.solver import Generate, Solver, TaskState, generate, solver, use_tools
 from inspect_ai.tool import Tool, tool
 
 

@@ -371,32 +371,32 @@ def run(
 
     # recorded_name: identity written into eval logs (recognizable). routed_name:
     # identity sent to the proxy (the --model value).
-    from bench_cli.run.core import resolve_recorded_name, rewrite_log_model_name
+    from bench_cli.run.core import build_model_route, rewrite_log_model_name
 
-    # routed_name is passed to Inspect AI as `model=...`. Inspect requires the
-    # `<service>/<name>` format (e.g. `openai/go-kimi-k2.7-code`) to pick the
-    # OpenAI provider; it then strips the service prefix before sending to the
-    # proxy, so the proxy sees the bare alias (e.g. `go-kimi-k2.7-code`) which
-    # matches the YAML `model_name:`. Both `openai/<x>` and `<x>` user input
-    # forms work — if the user omits the prefix, we add it.
-    if "/" not in bench_alias:
-        routed_name = f"openai/{bench_alias}"
-    else:
-        routed_name = bench_alias
-    recorded_name = resolve_recorded_name(bench_alias, as_name)
+    # Build the routing contract in one place (ModelRoute). Centralizes the
+    # chatgpt/* streaming fallback (openai-api + stream + include_usage) so
+    # the CLI doesn't re-derive it every branch.
+    route = build_model_route(bench_alias, as_name)
+    routed_name = route.routed_name
+    recorded_name = route.recorded_name
     if recorded_name != routed_name:
         click.echo(
             f"Recording model as '{recorded_name}' (routing through '{routed_name}')."
         )
 
     # Persist the override so resolve_openrouter_id() finds it for all callers
-    # (price gate, scorer, compare) -- not just the gate.
+    # (price gate, scorer, compare) -- not just the gate. Saved under the
+    # route's normalized pricing alias so bracket overrides for chatgpt/*
+    # routes are keyed by the LiteLLM-side alias, not the openai-api/...
+    # routed name (which no other caller would know to look up).
     if or_override is not None:
         from bench_cli.pricing.litellm_config import save_override
 
         try:
-            save_override(bench_alias, or_override)
-            click.echo(f"Override saved: {bench_alias} -> {or_override}")
+            save_override(route.pricing_alias, or_override)
+            if route.pricing_alias != bench_alias:
+                save_override(bench_alias, or_override)
+            click.echo(f"Override saved: {route.pricing_alias} -> {or_override}")
         except ValueError as exc:
             click.echo(f"Error: {exc}", err=True)
             raise SystemExit(1) from None
@@ -420,15 +420,17 @@ def run(
 
     click.echo(f"Running {len(specs)} task(s) from tier '{tier}' with model '{recorded_name}'.")
 
-    # Pre-flight price gate -- block if model has no known price.
-    _check_price_gate(bench_alias)
+    # Pre-flight price gate -- block if model has no known price. Use the
+    # route's pricing alias (normalized LiteLLM-side name) so the gate
+    # checks the right key, not the openai-api/... provider string.
+    _check_price_gate(route.pricing_alias)
 
     # Pre-flight provider gate. Provider = the brand the user is paying
     # for service from; resolved strictly from ~/dev/litellm/config.yaml.
     # Recorded in eval-level metadata for header-only dedup + per-sample
     # metadata for symmetry with bench_agent. Hard-stop on unresolvable
     # (Tasa's "no silent defaults" rule).
-    provider = resolve_provider(bench_alias)
+    provider = resolve_provider(route.provider_alias)
     if provider is None:
         raise click.ClickException(format_provider_error(bench_alias))
     click.echo(f"Provider: {provider}")
@@ -498,7 +500,13 @@ def run(
     display_mode = _choose_display(no_tui)
     tasks_with_metadata = [
         _resolve_task(
-            spec, agent=agent, agent_mode=agent_mode, cc_model=cc_model, provider=provider
+            spec,
+            agent=agent,
+            agent_mode=agent_mode,
+            cc_model=cc_model,
+            provider=provider,
+            config_overrides_extra=route.config_overrides,
+            pricing_alias=route.pricing_alias,
         )
         for spec in run_specs
     ]
@@ -518,6 +526,7 @@ def run(
             result = inspect_eval(
                 tasks=[tasks_with_metadata[i - 1]],
                 model=routed_name,
+                model_args=route.model_args,
                 solver=solver,
                 sandbox=eval_sandbox,
                 log_dir=log_dir,
@@ -563,6 +572,7 @@ def run(
         results = inspect_eval(
             tasks=tasks_with_metadata,
             model=routed_name,
+            model_args=route.model_args,
             solver=solver,
             sandbox=eval_sandbox,
             log_dir=log_dir,
