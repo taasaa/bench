@@ -21,10 +21,16 @@ def test_normal_bare_alias_routes_through_openai_provider() -> None:
     assert route.routed_name == "openai/go-kimi-k2.7-code"
     assert route.pricing_alias == "go-kimi-k2.7-code"
     assert route.provider_alias == "go-kimi-k2.7-code"
-    # 0.3.245 upgrade: non-chatgpt routes pin responses_api=False so
-    # OpenAIAPI doesn't auto-route to /v1/responses (which Chat-Completions-
-    # only backends like opencode, kilocode, nvidia_nim 404 on).
-    assert route.model_args == {"responses_api": False}
+    # 0.3.245 upgrade: non-chatgpt routes pin responses_api=False AND
+    # background=False so OpenAIAPI doesn't auto-route to /v1/responses.
+    # Two regression paths force responses_api: (1) is_latest_model() fires
+    # for any non-gpt/codex/o-series/deep-research name; (2) is_gpt_5_pro()
+    # (is_gpt_5 via is_latest AND "-pro" in name) auto-sets background=True,
+    # which OR's into responses_api and is NOT defeated by responses_api=False
+    # alone. Hits "-pro" aliases (go-mimo-pro, deepseek-v4-pro, ...). Chat-
+    # Completions-only backends (opencode, kilocode, nvidia_nim) 404 on
+    # /v1/responses.
+    assert route.model_args == {"responses_api": False, "background": False}
     assert route.config_overrides == {}
 
 
@@ -35,8 +41,8 @@ def test_normal_prefixed_alias_is_preserved() -> None:
     assert route.routed_name == "openai/go-kimi-k2.7-code"
     assert route.pricing_alias == "openai/go-kimi-k2.7-code"
     assert route.provider_alias == "openai/go-kimi-k2.7-code"
-    # Same 0.3.245 responses_api=False pin as the bare alias case.
-    assert route.model_args == {"responses_api": False}
+    # Same 0.3.245 responses_api=False + background=False pin as the bare alias.
+    assert route.model_args == {"responses_api": False, "background": False}
 
 
 def test_chatgpt_alias_uses_openai_api_provider_streaming_and_usage(monkeypatch) -> None:

@@ -396,13 +396,18 @@ def build_model_route(bench_alias: str, as_name: str | None) -> ModelRoute:
         recorded_name=recorded_name,
         pricing_alias=pricing_alias,
         provider_alias=provider_alias,
-        # 0.3.245 upgrade: OpenAIAPI.is_latest_model() returns True for any
-        # non-gpt / non-codex / non-o-series / non-deep-research model name,
-        # which forces responses_api=True and routes to /v1/responses. Most
-        # non-gpt bench backends (opencode, kilocode, nvidia_nim, openrouter,
-        # anthropic, ...) are Chat-Completions-only and 404 on /v1/responses.
-        # Pin responses_api=False so the OpenAI provider uses Chat Completions.
-        model_args={"responses_api": False},
+        # 0.3.245 upgrade: TWO regression paths force responses_api=True and
+        # route to /v1/responses, which most non-gpt bench backends (opencode,
+        # kilocode, nvidia_nim, openrouter, anthropic, ...) reject with a 404.
+        #   (1) is_latest_model() returns True for any model name that doesn't
+        #       contain gpt/codex/o-series/deep-research → responses_preferred.
+        #   (2) is_gpt_5_pro() = is_gpt_5() (via is_latest) AND "-pro" in name →
+        #       auto-sets background=True, which OR's into responses_api and is
+        #       NOT defeated by responses_api=False. Hits any "-pro" alias
+        #       (go-mimo-pro, mimo-v2.5-pro, deepseek-v4-pro, ...).
+        # Pin BOTH responses_api=False AND background=False so the OpenAI
+        # provider uses Chat Completions regardless of the model name.
+        model_args={"responses_api": False, "background": False},
     )
 
 
