@@ -14,10 +14,13 @@ from bench_cli.compare.core import (
     geometric_mean,
     _is_suppressed,
     _short_model,
+    format_compact_table,
     format_json,
     format_pillar_table,
+    format_summary,
     format_tier_breakdown,
     load_compare_data,
+    MIN_FULL_EVAL_TASKS,
 )
 
 __all__ = [
@@ -34,8 +37,11 @@ __all__ = [
     "_is_suppressed",
     "_short_model",
     "compare",
+    "format_compact_table",
     "format_json",
     "format_pillar_table",
+    "format_summary",
     "format_tier_breakdown",
     "load_compare_data",
+    "MIN_FULL_EVAL_TASKS",
 ]

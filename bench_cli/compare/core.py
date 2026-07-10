@@ -429,6 +429,96 @@ _COL_KEYS = [
 _COL_WIDTHS = [7, 9, 10, 7, 7, 9, 9]
 
 
+# ---------------------------------------------------------------------------
+# Weighted ranking formula (2026-07-10)
+# ---------------------------------------------------------------------------
+# Single-number score for the leaderboard uses a weighted blend so the rubric
+# honors the 4-pillar design (correctness + token-eff + latency + cost) instead
+# of collapsing to a single correctness-mean:
+#
+#   total = 0.5 * correctness
+#         + 0.2 * price_ratio        (geometric mean across tasks)
+#         + 0.15 * time_ratio        (geometric mean across tasks)
+#         + 0.15 * token_ratio       (geometric mean across tasks)
+#
+# All ratios are interpreted as "higher = better" (already true for the four
+# pillars bench scores). When a ratio is missing (NaN/suppressed) for ALL
+# tasks, it defaults to 1.0 (neutral) so a model can't tank its score by
+# having no cost data.
+MIN_FULL_EVAL_TASKS = 34  # `--tier full` task count; partial evals are excluded from ranking
+
+WEIGHT_CORRECTNESS = 0.50
+WEIGHT_PRICE_RATIO = 0.20
+WEIGHT_TIME_RATIO = 0.15
+WEIGHT_TOKEN_RATIO = 0.15
+assert (
+    WEIGHT_CORRECTNESS
+    + WEIGHT_PRICE_RATIO
+    + WEIGHT_TIME_RATIO
+    + WEIGHT_TOKEN_RATIO
+    == 1.0
+)
+
+
+def _aggregate_model_pillars(
+    data: CompareData,
+    model: str,
+) -> dict | None:
+    """Aggregate per-pillar values across all tasks for one model.
+
+    Returns a dict with keys: n (task count), correct_mean, price_ratio_gm,
+    time_ratio_gm, token_ratio_gm. Returns None if the model has no scored
+    tasks. Ratios default to 1.0 (neutral) when no task has a valid value for
+    that pillar.
+    """
+    c_vals: list[float] = []
+    cr_vals: list[float] = []
+    lr_vals: list[float] = []
+    tr_vals: list[float] = []
+    for task in data.tasks:
+        ps = data.matrix.get(task, {}).get(model)
+        if not ps or math.isnan(ps.correctness):
+            continue
+        c_vals.append(ps.correctness)
+        if not math.isnan(ps.price_ratio) and ps.price_ratio > 0:
+            cr_vals.append(ps.price_ratio)
+        if ps.time_ratio > 0:
+            lr_vals.append(ps.time_ratio)
+        if ps.token_ratio > 0:
+            tr_vals.append(ps.token_ratio)
+
+    if not c_vals:
+        return None
+
+    return {
+        "n": len(c_vals),
+        "correct_mean": sum(c_vals) / len(c_vals),
+        "price_ratio_gm": geometric_mean(cr_vals) if cr_vals else 1.0,
+        "time_ratio_gm": geometric_mean(lr_vals) if lr_vals else 1.0,
+        "token_ratio_gm": geometric_mean(tr_vals) if tr_vals else 1.0,
+    }
+
+
+def _weighted_total(agg: dict) -> float:
+    """Apply the 0.5/0.2/0.15/0.15 weighted blend to aggregated pillars."""
+    return (
+        WEIGHT_CORRECTNESS * agg["correct_mean"]
+        + WEIGHT_PRICE_RATIO * agg["price_ratio_gm"]
+        + WEIGHT_TIME_RATIO * agg["time_ratio_gm"]
+        + WEIGHT_TOKEN_RATIO * agg["token_ratio_gm"]
+    )
+
+
+def _format_pillar_breakdown(agg: dict) -> str:
+    """Compact breakdown: '[0.92c · 0.67r · 1.34t · 0.58k]'."""
+    return (
+        f"[{agg['correct_mean']:.2f}c · "
+        f"{agg['price_ratio_gm']:.2f}r · "
+        f"{agg['time_ratio_gm']:.2f}t · "
+        f"{agg['token_ratio_gm']:.2f}k]"
+    )
+
+
 def format_pillar_table(
     data: CompareData,
     title: str | None = None,
@@ -533,7 +623,8 @@ def format_pillar_table(
                     row += " " + "—".rjust(col_w) + " "
         lines.append(row)
 
-    # MEAN row
+    # MEAN row (correctness-mean + per-pillar geometric means — unchanged for
+    # full transparency)
     lines.append("─" * sep_w)
     mean_row = "MEAN".ljust(task_col_w)
     for model in data.models:
@@ -570,55 +661,177 @@ def format_pillar_table(
         mean_row += " "
     lines.append(mean_row)
 
+    # TOTAL row (weighted blend 0.5/0.2/0.15/0.15 — matches leaderboard)
+    lines.append("─" * sep_w)
+    total_row = "TOTAL".ljust(task_col_w)
+    for model in data.models:
+        agg = _aggregate_model_pillars(data, model)
+        if agg is None:
+            for col_w in _COL_WIDTHS:
+                total_row += " " + "  --".rjust(col_w)
+            total_row += " "
+            continue
+        total = _weighted_total(agg)
+        cells = [
+            f"{total * 100:.1f}",
+            "  --",  # ratio columns left blank — the value is in CORRECT of TOTAL row
+            "  --",
+            "  --",
+            "  --",
+            "  --",
+            "  --",
+        ]
+        cells[0] = f"{total:.2f}"
+        for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
+            total_row += " " + cell.rjust(col_w)
+        total_row += " "
+    lines.append(total_row)
+
+    lines.append("")
+    lines.append(
+        f"TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
+        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio_gm "
+        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio_gm "
+        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio_gm"
+    )
+
     return "\n".join(lines)
 
 
-def format_summary(data: CompareData) -> str:
-    """3-5 line ranked model summary for default compare output."""
+def format_summary(
+    data: CompareData,
+    min_tasks: int = MIN_FULL_EVAL_TASKS,
+    show_partial: bool = False,
+) -> str:
+    """Ranked model summary, full evals only.
+
+    Score formula (per task aggregation, then model blend):
+        0.5 * correctness + 0.2 * price_ratio_gm + 0.15 * time_ratio_gm + 0.15 * token_ratio_gm
+
+    Models with fewer than `min_tasks` scored tasks are EXCLUDED from the ranked
+    list by default. Pass ``show_partial=True`` to render them in a separate
+    "not full eval" block at the bottom (they are never ranked against full
+    evals — they never were apples-to-apples to begin with).
+
+    Reference labels shown in the per-row breakdown come from
+    ``_ratio_reference_labels()`` so the legend always names the current
+    ratio reference (e.g. ``minimax-m3`` once registered).
+    """
     if not data.tasks or not data.models:
         return "No scored eval logs found."
 
     from bench_cli.resolver import bare_name
 
-    model_scores: list[tuple[str, float]] = []
+    # Aggregate + score per model
+    model_entries: list[tuple[str, dict, float]] = []  # (model, agg, total)
     for model in data.models:
-        vals = []
-        for task in data.tasks:
-            ps = data.matrix.get(task, {}).get(model)
-            if ps and not math.isnan(ps.correctness):
-                vals.append(ps.correctness)
-        if vals:
-            model_scores.append((model, sum(vals) / len(vals)))
+        agg = _aggregate_model_pillars(data, model)
+        if agg is None:
+            continue
+        model_entries.append((model, agg, _weighted_total(agg)))
 
-    model_scores.sort(key=lambda x: x[1], reverse=True)
+    full_evals = [(m, a, t) for m, a, t in model_entries if a["n"] >= min_tasks]
+    partial_evals = [(m, a, t) for m, a, t in model_entries if a["n"] < min_tasks]
 
+    full_evals.sort(key=lambda x: x[2], reverse=True)
+    partial_evals.sort(key=lambda x: x[1]["n"], reverse=True)
+
+    n_total_tasks = len(data.tasks)
     lines: list[str] = []
-    n_tasks = len(data.tasks)
-    n_models = len(data.models)
-    lines.append(f"{'━' * 3} BENCHMARK SUMMARY ({n_tasks} tasks, {n_models} models) {'━' * 3}")
+    lines.append(
+        f"{'━' * 3} BENCHMARK SUMMARY "
+        f"({n_total_tasks} tasks, "
+        f"{len(full_evals)} full evals"
+        f"{', ' + str(len(partial_evals)) + ' partial' if partial_evals and show_partial else ''}) "
+        f"{'━' * 3}"
+    )
     lines.append("")
-    for i, (model, score) in enumerate(model_scores, 1):
-        filled = round(score * 10)
-        bar = "●" * filled + "○" * (10 - filled)
-        lines.append(f"  #{i}  {bare_name(model):<20s} {score:.0%}  {bar}")
+    lines.append(
+        f"Score: {WEIGHT_CORRECTNESS:.2f}×correct "
+        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
+        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
+        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
+    )
+    lines.append(
+        "Scores can exceed 1.0 — ratios weigh 50% total and many models beat "
+        "the cost/latency/token reference by 3-10×."
+    )
+    labels = _ratio_reference_labels()
+    lines.append(
+        f"Refs: cost={labels['cost']} · eff/latency={labels['efficiency_latency']}"
+    )
+    lines.append("")
+
+    if not full_evals:
+        lines.append(
+            f"  (no models with >= {min_tasks} scored tasks — "
+            f"this benchmark has {n_total_tasks} tasks)."
+        )
+    else:
+        for i, (model, agg, total) in enumerate(full_evals, 1):
+            # Cap the bar at 10 dots — score can exceed 1.0 (cheap+fast models
+            # routinely score >100% on the weighted blend). Render scores >1.0 as
+            # a multiplier (`2.34×`) instead of a misleading 234% percent.
+            filled = max(0, min(10, round(total * 10)))
+            bar = "●" * filled + "○" * (10 - filled)
+            score_str = f"{total:>5.1%}" if total < 1.0 else f"{total:>5.2f}×"
+            lines.append(
+                f"  #{i:>2} {bare_name(model):<28s} "
+                f"{score_str}  {bar}  {_format_pillar_breakdown(agg)}"
+            )
+
+    if partial_evals and show_partial:
+        lines.append("")
+        lines.append("─" * 78)
+        lines.append(
+            f"  Partial evals — EXCLUDED from ranking (need >= {min_tasks} tasks):"
+        )
+        for model, agg, total in partial_evals:
+            score_str = f"{total:>5.1%}" if total < 1.0 else f"{total:>5.2f}×"
+            lines.append(
+                f"      {bare_name(model):<28s} "
+                f"{agg['n']:>2} tasks  {score_str}  {_format_pillar_breakdown(agg)}"
+            )
+
     lines.append("")
     lines.append("  Use -v for per-task breakdown, -vv for full table.")
     return "\n".join(lines)
 
 
-def format_compact_table(data: CompareData) -> str:
-    """Per-task correctness grid for -v output."""
+def format_compact_table(
+    data: CompareData,
+    min_tasks: int = MIN_FULL_EVAL_TASKS,
+) -> str:
+    """Per-task correctness grid for -v output, full evals only.
+
+    Includes a TOTAL row at the bottom computed via the weighted formula
+    (0.5/0.2/0.15/0.15) instead of a correctness-only mean, so the compact
+    view matches the leaderboard.
+    """
     if not data.tasks or not data.models:
         return "No scored eval logs found."
 
     from bench_cli.resolver import bare_name
 
-    model_names = [bare_name(m) for m in data.models]
+    # Filter models to full-evals only for the ranked grid
+    full_models: list[str] = []
+    for model in data.models:
+        agg = _aggregate_model_pillars(data, model)
+        if agg is not None and agg["n"] >= min_tasks:
+            full_models.append(model)
+
+    if not full_models:
+        return "No scored eval logs found (no models with full eval coverage)."
+
+    model_names = [bare_name(m) for m in full_models]
     task_col_w = max(len(t) for t in data.tasks) + 2
     model_col_w = max(max(len(n) for n in model_names), 7)
 
     lines: list[str] = []
-    lines.append(f"{'━' * 3} PER-TASK CORRECTNESS ({len(data.tasks)} tasks) {'━' * 3}")
+    lines.append(
+        f"{'━' * 3} PER-TASK CORRECTNESS "
+        f"({len(data.tasks)} tasks, {len(full_models)} models) {'━' * 3}"
+    )
     lines.append("")
 
     # Header
@@ -632,7 +845,7 @@ def format_compact_table(data: CompareData) -> str:
     # Rows
     for task in data.tasks:
         row = task.ljust(task_col_w)
-        for model in data.models:
+        for model in full_models:
             ps = data.matrix.get(task, {}).get(model)
             if ps:
                 row += f"  {ps.correctness:.0%}".rjust(model_col_w + 2)
@@ -640,10 +853,10 @@ def format_compact_table(data: CompareData) -> str:
                 row += "  —".rjust(model_col_w + 2)
         lines.append(row)
 
-    # Mean row
+    # MEAN row (correctness-only, for trend visibility)
     lines.append("─" * (task_col_w + (model_col_w + 2) * len(model_names)))
     mean_row = "MEAN".ljust(task_col_w)
-    for model in data.models:
+    for model in full_models:
         vals = []
         for task in data.tasks:
             ps = data.matrix.get(task, {}).get(model)
@@ -652,6 +865,22 @@ def format_compact_table(data: CompareData) -> str:
         avg = sum(vals) / len(vals) if vals else 0.0
         mean_row += f"  {avg:.0%}".rjust(model_col_w + 2)
     lines.append(mean_row)
+
+    # TOTAL row (weighted blend, matches leaderboard)
+    lines.append("─" * (task_col_w + (model_col_w + 2) * len(model_models := full_models)))
+    total_row = "TOTAL".ljust(task_col_w)
+    for model in full_models:
+        agg = _aggregate_model_pillars(data, model)
+        total = _weighted_total(agg) if agg else 0.0
+        total_row += f"  {total:>5.1%}".rjust(model_col_w + 2)
+    lines.append(total_row)
+
+    lines.append(
+        f"  TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
+        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
+        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
+        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
+    )
 
     return "\n".join(lines)
 

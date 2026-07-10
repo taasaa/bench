@@ -7,9 +7,20 @@ import pytest
 from bench_cli.compare import (
     CompareData,
     PillarScores,
+    format_compact_table,
     format_json,
     format_pillar_table,
+    format_summary,
     load_compare_data,
+    MIN_FULL_EVAL_TASKS,
+)
+from bench_cli.compare.core import (
+    WEIGHT_CORRECTNESS,
+    WEIGHT_PRICE_RATIO,
+    WEIGHT_TIME_RATIO,
+    WEIGHT_TOKEN_RATIO,
+    _aggregate_model_pillars,
+    _weighted_total,
 )
 
 # ---------------------------------------------------------------------------
@@ -238,3 +249,219 @@ def test_ratio_reference_labels_default_and_registered(tmp_path, monkeypatch):
     labels = _ratio_reference_labels()
     assert labels["efficiency_latency"] == "openai/minimax-m3"
     assert labels["cost"] == "openai/minimax-m3"
+
+
+# ---------------------------------------------------------------------------
+# Weighted leaderboard (2026-07-10)
+# ---------------------------------------------------------------------------
+
+
+def _make_full_eval_model(
+    correctness=0.8, price=1.0, time=1.0, token=1.0, n=34, model_name="m_full"
+):
+    """Build a CompareData matrix holding one model with `n` identically-scored tasks."""
+    data = CompareData()
+    data.tasks = [f"task_{i:02d}" for i in range(n)]
+    data.models = [model_name]
+    data.matrix = {
+        task: {
+            model_name: PillarScores(
+                correctness=correctness,
+                token_ratio=token,
+                time_ratio=time,
+                avg_tokens=1000.0,
+                avg_time=10.0,
+                samples=1,
+                price_ratio=price,
+                avg_cost_usd=0.001,
+            )
+        }
+        for task in data.tasks
+    }
+    return data
+
+
+def _make_partial_model(n=4, model_name="m_partial"):
+    """Build a CompareData matrix holding one model with `n` scored tasks."""
+    return _make_full_eval_model(n=n, model_name=model_name)
+
+
+def test_weights_sum_to_one():
+    assert WEIGHT_CORRECTNESS + WEIGHT_PRICE_RATIO + WEIGHT_TIME_RATIO + WEIGHT_TOKEN_RATIO == 1.0
+
+
+def test_min_full_eval_tasks_is_34():
+    assert MIN_FULL_EVAL_TASKS == 34
+
+
+def test_aggregate_model_pillars_returns_none_when_no_scored_tasks():
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m"]
+    data.matrix = {"t1": {}}  # no entry → no correctness
+    assert _aggregate_model_pillars(data, "m") is None
+
+
+def test_aggregate_model_pillars_handles_missing_ratios():
+    """Ratios default to 1.0 (neutral) when no task has a valid value."""
+    data = _make_full_eval_model(correctness=0.5, price=float("nan"), time=2.0, token=1.0)
+    agg = _aggregate_model_pillars(data, "m_full")
+    assert agg is not None
+    assert agg["correct_mean"] == 0.5
+    assert agg["price_ratio_gm"] == 1.0  # defaulted (no valid price)
+    assert agg["time_ratio_gm"] == 2.0
+    assert agg["token_ratio_gm"] == 1.0
+
+
+def test_weighted_total_uses_blend():
+    agg = {
+        "correct_mean": 0.8,
+        "price_ratio_gm": 1.0,
+        "time_ratio_gm": 1.0,
+        "token_ratio_gm": 1.0,
+    }
+    # total = 0.5*0.8 + 0.2*1 + 0.15*1 + 0.15*1 = 0.4 + 0.5 = 0.9
+    assert abs(_weighted_total(agg) - 0.9) < 1e-9
+
+
+def test_weighted_total_with_better_than_bench_ratios():
+    agg = {
+        "correct_mean": 0.6,
+        "price_ratio_gm": 2.0,
+        "time_ratio_gm": 2.0,
+        "token_ratio_gm": 2.0,
+    }
+    # total = 0.5*0.6 + 0.2*2 + 0.15*2 + 0.15*2 = 0.3 + 1.0 = 1.3
+    assert abs(_weighted_total(agg) - 1.3) < 1e-9
+
+
+def test_weighted_total_handles_default_ratios():
+    """Missing ratios default to 1.0, so they don't tank a 0-correct model."""
+    agg = {
+        "correct_mean": 0.0,
+        "price_ratio_gm": 1.0,
+        "time_ratio_gm": 1.0,
+        "token_ratio_gm": 1.0,
+    }
+    # total = 0.0 + 0.5 = 0.5 (not lower than 0.5)
+    assert abs(_weighted_total(agg) - 0.5) < 1e-9
+
+
+# ---- format_summary ----------------------------------------------------
+
+
+def test_format_summary_excludes_partial_by_default():
+    """A model with only 4 tasks must NOT appear in the ranked summary by default."""
+    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=34)
+    partial = _make_partial_model(n=4, model_name="m_partial")
+
+    data = CompareData()
+    data.tasks = full.tasks + [t for t in partial.tasks if t not in full.tasks]
+    data.models = ["m_full", "m_partial"]
+    data.matrix = {t: dict(full.matrix.get(t, {})) for t in full.tasks}
+    for t in partial.tasks:
+        data.matrix.setdefault(t, {})["m_partial"] = partial.matrix[t]["m_partial"]
+
+    out = format_summary(data)
+    assert "m_full" in out
+    assert "m_partial" not in out  # excluded by default
+    assert "EXCLUDED" not in out  # no partial section when not requested
+
+
+def test_format_summary_show_partial_renders_footer_block():
+    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=34)
+    partial_data = _make_full_eval_model(correctness=0.5, model_name="m_partial", n=4)
+
+    data = CompareData()
+    data.tasks = full.tasks + [t for t in partial_data.tasks if t not in full.tasks]
+    data.models = ["m_full", "m_partial"]
+    data.matrix = {t: dict(full.matrix.get(t, {})) for t in full.tasks}
+    for t in partial_data.tasks:
+        data.matrix.setdefault(t, {})["m_partial"] = partial_data.matrix[t]["m_partial"]
+
+    out = format_summary(data, min_tasks=34, show_partial=True)
+    assert "m_partial" in out
+    assert "EXCLUDED" in out  # partial footer present
+
+
+def test_format_summary_ranking_uses_weighted_score():
+    """Two models with same correctness but different cost ratios should rank differently."""
+    cheap = _make_full_eval_model(correctness=0.7, price=2.0, model_name="cheap", n=34)
+    expensive = _make_full_eval_model(correctness=0.7, price=0.5, model_name="expensive", n=34)
+
+    data = CompareData()
+    data.tasks = cheap.tasks
+    data.models = ["cheap", "expensive"]
+    data.matrix = {}
+    for t in cheap.tasks:
+        data.matrix[t] = {
+            "cheap": cheap.matrix[t]["cheap"],
+            "expensive": expensive.matrix[t]["expensive"],
+        }
+
+    out = format_summary(data)
+    lines = [l for l in out.split("\n") if l.strip().startswith("#")]
+    assert "cheap" in lines[0], f"cheaper model should rank first, got: {lines}"
+    assert "expensive" in lines[1]
+
+
+def test_format_summary_uses_0_5_0_2_0_15_0_15_formula_in_header():
+    data = _make_full_eval_model(correctness=0.8)
+    out = format_summary(data)
+    assert "0.50×correct" in out
+    assert "0.20×price_ratio" in out
+    assert "0.15×time_ratio" in out
+    assert "0.15×token_ratio" in out
+
+
+def test_format_summary_min_tasks_respected():
+    """A 34-task model is excluded when min_tasks=40."""
+    data = _make_full_eval_model(correctness=0.8)
+    out = format_summary(data, min_tasks=40)
+    assert "m_full" not in out  # 34 < 40 → excluded
+    assert "no models with >= 40" in out
+
+
+# ---- format_compact_table ---------------------------------------------
+
+
+def test_format_compact_table_excludes_partial():
+    """The -v grid must only show full-eval models."""
+    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=34)
+    partial_data = _make_full_eval_model(correctness=0.5, model_name="m_partial", n=4)
+
+    data = CompareData()
+    data.tasks = full.tasks + [t for t in partial_data.tasks if t not in full.tasks]
+    data.models = ["m_full", "m_partial"]
+    data.matrix = {t: dict(full.matrix.get(t, {})) for t in full.tasks}
+    for t in partial_data.tasks:
+        data.matrix.setdefault(t, {})["m_partial"] = partial_data.matrix[t]["m_partial"]
+
+    out = format_compact_table(data)
+    assert "m_full" in out
+    assert "m_partial" not in out
+    assert "TOTAL" in out  # weighted TOTAL row present
+    assert "0.50×correct" in out  # formula footer present
+
+
+# ---- format_pillar_table TOTAL row -----------------------------------
+
+
+def test_format_pillar_table_total_row_present():
+    """The full table renders a TOTAL row with the weighted blend."""
+    data = _make_full_eval_model(correctness=0.8)
+    out = format_pillar_table(data, "BENCHMARK RESULTS")
+    assert "TOTAL" in out
+    # TOTAL row should show one nonzero value (~0.9 for correct=0.8, ratios=1.0)
+    total_idx = [i for i, l in enumerate(out.split("\n")) if l.startswith("TOTAL")][0]
+    # The TOTAL row's first column after the label is the blended total
+    # We expect 0.90 (since 0.5*0.8 + 0.5*1.0 = 0.9)
+    assert "0.90" in out.split("\n")[total_idx] or "0.9" in out.split("\n")[total_idx]
+
+
+def test_format_pillar_table_total_handles_missing_ratios():
+    """Total falls back to defaults (1.0) when ratios are absent."""
+    data = _make_full_eval_model(correctness=0.5, price=float("nan"))
+    out = format_pillar_table(data, "BENCHMARK RESULTS")
+    # total = 0.5*0.5 + 0.5*1.0 (no valid ratios → default to 1.0) = 0.75
+    assert "0.75" in out

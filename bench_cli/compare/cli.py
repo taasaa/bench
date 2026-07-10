@@ -29,6 +29,20 @@ from bench_cli.compare.core import (
     help="Limit to the last N runs (default: all).",
 )
 @click.option(
+    "--min-tasks",
+    type=int,
+    default=34,
+    show_default=True,
+    help="Models with fewer than N scored tasks are excluded from the ranked "
+         "leaderboard (partial evals never rank against full evals).",
+)
+@click.option(
+    "--show-partial/--no-show-partial",
+    default=False,
+    show_default=True,
+    help="When set, list excluded partial-eval models in a separate footer block.",
+)
+@click.option(
     "--json",
     "as_json",
     is_flag=True,
@@ -36,7 +50,14 @@ from bench_cli.compare.core import (
     help="Output results as JSON.",
 )
 @click.option("-v", "verbosity", count=True, help="Verbosity: -v per-task, -vv full table.")
-def compare(log_dir: str, latest: int | None, as_json: bool, verbosity: int) -> None:
+def compare(
+    log_dir: str,
+    latest: int | None,
+    min_tasks: int,
+    show_partial: bool,
+    as_json: bool,
+    verbosity: int,
+) -> None:
     """Compare evaluation results across models with pillar breakdowns."""
     data = load_compare_data(log_dir, latest)
 
@@ -45,9 +66,9 @@ def compare(log_dir: str, latest: int | None, as_json: bool, verbosity: int) -> 
     elif verbosity >= 2:
         click.echo(format_pillar_table(data, "BENCHMARK RESULTS"))
     elif verbosity >= 1:
-        click.echo(format_compact_table(data))
+        click.echo(format_compact_table(data, min_tasks=min_tasks))
     else:
-        click.echo(format_summary(data))
+        click.echo(format_summary(data, min_tasks=min_tasks, show_partial=show_partial))
 
     # Show tier breakdown for smart-router models (all verbosity levels)
     tier_output = format_tier_breakdown(data)
