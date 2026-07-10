@@ -104,6 +104,26 @@ def _normalize_model(model: str) -> str:
     return bare_model_name(model)
 
 
+def _candidate_normalized_models(model: str) -> set[str]:
+    """Return normalized model names that should match logs for a query.
+
+    Logs store the recorded identity (`eval.model`), while users commonly query
+    by routing alias (e.g. `openai/go-mimo-pro`). For aliases whose recorded
+    identity has a different bare tail (`xiaomi/mimo-v2.5-pro`), matching only
+    the routing alias silently drops every log.
+    """
+    candidates = {_normalize_model(model)}
+    try:
+        from bench_cli.run.core import resolve_recorded_name
+
+        candidates.add(_normalize_model(resolve_recorded_name(model, None)))
+    except Exception:
+        # Discriminative reads should still work if the live proxy config is
+        # unavailable or malformed; in that case fall back to direct matching.
+        pass
+    return candidates
+
+
 @lru_cache(maxsize=8)
 def _scan_log_dir(log_dir_str: str) -> tuple[tuple[str, str, str], ...]:
     """Scan log_dir once via header_only, return {(task, norm_model): latest_path_str}.
@@ -157,20 +177,32 @@ def get_all_log_paths(
     if subject is None:
         return [Path(p) for (_t, _m, p) in mapping]
 
-    sub_model = _normalize_model(subject.model)
-    paths = [Path(p) for (_t, m, p) in mapping if m == sub_model]
+    sub_models = _candidate_normalized_models(subject.model)
+    matches = [(_t, Path(p)) for (_t, m, p) in mapping if m in sub_models]
     if subject.agent is not None:
         # agent filtering needs per-file resolve_subject_from_log (rare path
         # — most CLI calls are model-only subjects). Only ~40 paths here, fast.
         filtered: list[Path] = []
-        for p in paths:
+        seen_tasks: set[str] = set()
+        for task, p in matches:
+            if task in seen_tasks:
+                continue
             try:
                 sid = resolve_subject_from_log(p)
                 if sid.agent == subject.agent:
                     filtered.append(p)
+                    seen_tasks.add(task)
             except Exception:
                 continue
         return filtered
+
+    paths: list[Path] = []
+    seen_tasks: set[str] = set()
+    for task, p in matches:
+        if task in seen_tasks:
+            continue
+        paths.append(p)
+        seen_tasks.add(task)
     return paths
 
 

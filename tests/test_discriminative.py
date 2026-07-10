@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from bench_cli.discriminative import ci, diagnostics, filters, pipeline, profiles, types
@@ -1074,6 +1076,108 @@ class TestSubjectHelpers:
 
         sid = types.SubjectID(model="openai/qwen-local")
         assert get_subject_display_name(sid) == "openai/qwen-local"
+
+    def test_get_all_log_paths_matches_routing_alias_via_recorded_identity(self, monkeypatch):
+        """Routing aliases should match logs stored under their recorded identity."""
+        from bench_cli.discriminative import subject as subject_mod
+        from bench_cli.run import core as run_core
+
+        monkeypatch.setattr(
+            subject_mod,
+            "_scan_log_dir",
+            lambda _log_dir: (
+                ("q3-answer-the-question", "mimo-v2.5-pro", "/tmp/q3.eval"),
+                ("q4-root-cause", "mimo-v2.5-pro", "/tmp/q4.eval"),
+                ("q3-answer-the-question", "minimax-m3", "/tmp/m3.eval"),
+            ),
+        )
+        monkeypatch.setattr(
+            run_core,
+            "resolve_recorded_name",
+            lambda routed_name, as_name: "xiaomi/mimo-v2.5-pro"
+            if routed_name == "openai/go-mimo-pro"
+            else routed_name,
+        )
+
+        paths = subject_mod.get_all_log_paths(
+            Path("logs"), types.SubjectID(model="openai/go-mimo-pro")
+        )
+
+        assert paths == [Path("/tmp/q3.eval"), Path("/tmp/q4.eval")]
+
+    def test_get_all_log_paths_direct_recorded_identity_still_matches(self, monkeypatch):
+        """Recorded-id queries should still match without alias resolution."""
+        from bench_cli.discriminative import subject as subject_mod
+
+        monkeypatch.setattr(
+            subject_mod,
+            "_scan_log_dir",
+            lambda _log_dir: (
+                ("q3-answer-the-question", "mimo-v2.5-pro", "/tmp/q3.eval"),
+                ("q4-root-cause", "mimo-v2.5-pro", "/tmp/q4.eval"),
+                ("q3-answer-the-question", "minimax-m3", "/tmp/m3.eval"),
+            ),
+        )
+
+        paths = subject_mod.get_all_log_paths(
+            Path("logs"), types.SubjectID(model="xiaomi/mimo-v2.5-pro")
+        )
+
+        assert paths == [Path("/tmp/q3.eval"), Path("/tmp/q4.eval")]
+
+    def test_get_all_log_paths_falls_back_when_recorded_resolution_fails(self, monkeypatch):
+        """Broken live config should not break direct discriminative reads."""
+        from bench_cli.discriminative import subject as subject_mod
+        from bench_cli.run import core as run_core
+
+        monkeypatch.setattr(
+            subject_mod,
+            "_scan_log_dir",
+            lambda _log_dir: (
+                ("q3-answer-the-question", "go-mimo-pro", "/tmp/q3.eval"),
+                ("q4-root-cause", "go-mimo-pro", "/tmp/q4.eval"),
+                ("q3-answer-the-question", "minimax-m3", "/tmp/m3.eval"),
+            ),
+        )
+
+        def raise_runtime_error(_routed_name, _as_name):
+            raise RuntimeError("proxy config unavailable")
+
+        monkeypatch.setattr(run_core, "resolve_recorded_name", raise_runtime_error)
+
+        paths = subject_mod.get_all_log_paths(
+            Path("logs"), types.SubjectID(model="openai/go-mimo-pro")
+        )
+
+        assert paths == [Path("/tmp/q3.eval"), Path("/tmp/q4.eval")]
+
+    def test_get_all_log_paths_dedupes_candidate_aliases_per_task(self, monkeypatch):
+        """A routing alias and recorded id are one subject; keep one log per task."""
+        from bench_cli.discriminative import subject as subject_mod
+        from bench_cli.run import core as run_core
+
+        monkeypatch.setattr(
+            subject_mod,
+            "_scan_log_dir",
+            lambda _log_dir: (
+                ("q3-answer-the-question", "mimo-v2.5-pro", "/tmp/new-q3.eval"),
+                ("q3-answer-the-question", "go-mimo-pro", "/tmp/old-q3.eval"),
+                ("q4-root-cause", "mimo-v2.5-pro", "/tmp/q4.eval"),
+            ),
+        )
+        monkeypatch.setattr(
+            run_core,
+            "resolve_recorded_name",
+            lambda routed_name, as_name: "xiaomi/mimo-v2.5-pro"
+            if routed_name == "openai/go-mimo-pro"
+            else routed_name,
+        )
+
+        paths = subject_mod.get_all_log_paths(
+            Path("logs"), types.SubjectID(model="openai/go-mimo-pro")
+        )
+
+        assert paths == [Path("/tmp/new-q3.eval"), Path("/tmp/q4.eval")]
 
     def test_extract_agent_name_claude(self):
         from bench_cli.discriminative.subject import _extract_agent_name
