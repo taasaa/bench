@@ -45,9 +45,30 @@ def test_get_model_metadata_pricing_for_direct_or_id():
     assert meta["output_price"] > 0
 
 
-def test_get_model_metadata_pricing_for_bench_alias_still_works():
+def test_get_model_metadata_pricing_for_bench_alias_still_works(monkeypatch):
+    """A priced alias (any one with a price in the cache) returns has_price=True.
+
+    Mocks the resolution + cache-lookup layers so the test is independent of
+    any specific proxy entry or live cache state. The assertion is on
+    _get_model_metadata's price-presence logic.
+    """
+    from unittest.mock import patch
+
+    from bench_cli.pricing.model_aliases import PriceInfo
     from bench_cli.results.core import _get_model_metadata
 
-    meta = _get_model_metadata("openai/nemotron-ultra-550b")
+    # Resolve to a known OR id AND make the cache return a price for it. The
+    # metadata reader follows the same path a real priced model would.
+    fake_price = PriceInfo("fake/test-or-id", 1.0, 2.0, 4096)
+    with patch(
+        "bench_cli.results.core.resolve_openrouter_id",
+        return_value="fake/test-or-id",
+    ), patch(
+        "bench_cli.pricing.price_cache.OpenRouterCache.get_price",
+        return_value=fake_price,
+    ):
+        meta = _get_model_metadata("openai/test-priced-alias")
 
     assert meta["has_price"] is True
+    assert meta["input_price"] == 1.0
+    assert meta["output_price"] == 2.0

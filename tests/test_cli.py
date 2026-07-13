@@ -454,9 +454,19 @@ class TestPriceGate:
             )
             monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", empty_overrides_path)
             litellm_config._build_reverse_lookup.cache_clear()
+            # Decouple from any specific proxy entry: pretend a priced model
+            # exists AND the resolver returns its OR id, so the gate is the
+            # only thing under test (provider + price-miss).
+            monkeypatch.setattr(
+                "bench_cli.run.cli.resolve_provider", lambda routed: "openai",
+            )
+            monkeypatch.setattr(
+                litellm_config, "resolve_openrouter_id",
+                lambda alias: "fake/gate-test-or-id",
+            )
 
             result = runner.invoke(
-                cli, ["run", "--tier", "quick", "--model", "openai/nemotron-ultra-550b"]
+                cli, ["run", "--tier", "quick", "--model", "openai/gate-test-model"]
             )
             assert "No price found" in result.output
             assert "ERROR" in result.output

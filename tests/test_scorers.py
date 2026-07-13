@@ -544,7 +544,11 @@ class TestPriceRatioScorer:
         assert result.metadata.get("anomaly") is True
 
     def test_no_reference_cost_returns_nan(self):
-        """TaskBudget with no reference_cost_usd → NaN, records actual_cost only."""
+        """TaskBudget with no reference_cost_usd → NaN, records actual_cost only.
+
+        Mocks both resolution (alias → OR id) and OR-cache pricing so the test
+        is independent of any specific proxy entry.
+        """
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
@@ -552,10 +556,11 @@ class TestPriceRatioScorer:
         from scorers.protocol import TaskBudget
 
         s = price_ratio_scorer(task_budget=TaskBudget())
-        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
-        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
+        state = self._make_scored_state("output", "openai/test-subject-alias", 100, 50)
+        paid_info = PriceInfo("fake/test-or-id", 1.0, 2.0, 4096)
 
-        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+        with patch("scorers.price_ratio._price_info", return_value=paid_info), \
+             patch("scorers.price_ratio.resolve_openrouter_id", return_value="fake/test-or-id"):
             result = run_async(s(state, state.target))
 
         import math
@@ -987,17 +992,22 @@ class TestResolveAndPriceTierBreakdown:
     """Tests for _resolve_and_price() tier_breakdown return value."""
 
     def test_single_model_returns_none_tier_breakdown(self):
-        """Non-router ModelUsage → tier_breakdown is None."""
+        """Non-router ModelUsage → tier_breakdown is None.
+
+        Mocks both resolution and OR-cache pricing so the test is independent
+        of any specific proxy entry.
+        """
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
         from scorers.price_ratio import _resolve_and_price
 
         usage = type("U", (), {"input_tokens": 100, "output_tokens": 50})()
-        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
+        paid_info = PriceInfo("fake/test-or-id", 1.0, 2.0, 4096)
 
-        with patch("scorers.price_ratio._price_info", return_value=paid_info):
-            cost, or_id, is_free, tb = _resolve_and_price("openai/nemotron-ultra-550b", usage)
+        with patch("scorers.price_ratio._price_info", return_value=paid_info), \
+             patch("scorers.price_ratio.resolve_openrouter_id", return_value="fake/test-or-id"):
+            cost, or_id, is_free, tb = _resolve_and_price("openai/test-subject-alias", usage)
 
         assert tb is None
         assert cost is not None
@@ -1010,10 +1020,11 @@ class TestResolveAndPriceTierBreakdown:
         from scorers.price_ratio import _resolve_and_price
 
         usage = {"prompt_tokens": 100, "completion_tokens": 50}
-        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
+        paid_info = PriceInfo("fake/test-or-id", 1.0, 2.0, 4096)
 
-        with patch("scorers.price_ratio._price_info", return_value=paid_info):
-            cost, or_id, is_free, tb = _resolve_and_price("openai/nemotron-ultra-550b", usage)
+        with patch("scorers.price_ratio._price_info", return_value=paid_info), \
+             patch("scorers.price_ratio.resolve_openrouter_id", return_value="fake/test-or-id"):
+            cost, or_id, is_free, tb = _resolve_and_price("openai/test-subject-alias", usage)
 
         assert tb is None
 

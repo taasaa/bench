@@ -80,6 +80,12 @@ def _resolve_query_name(model_alias: str) -> str:
     el.eval.model filter matches. Querying by an already-recorded OR id is a
     no-op (resolve_recorded_name is idempotent on OR ids).
 
+    Bare aliases (no `openai/` prefix) are normalized before resolution so a
+    query like `--model nemotron-ultra-550b` finds logs recorded as the
+    resolved OR id (task 4940c0c8 invariant). Falls back to the bare form
+    when the prefixed alias is unknown — preserves R5 (custom `--as` values
+    are opaque).
+
     NOTE (R5): a log recorded via `--as <custom>` is NOT discoverable from the
     routing alias (the custom name has no LiteLLM backing to resolve to); users
     must query such logs by the literal `--as` value. Both forms are matched
@@ -87,6 +93,15 @@ def _resolve_query_name(model_alias: str) -> str:
     """
     from bench_cli.run.core import resolve_recorded_name
 
+    if model_alias and "/" not in model_alias:
+        prefixed = f"openai/{model_alias}"
+        prefixed_result = resolve_recorded_name(prefixed, None)
+        # Only accept the prefixed form when it actually resolved to something
+        # different — otherwise the bare alias was opaque (R5 custom --as) and
+        # must stay bare so raw-input matching still finds it.
+        if prefixed_result != prefixed:
+            return prefixed_result
+        return model_alias
     return resolve_recorded_name(model_alias, None)
 
 
