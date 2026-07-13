@@ -796,3 +796,79 @@ def test_bootstrap_ci_narrow_for_tight_values():
     lo, hi = bootstrap_ci(scores, n_resample=500, seed=42)
     assert (hi - lo) < 0.1
 
+
+# ---- tie detection (Phase 1 Task 2) ---------------------------------------
+from bench_cli.compare.ties import annotate_with_ties, detect_ties
+
+
+def test_tie_badge_on_overlapping_ci():
+    """SC7: synthetic overlapping CIs produce a '≈' badge on the lower-ranked
+    model and an annotation pointing to the highest-ranked tie-partner."""
+    sorted_models = [
+        ("a", 0.90, (0.80, 0.99)),  # model a, cap 0.90, CI [0.80, 0.99]
+        ("b", 0.85, (0.78, 0.92)),  # overlaps A: 0.78<=0.99 AND 0.80<=0.92
+    ]
+    out = annotate_with_ties(sorted_models)
+    assert out[0] == ("a", 1, "", None)
+    assert out[1] == ("b", 2, "≈", "#1"), (
+        "B's CI overlaps A's; expect rank=2 (capability order), badge '≈', "
+        "annotation '#1' (highest-ranked partner)"
+    )
+
+
+def test_tie_annotation_picks_highest_ranked_partner():
+    """Spec example: M ties with both rank 1 and rank 3 (rank 3 ties with neither),
+    annotation must point to rank 1, not the predecessor.
+    """
+    # a [0.50, 0.99], b [0.20, 0.45], c [0.55, 0.95]
+    # a↔b: a_hi=0.99 >= b_lo=0.20, b_hi=0.45 < a_lo=0.50 → disjoint. ✓
+    # a↔c: a_hi=0.99 >= c_lo=0.55, c_hi=0.95 >= a_lo=0.50 → overlap. ✓
+    # b↔c: b_hi=0.45 < c_lo=0.55 → disjoint. ✓
+    sorted_models = [
+        ("a", 0.95, (0.50, 0.99)),
+        ("b", 0.40, (0.20, 0.45)),  # rank 2 by cap; CI disjoint from both a and c
+        ("c", 0.39, (0.55, 0.95)),  # rank 3 by cap; CI overlaps a (rank 1), not b
+    ]
+    out = annotate_with_ties(sorted_models)
+    # b: disjoint from a → rank 2, no badge.
+    assert out[1] == ("b", 2, "", None)
+    # c: overlaps a (rank 1) but not b (rank 2) → annotation = "#1".
+    assert out[2] == ("c", 3, "≈", "#1"), (
+        "c's CI overlaps a's (rank 1), so annotation should be '#1' "
+        "(highest-ranked partner), not '#2'"
+    )
+
+
+def test_pairwise_not_transitive():
+    """A ties B, B ties C, but A does NOT tie C — implementation respects
+    pairwise semantics."""
+    # A: [60, 80], B: [50, 65], C: [40, 55]
+    # A-B: A_lo=60, B_hi=65 — 60<=65 AND 50<=80 → overlap.
+    # B-C: B_lo=50, C_hi=55 — 50<=55 AND 40<=65 → overlap.
+    # A-C: A_lo=60, C_hi=55 — 60<=55 is False — disjoint. NO tie.
+    model_cis = {"a": (60, 80), "b": (50, 65), "c": (40, 55)}
+    # Render each pair at 0-1 scale (multiply by 0.01).
+    scaled = {k: (v[0] / 100, v[1] / 100) for k, v in model_cis.items()}
+    ties = detect_ties(scaled)
+    # Expect two ties: {a, b} and {b, c}. A and C should NOT appear together.
+    pair_set = [tuple(sorted(g)) for g in ties]
+    assert ("a", "b") in pair_set
+    assert ("b", "c") in pair_set
+    assert ("a", "c") not in pair_set
+
+
+def test_detect_ties_empty_when_no_overlap():
+    """Sanity: non-overlapping CIs produce an empty tie list."""
+    model_cis = {"a": (0.50, 0.60), "b": (0.80, 0.90)}
+    assert detect_ties(model_cis) == []
+
+
+def test_detect_ties_skips_models_with_none_ci():
+    """Models with CI=None (partial evals) are skipped, not force-tied with anyone."""
+    model_cis = {"a": (0.50, 0.60), "b": None, "c": (0.55, 0.65)}
+    ties = detect_ties(model_cis)
+    # A overlaps C; B is skipped.
+    pair_set = [tuple(sorted(g)) for g in ties]
+    assert ("a", "c") in pair_set
+    assert all("b" not in g for g in pair_set)
+
