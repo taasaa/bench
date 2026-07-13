@@ -71,74 +71,66 @@ def test_scan_log_dir_warm_call_under_1s() -> None:
 
 
 def test_get_all_log_paths_per_subject_filter_stable() -> None:
-    """Per-subject filtering still returns paths after the refactor."""
+    """Per-subject filtering returns a subset of the all-subjects result.
+
+    Picks the most-logged subject dynamically rather than pinning to a
+    specific model, so the test is robust to log rotation.
+    """
     from bench_cli.discriminative.subject import get_all_log_paths
     from bench_cli.discriminative.types import SubjectID
 
     if not LOG_DIR.exists() or not list(LOG_DIR.glob("*.eval")):
         pytest.skip("logs/ has no .eval files (fresh checkout)")
 
-    # A model we know exists in logs (from mimo full eval)
-    sub = SubjectID(model="xiaomi/mimo-v2.5-pro")
-    paths = get_all_log_paths(LOG_DIR, sub)
-    assert len(paths) > 0, "mimo subject returned 0 paths — refactor lost coverage"
-
-    # And the all-subjects call (subject=None) returns >= per-subject count
     all_paths = get_all_log_paths(LOG_DIR)
-    assert len(all_paths) >= len(paths)
+    assert len(all_paths) > 0, "scan returned 0 paths"
+
+    # Pick the subject with the most logs; per-subject filtering for it
+    # must return <= all_paths and > 0.
+    from inspect_ai.log import list_eval_logs, read_eval_log
+    counts: dict[str, int] = {}
+    for info in list_eval_logs(str(LOG_DIR)):
+        try:
+            el = read_eval_log(info.name.replace("file://", ""), header_only=True)
+            if el.eval and el.eval.model:
+                counts[el.eval.model] = counts.get(el.eval.model, 0) + 1
+        except Exception:
+            continue
+    top_model = max(counts, key=counts.get)
+    sub = SubjectID(model=top_model)
+    paths = get_all_log_paths(LOG_DIR, sub)
+    assert len(paths) > 0, f"top-logged subject {top_model!r} returned 0 paths"
+    assert len(paths) <= len(all_paths)
 
 
-def test_bench_compare_matrix_4_subjects_under_60s() -> None:
-    """End-to-end: `bench compare-matrix` on 4 subjects completes in <60s (was >300s).
+def test_bench_compare_matrix_perf() -> None:
+    """End-to-end: `bench compare-matrix` on 4 real subjects completes quickly.
 
-    This is the user-visible win. If this test fails, the perf regression is back.
+    Picks the 4 most-logged subjects dynamically; perf regression (vs the
+    2026-07-09 header_only+lru_cache fix) is what this test guards.
     """
     import subprocess
+    from inspect_ai.log import list_eval_logs, read_eval_log
 
     if not LOG_DIR.exists() or not list(LOG_DIR.glob("*.eval")):
         pytest.skip("logs/ has no .eval files (fresh checkout)")
 
-    # Only run if at least 2 of the 4 cluster subjects have logs.
-    probe = subprocess.run(
-        [
-            "python", "-c",
-            "from inspect_ai.log import list_eval_logs, read_eval_log; "
-            "from pathlib import Path; "
-            "targets={'xiaomi/mimo-v2.5-pro','minimax/minimax-m3','z-ai/glm-5.2','deepseek-ai/deepseek-v4-pro'}; "
-            "found=set(); "
-            "[found.add(read_eval_log(p).eval.model) "
-            " for info in list_eval_logs('logs') "
-            " for p in [info.name.replace('file://','')] "
-            " try: pass "
-            " except: pass]; "
-            "import sys; sys.exit(0 if len(found & targets) >= 2 else 1)"
-        ],
-        capture_output=True, cwd=".", timeout=60,
-    )
-    # Simpler probe: just check that >=1 of the 4 subjects has logs via direct read.
-    # The above subprocess probe is fragile; skip the integration test if logs are sparse.
-    has_logs = False
-    from inspect_ai.log import list_eval_logs, read_eval_log
-    targets = {"xiaomi/mimo-v2.5-pro", "minimax/minimax-m3",
-               "z-ai/glm-5.2", "deepseek-ai/deepseek-v4-pro"}
+    counts: dict[str, int] = {}
     for info in list_eval_logs(str(LOG_DIR)):
         try:
             el = read_eval_log(info.name.replace("file://", ""), header_only=True)
-            if el.eval and el.eval.model in targets:
-                has_logs = True
-                break
+            if el.eval and el.eval.model:
+                counts[el.eval.model] = counts.get(el.eval.model, 0) + 1
         except Exception:
             continue
-    if not has_logs:
-        pytest.skip("none of the 4 cluster subjects have logs (fresh checkout)")
 
+    if len(counts) < 4:
+        pytest.skip(f"need >=4 distinct subjects in logs/, found {len(counts)}")
+
+    top4 = sorted(counts, key=counts.get, reverse=True)[:4]
     t0 = time.perf_counter()
     result = subprocess.run(
-        [
-            "python", "-m", "bench_cli", "compare-matrix",
-            "xiaomi/mimo-v2.5-pro", "minimax/minimax-m3",
-            "z-ai/glm-5.2", "deepseek-ai/deepseek-v4-pro",
-        ],
+        ["python", "-m", "bench_cli", "compare-matrix", *top4],
         capture_output=True, timeout=120, cwd=".",
     )
     elapsed = time.perf_counter() - t0

@@ -175,13 +175,21 @@ class TestDeterministicCardIdentity:
         """Guards the deleted glm-5.1 == m2.7 byte-identical card bug.
 
         Two distinct bench aliases that map to distinct or_ids MUST produce
-        distinct slug + name AND distinct generated card filenames + title lines --
-        never identical card data. (Compares actual generated card content, not just
-        the slug derivation, so it directly guards the historical byte-identical card.)
+        distinct slug + name AND distinct generated card filenames + title
+        lines — never identical card data.
+
+        Uses a synthesized resolver mapping so the test is independent of
+        which models are in the live proxy today.
         """
+        from bench_cli.pricing import litellm_config
+
+        monkeypatch.setattr(litellm_config, "_resolve_from_litellm",
+                            lambda alias: f"fake/{alias.replace('openai/', '')}-or-id")
+        litellm_config._build_reverse_lookup.cache_clear()
+
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
-        a = "openai/nvidia-nemotron-30b"        # -> nvidia/nemotron-3-nano-30b-a3b
-        b = "openai/fabric"                      # -> nvidia/nemotron-3-super-120b-a12b
+        a = "openai/test-a"
+        b = "openai/test-b"
         # 1. derivation-level distinctness
         assert _slug_from_alias(a) != _slug_from_alias(b)
         assert _real_model_name(a) != _real_model_name(b)
@@ -707,25 +715,69 @@ class TestDoubleSuffixFix:
 
 
 class TestContextWindowFix:
-    """_get_model_metadata should find max_input_tokens from LiteLLM config."""
+    """_get_model_metadata reads max_input_tokens from the LiteLLM config yaml.
 
-    def test_context_window_via_openrouter_id(self):
-        """bench_alias as OpenRouter ID should resolve to LiteLLM model_name."""
-        meta = _get_model_metadata("nvidia/nemotron-3-super-120b-a12b:free")
-        assert meta["ctx_window"] == 1_000_000
+    Uses a synthesized tmp config so the test exercises the lookup logic,
+    not a specific proxy entry. Each entry in `alias_to_or` maps a
+    model_name to the OpenRouter ID that the alias map should resolve to.
+    """
 
-    def test_context_window_via_alias(self):
-        """bench_alias as LiteLLM alias also resolves correctly."""
-        meta = _get_model_metadata("openai/nemotron-super-120b-free")
-        assert meta["ctx_window"] == 1_000_000
+    def _setup(self, tmp_path, monkeypatch, alias_to_or: dict, max_input_tokens: int):
+        """Synthesize a fake LiteLLM config. Returns the config path."""
+        from bench_cli.pricing import litellm_config
 
-    def test_context_window_kimi(self):
-        meta = _get_model_metadata("openai/kimi-2.6")
-        assert meta["ctx_window"] == 256_000
+        config_path = tmp_path / "litellm.yaml"
+        model_list_yaml = "\n".join(
+            f"""  - model_name: {alias}
+    litellm_params:
+      model: {or_id}
+    model_info:
+      max_input_tokens: {max_input_tokens}
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
+"""
+            for alias, or_id in alias_to_or.items()
+        )
+        config_path.write_text(
+            f"model_list:\n{model_list_yaml}",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(litellm_config, "_LITELLM_CONFIG_PATH", config_path)
+        litellm_config._load_litellm_alias_map.cache_clear()
+        return config_path
 
-    def test_context_window_unknown_model_is_none(self):
+    def test_context_window_from_alias(self, tmp_path, monkeypatch):
+        """bench_alias as LiteLLM alias → model_info.max_input_tokens."""
+        config_path = self._setup(
+            tmp_path, monkeypatch,
+            alias_to_or={"qwen-local": "openai/qwen-local"},
+            max_input_tokens=123_456,
+        )
+        meta = _get_model_metadata("openai/qwen-local", litellm_path=config_path)
+        assert meta["ctx_window"] == 123_456
+
+    def test_context_window_from_openrouter_id(self, tmp_path, monkeypatch):
+        """bench_alias as OpenRouter ID → reverse-mapped to model_name → max_input_tokens."""
+        # `vendor/fake/or-x` partitions to or-id "fake/or-x"; the alias map
+        # will then reverse-map it back to model_name "alias-x".
+        config_path = self._setup(
+            tmp_path, monkeypatch,
+            alias_to_or={"alias-x": "vendor/fake/or-x"},
+            max_input_tokens=789_000,
+        )
+        meta = _get_model_metadata("fake/or-x", litellm_path=config_path)
+        assert meta["ctx_window"] == 789_000
+
+    def test_context_window_unknown_model_is_none(self, tmp_path, monkeypatch):
         """Unknown models return None for ctx_window (no crash)."""
-        meta = _get_model_metadata("openai/totally-unknown-model-xyz-zzz")
+        from bench_cli.pricing import litellm_config
+
+        config_path = tmp_path / "litellm.yaml"
+        config_path.write_text("model_list: []\n", encoding="utf-8")
+        monkeypatch.setattr(litellm_config, "_LITELLM_CONFIG_PATH", config_path)
+        litellm_config._load_litellm_alias_map.cache_clear()
+
+        meta = _get_model_metadata("openai/totally-unknown-model-xyz-zzz", litellm_path=config_path)
         assert meta["ctx_window"] is None
 
 
@@ -735,18 +787,35 @@ class TestContextWindowFix:
 
 
 class TestFreeModelPricingFix:
-    """Free models should show real price with '(currently free)' annotation."""
+    """Free models should show real price with '(currently free)' annotation.
 
-    def test_free_model_meta_has_paid_prices(self):
-        """:free variant metadata should include the paid variant's real price."""
-        meta = _get_model_metadata("nvidia/nemotron-3-super-120b-a12b:free")
-        assert meta["free"] is True
-        assert meta["has_price"] is True
-        assert meta["input_price"] > 0.0
-        assert meta["output_price"] > 0.0
+    Mocks `_get_model_metadata` so the test exercises the formatter, not
+    the live OpenRouter cache (which would silently rot as prices drift).
+    """
 
-    def test_free_model_card_shows_real_price(self, tmp_path, monkeypatch):
-        """Card Overview table shows real price with '(currently free)'."""
+    def _patch_meta(self, monkeypatch, **overrides):
+        """Replace _get_model_metadata with a fixture returning the given dict."""
+        meta = {
+            "provider": "NVIDIA NIM",
+            "hosting": "NVIDIA NIM",
+            "ctx_window": 1_000_000,
+            "input_price": 0.08,
+            "output_price": 0.45,
+            "has_price": True,
+            "free": True,
+            "managed_only": False,
+            "litellm_model": "nvidia/nemotron-3-super-120b-a12b",
+        }
+        meta.update(overrides)
+        monkeypatch.setattr(
+            "bench_cli.results.core._get_model_metadata", lambda alias: meta,
+        )
+
+    def test_card_shows_paid_prices_with_annotation(self, tmp_path, monkeypatch):
+        """Card Overview shows the (paid) input/output prices AND the
+        '(currently free)' annotation, when metadata reports free=True with
+        non-zero paid-tier prices."""
+        self._patch_meta(monkeypatch)
         monkeypatch.setattr("bench_cli.results.core._RESULTS_DIR", tmp_path)
         model_data = {
             "tasks": {
@@ -757,7 +826,9 @@ class TestFreeModelPricingFix:
             },
             "dates": ["2026-07-07"], "total_input": 100, "total_output": 200,
         }
-        path = generate_card("nvidia/nemotron-3-super-120b-a12b:free", model_data, tmp_path)
+        path = generate_card(
+            "vendor/fake-paid-id:free", model_data, tmp_path,
+        )
         content = path.read_text()
         overview_section = content.split("## Overview")[1].split("##")[0]
         assert "(currently free)" in overview_section

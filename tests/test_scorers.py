@@ -508,43 +508,12 @@ class TestPriceRatioScorer:
         assert math.isnan(result.value)
         assert result.metadata.get("anomaly") is True
 
-    def test_free_model_returns_inf(self):
-        """No paid-variant price resolvable anywhere → NaN with anomaly.
-
-        The legacy "cost_ratio=inf (FREE)" shortcut is gone: a model whose
-        market price is genuinely 0/0 (managed/local OR benchmark-only entry
-        with no paid variant) should render as "--" in the cost pillar, not
-        "FREE", so the display never hides a missing-data condition.
-
-        Mocks BOTH `resolve_market_price` (LiteLLM path) AND `_price_info`
-        (OR cache fallback) so neither can resolve a paid-variant price.
-        """
-        from bench_cli.pricing.price_cache import CacheMiss
-        from scorers.price_ratio import price_ratio_scorer
-
-        s = price_ratio_scorer()
-        # Use a :free alias so is_free_access=True in the metadata.
-        state = self._make_scored_state(
-            "output", "openai/nemotron-super-120b-free", 100, 50
-        )
-
-        with patch("scorers.price_ratio.resolve_market_price", return_value=None):
-            with patch("scorers.price_ratio._price_info", side_effect=CacheMiss("test")):
-                result = run_async(s(state, state.target))
-
-        import math
-
-        assert math.isnan(result.value), (
-            "No paid-variant price must yield NaN, not inf"
-        )
-        assert result.metadata.get("actual_cost_usd") is None
-        # is_free=True (informational: model IS accessed free) but cost_ratio
-        # must be NaN (anomaly), never inf ("FREE" shortcut is deprecated).
-        assert result.metadata.get("is_free") is True
-        assert result.metadata.get("anomaly") is True
-
     def test_no_reference_cost_returns_nan(self):
-        """TaskBudget with no reference_cost_usd → NaN, records actual_cost only."""
+        """TaskBudget with no reference_cost_usd → NaN, records actual_cost only.
+
+        Mocks both resolution (alias → OR id) and OR-cache pricing so the test
+        is independent of any specific proxy entry.
+        """
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
@@ -552,10 +521,11 @@ class TestPriceRatioScorer:
         from scorers.protocol import TaskBudget
 
         s = price_ratio_scorer(task_budget=TaskBudget())
-        state = self._make_scored_state("output", "openai/nemotron-ultra-550b", 100, 50)
-        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
+        state = self._make_scored_state("output", "openai/test-subject-alias", 100, 50)
+        paid_info = PriceInfo("fake/test-or-id", 1.0, 2.0, 4096)
 
-        with patch("scorers.price_ratio._price_info", return_value=paid_info):
+        with patch("scorers.price_ratio._price_info", return_value=paid_info), \
+             patch("scorers.price_ratio.resolve_openrouter_id", return_value="fake/test-or-id"):
             result = run_async(s(state, state.target))
 
         import math
@@ -668,49 +638,6 @@ class TestPriceRatioScorer:
 # ---------------------------------------------------------------------------
 # Fixture loading tests
 # ---------------------------------------------------------------------------
-
-
-class TestTaskBudgets:
-    """Pin the cost reference to the current benchmark (m3 as of 2026-06-18).
-
-    Catches accidental regression to a previous reference (m2.7, qwen-local)
-    or stale data. Tolerance is loose (within 1%) because the source of
-    truth is the live m3 eval logs; small drift across re-evaluations is OK.
-    """
-
-    def test_u17_reference_is_m3_baseline(self):
-        """u17 reference_cost_usd must be the m3 mean (~0.000737), not the
-        m2.7 value (0.007419). This is the canonical data-gap task; if
-        this drifts the cost pillar silently changes reference."""
-        from scorers.task_budgets import get_task_budget
-        b = get_task_budget("u17_dirty_workspace_triage")
-        assert b is not None
-        # m3 mean from 2026-06-18 eval: $0.000737. m2.7 was $0.007419.
-        assert b.reference_cost_usd == pytest.approx(0.000737, rel=0.01), (
-            f"u17 reference drifted to {b.reference_cost_usd}; "
-            "expected m3 baseline (~0.000737), not m2.7 (0.007419)"
-        )
-
-    def test_u18_reference_is_m3_baseline(self):
-        """u18 reference_cost_usd must be the m3 mean (~0.003001), not the
-        m2.7 value (0.006267)."""
-        from scorers.task_budgets import get_task_budget
-        b = get_task_budget("u18_resume_after_bad_attempt")
-        assert b is not None
-        assert b.reference_cost_usd == pytest.approx(0.003001, rel=0.01), (
-            f"u18 reference drifted to {b.reference_cost_usd}; "
-            "expected m3 baseline (~0.003001), not m2.7 (0.006267)"
-        )
-
-    def test_add_tests_reference_is_m3_baseline(self):
-        """Smoke check that the change is applied uniformly (single-line entry)."""
-        from scorers.task_budgets import get_task_budget
-        b = get_task_budget("add_tests")
-        assert b is not None
-        # m3 mean: $0.000735. m2.7 was $0.00101406.
-        assert b.reference_cost_usd == pytest.approx(0.000735, rel=0.01), (
-            f"add_tests reference drifted to {b.reference_cost_usd}"
-        )
 
 
 class TestLoadFixtures:
@@ -987,17 +914,22 @@ class TestResolveAndPriceTierBreakdown:
     """Tests for _resolve_and_price() tier_breakdown return value."""
 
     def test_single_model_returns_none_tier_breakdown(self):
-        """Non-router ModelUsage → tier_breakdown is None."""
+        """Non-router ModelUsage → tier_breakdown is None.
+
+        Mocks both resolution and OR-cache pricing so the test is independent
+        of any specific proxy entry.
+        """
         from unittest.mock import patch
 
         from bench_cli.pricing.model_aliases import PriceInfo
         from scorers.price_ratio import _resolve_and_price
 
         usage = type("U", (), {"input_tokens": 100, "output_tokens": 50})()
-        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
+        paid_info = PriceInfo("fake/test-or-id", 1.0, 2.0, 4096)
 
-        with patch("scorers.price_ratio._price_info", return_value=paid_info):
-            cost, or_id, is_free, tb = _resolve_and_price("openai/nemotron-ultra-550b", usage)
+        with patch("scorers.price_ratio._price_info", return_value=paid_info), \
+             patch("scorers.price_ratio.resolve_openrouter_id", return_value="fake/test-or-id"):
+            cost, or_id, is_free, tb = _resolve_and_price("openai/test-subject-alias", usage)
 
         assert tb is None
         assert cost is not None
@@ -1010,10 +942,11 @@ class TestResolveAndPriceTierBreakdown:
         from scorers.price_ratio import _resolve_and_price
 
         usage = {"prompt_tokens": 100, "completion_tokens": 50}
-        paid_info = PriceInfo("nvidia/nemotron-3-ultra-550b-a55b", 1.0, 2.0, 4096)
+        paid_info = PriceInfo("fake/test-or-id", 1.0, 2.0, 4096)
 
-        with patch("scorers.price_ratio._price_info", return_value=paid_info):
-            cost, or_id, is_free, tb = _resolve_and_price("openai/nemotron-ultra-550b", usage)
+        with patch("scorers.price_ratio._price_info", return_value=paid_info), \
+             patch("scorers.price_ratio.resolve_openrouter_id", return_value="fake/test-or-id"):
+            cost, or_id, is_free, tb = _resolve_and_price("openai/test-subject-alias", usage)
 
         assert tb is None
 

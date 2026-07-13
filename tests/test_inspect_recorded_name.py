@@ -64,25 +64,40 @@ def test_stats_cli_finds_custom_as_label_after_alias_normalization(tmp_path):
     assert "f18_direct_answer_first" in result.output
 
 
-def test_stats_cli_finds_recorded_or_id_from_recognizable_bare_alias(tmp_path):
-    _copy_rewritten_log(tmp_path, "nvidia/nemotron-3-ultra-550b-a55b")
+def test_stats_cli_finds_recorded_or_id_from_recognizable_bare_alias(tmp_path, monkeypatch):
+    """Querying by a bare alias finds logs recorded with the resolved OR id.
+
+    Mocks the resolver to return a known OR id so the test is independent of
+    which models are currently in the proxy (the test asserts the matching
+    *behavior*, not proxy state).
+    """
+    recorded = "fake/test-recorded-or-id"
+    _copy_rewritten_log(tmp_path, recorded)
+    monkeypatch.setattr(
+        "bench_cli.pricing.litellm_config.resolve_backing_model_id",
+        lambda alias: recorded if alias in {"openai/test-bare-alias", "test-bare-alias"} else None,
+    )
 
     result = CliRunner().invoke(
         inspect,
-        ["stats", "--model", "nemotron-ultra-550b", "--log-dir", str(tmp_path)],
+        ["stats", "--model", "test-bare-alias", "--log-dir", str(tmp_path)],
     )
 
     assert result.exit_code == 0, result.output
     assert "f18_direct_answer_first" in result.output
 
 
-def test_resolve_query_name_passes_recorded_through():
-    # Invariant: query-side resolution mirrors record-side resolution. The two
-    # functions must agree so a user querying by routing alias finds logs
-    # recorded by routing alias. Tested live (whatever the proxy resolves) so
-    # the invariant holds across proxy rebinds.
-    alias = "openai/thinking"
-    assert _resolve_query_name(alias) == resolve_recorded_name(alias, None)
+def test_resolve_query_name_passes_recorded_through(monkeypatch):
+    """Invariant: query-side resolution mirrors record-side resolution.
+
+    Mocks the resolver so the test asserts the invariant directly, not via
+    whatever happens to resolve today.
+    """
+    monkeypatch.setattr(
+        "bench_cli.pricing.litellm_config.resolve_backing_model_id",
+        lambda alias: "fake/test-or-id" if alias in ("openai/test-alias", "test-alias") else None,
+    )
+    assert _resolve_query_name("openai/test-alias") == resolve_recorded_name("openai/test-alias", None)
 
 
 def test_resolve_query_name_passes_or_id_through():

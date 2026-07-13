@@ -494,7 +494,7 @@ def _generate_summary(
     return "\n".join(lines)
 
 
-def _get_model_metadata(bench_alias: str) -> dict:
+def _get_model_metadata(bench_alias: str, litellm_path: Path | None = None) -> dict:
     """Collect model metadata for the card header."""
     litellm_map = {}
     try:
@@ -547,7 +547,7 @@ def _get_model_metadata(bench_alias: str) -> dict:
         # or a LiteLLM alias (e.g. "nemotron-super-120b-free")
         litellm_model_name = reverse_map.get(lookup_key, lookup_key)
         if litellm_model_name in litellm_map:
-            litellm_path = Path.home() / "dev" / "litellm" / "config.yaml"
+            litellm_path = litellm_path or (Path.home() / "dev" / "litellm" / "config.yaml")
             if litellm_path.is_file():
                 with open(litellm_path) as f:
                     config = yaml.safe_load(f)

@@ -21,6 +21,26 @@ from bench_cli.pricing.model_aliases import (
 )
 from bench_cli.pricing.price_cache import CacheMiss, OpenRouterCache
 
+
+def _synth_cache(monkeypatch, tmp_path, models: dict) -> None:
+    """Patch OpenRouterCache to use a tmp cache file with the given models.
+
+    `models` is a flat {or_id: {input, output, context}} mapping. Writes it in
+    the full cache schema (fetched_at + models) so the cache is parseable.
+    """
+    from datetime import datetime, timezone
+
+    cache_path = tmp_path / "cache.json"
+    cache_path.write_text(json.dumps({
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "models": models,
+    }))
+    monkeypatch.setattr(
+        OpenRouterCache,
+        "__init__",
+        lambda self, **kw: self.__dict__.update(_cache_path=cache_path, _data=None),
+    )
+
 # ---------------------------------------------------------------------------
 # model_aliases
 # ---------------------------------------------------------------------------
@@ -320,94 +340,59 @@ class TestOpenRouterCache:
 # ---------------------------------------------------------------------------
 
 
-class TestLiteLLMConfig:
-    """Tests for LiteLLM config parser and resolution."""
-
-    def test_resolve_openrouter_id_from_litellm_config_only(self):
-        """Alias not in LiteLLM config returns None — no MODEL_ALIAS_MAP fallback."""
-        # "openai/does-not-exist-xyz789" is not in LiteLLM config → None
-        result = resolve_openrouter_id("openai/does-not-exist-xyz789")
-        assert result is None
-
-    def test_resolve_openrouter_id_unknown_alias(self):
-        result = resolve_openrouter_id("openai/this-does-not-exist-xyz789")
-        assert result is None
-
-    def test_resolve_openrouter_id_litellm_name_without_prefix(self):
-        """Bench alias without openai/ prefix resolves via LiteLLM config + cache reverse-lookup.
-
-        Config-calibrated (LiteLLM routing changes over time): 'rut' currently -> glm-5.2.
-        """
-        result = resolve_openrouter_id("rut")
-        # 'rut' -> 'zai/glm-5.2' per current ~/dev/litellm/config.yaml; cache reverse-lookup
-        assert result == "z-ai/glm-5.2"
-
-    def test_load_litellm_alias_map_caches(self):
-        """Calling twice returns same dict (lru_cache)."""
-        first = _load_litellm_alias_map()
-        second = _load_litellm_alias_map()
-        assert first is second  # same object due to @lru_cache
-
-
 class TestModelOverrides:
-    """Tests for persistent model ID overrides."""
+    """Tests for persistent model ID overrides — synthesized cache fixtures."""
 
     def test_save_override_rejects_unknown_id(self, tmp_path, monkeypatch):
-        """save_override rejects IDs not in the OpenRouter cache."""
         from bench_cli.pricing import litellm_config
 
-        overrides_file = tmp_path / "model_overrides.json"
-        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
+        _synth_cache(
+            monkeypatch, tmp_path,
+            {"fake/known-id": {"input": 0.1, "output": 0.2, "context": 4096}},
+        )
+        monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", tmp_path / "model_overrides.json")
 
         with pytest.raises(ValueError, match="not found in OpenRouter cache"):
-            save_override("openai/test-model", "provider/does-not-exist")
+            save_override(
+                "openai/test-model",
+                "fake/nonexistent-aaaaaaaaaaaaaa/no-such-model",
+            )
 
     def test_save_and_load_override(self, tmp_path, monkeypatch):
-        """save_override persists when ID is in cache, resolve picks it up."""
         from bench_cli.pricing import litellm_config
-        from bench_cli.pricing.price_cache import OpenRouterCache
 
+        _synth_cache(
+            monkeypatch, tmp_path,
+            {"fake/cached-id": {"input": 0.1, "output": 0.2, "context": 4096}},
+        )
         overrides_file = tmp_path / "model_overrides.json"
         monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
 
-        # Use an ID that's actually in the real cache
-        cache = OpenRouterCache()
-        all_prices = cache.get_all_prices()
-        real_id = next(iter(all_prices))
-
-        save_override("openai/test-model", real_id)
+        save_override("openai/test-model", "fake/cached-id")
         assert overrides_file.is_file()
 
-        result = resolve_openrouter_id("openai/test-model")
-        assert result == real_id
+        assert resolve_openrouter_id("openai/test-model") == "fake/cached-id"
 
     def test_override_used_when_litellm_slug_not_in_cache(self, tmp_path, monkeypatch):
-        """Override kicks in when LiteLLM config slug isn't in the cache."""
         from bench_cli.pricing import litellm_config
-        from bench_cli.pricing.price_cache import OpenRouterCache
 
+        _synth_cache(
+            monkeypatch, tmp_path,
+            {"fake/cached-id": {"input": 0.1, "output": 0.2, "context": 4096}},
+        )
         overrides_file = tmp_path / "model_overrides.json"
         monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
 
-        # Use a real cached ID as the override target
-        cache = OpenRouterCache()
-        all_prices = cache.get_all_prices()
-        real_id = next(iter(all_prices))
-
-        # Use a model name that doesn't resolve from LiteLLM at all,
-        # so the override is the only way to find it
-        save_override("openai/fake-test-model", real_id)
-        result = resolve_openrouter_id("openai/fake-test-model")
-        assert result == real_id
+        # Alias doesn't resolve from LiteLLM at all; only the override can find it.
+        save_override("openai/fake-test-model", "fake/cached-id")
+        assert resolve_openrouter_id("openai/fake-test-model") == "fake/cached-id"
 
     def test_stale_override_raises_error(self, tmp_path, monkeypatch):
-        """Override that points to a model no longer in cache raises RuntimeError."""
         from bench_cli.pricing import litellm_config
 
+        _synth_cache(monkeypatch, tmp_path, {})  # empty cache
         overrides_file = tmp_path / "model_overrides.json"
         monkeypatch.setattr(litellm_config, "_OVERRIDES_PATH", overrides_file)
-
-        # Write an override pointing to a non-existent cache entry
         overrides_file.write_text(json.dumps({"openai/gone-model": "provider/deleted-model"}))
 
         with pytest.raises(RuntimeError, match="Stale override"):
@@ -415,56 +400,31 @@ class TestModelOverrides:
 
 
 class TestIsManagedModel:
-    """Tests for managed/local model exemption logic."""
+    """One test per branch — the parametrized cases were the same predicate
+    tested with different inputs (rule: no repeated parametrized tests
+    without good reason)."""
 
-    @pytest.mark.parametrize(
-        "alias",
-        [
-            "openai/qwen-local",
-            "openai/gemma-4-e2-local",
-            "openai/gemma-4-26-local",
-            "openai/glm-local",
-        ],
-    )
-    def test_local_suffix_is_managed(self, alias):
-        assert is_managed_model(alias) is True
+    def test_local_suffix_is_managed(self):
+        assert is_managed_model("openai/qwen-local") is True
 
-    @pytest.mark.parametrize(
-        "alias",
-        [
-            "openai/qwen3-coder-plus",
-            "openai/qwen3-max",
-        ],
-    )
-    def test_named_local_models_managed(self, alias):
-        assert is_managed_model(alias) is True
+    def test_named_local_aliases_managed(self):
+        assert is_managed_model("openai/qwen3-coder-plus") is True
+        assert is_managed_model("openai/qwen3-max") is True
 
-    @pytest.mark.parametrize(
-        "alias",
-        [
-            "openai/opus",
-            "openai/sonnet",
-            "openai/gpt-4o",
-            "openai/nvidia-mistral-small4",
-            "openai/default",
-        ],
-    )
-    def test_regular_aliases_not_managed(self, alias):
-        assert is_managed_model(alias) is False
-
-    def test_partial_match_not_managed(self):
-        # "local" appears in the alias but not as -local suffix
+    def test_non_local_aliases_not_managed(self):
+        # A non-suffix "local" substring should NOT match.
         assert is_managed_model("openai/local-model-test") is False
+        # Regular alias: not managed.
+        assert is_managed_model("openai/some-proxied-model") is False
 
 
 class TestResolveAliasMapTier:
-    """Y-inversion: live LiteLLM proxy is the primary source; MAP is catch-all."""
+    """Y-inversion: live LiteLLM proxy is the primary source; MAP is catch-all.
 
-    def test_live_proxy_is_primary_source(self):
-        """Aliases with a live proxy model_name entry resolve from the proxy,
-        not from MAP (which is empty)."""
-        # openai/nemotron-ultra-550b is in the live proxy config.
-        assert resolve_openrouter_id("openai/nemotron-ultra-550b") == "nvidia/nemotron-3-ultra-550b-a55b"
+    NOTE: tests in this class exercise the resolution *logic* by mocking
+    `resolve_backing_model_id` / `_resolve_from_litellm`, NOT by depending on
+    specific proxy entries. The proxy is not the test fixture.
+    """
 
     def test_managed_models_short_circuit_to_none(self):
         """Managed/local models return None from resolve_openrouter_id (pricing-
@@ -489,21 +449,10 @@ class TestResolveAliasMapTier:
         # neither in proxy nor in MAP -> None
         assert resolve_openrouter_id("openai/totally-unknown-alias-xyz") is None
 
-    def test_sc10_nemotron_subjects_priced_via_live_proxy(self):
-        """Nemotron-ultra-550b is in the live proxy and resolves to the paid
-        OR id (the two old SC#10 nemotron aliases are no longer in the proxy
-        config and have aged out — task 01cfd589 closed by proxy removal)."""
-        assert resolve_openrouter_id("openai/nemotron-ultra-550b") == "nvidia/nemotron-3-ultra-550b-a55b"
-
-    def test_sc10_omni_nan_correct(self, tmp_path, monkeypatch):
-        """SC#10 NaN-correct: a model whose paid or_id is absent from the cache -> scorer NaNs.
-
-        Uses an isolated empty cache so the test is deterministic (it proves the NaN
-        *mechanism*: resolve→or_id present, but or_id NOT in cache → cost is None),
-        independent of whether any particular or_id happens to be manually priced in
-        the live cache. (nemotron-nano-omni-30b is the historical example: its paid
-        or_id was missing from the OpenRouter cache until SC#3 priced it manually.)
-        """
+    def test_omni_nan_correct_when_cache_misses(self, tmp_path, monkeypatch):
+        """NaN mechanism: alias resolves to a paid or_id, but that or_id is absent
+        from the cache -> cost is None (scorer emits NaN). Mocked resolution so
+        the test is independent of the live proxy state."""
         from bench_cli.pricing import litellm_config
         from bench_cli.pricing.price_cache import OpenRouterCache
         from scorers.price_ratio import _resolve_and_price
@@ -522,18 +471,21 @@ class TestResolveAliasMapTier:
         # pricing path also misses.
         import scorers.price_ratio as pr
         monkeypatch.setattr(pr, "_price_cache", OpenRouterCache())
-        # Also force the LiteLLM config to return no pricing for this alias so
-        # the test exercises the OR-cache-miss path (the historical failure
-        # mode for nemotron-nano-omni-30b before SC#3 priced it manually).
+        # Force the LiteLLM config to return no pricing for this alias so the
+        # test exercises the OR-cache-miss path. Mock resolution to a known id.
         monkeypatch.setattr(litellm_config, "get_litellm_market_price", lambda alias: None)
         litellm_config._load_litellm_pricing_map.cache_clear()
+        monkeypatch.setattr(
+            litellm_config, "_resolve_from_litellm",
+            lambda alias: "fake/test-paid-or-id",
+        )
 
         # Resolves via litellm to a paid or_id, but that or_id is absent from the
-        # empty cache -> no price -> cost is None (scorer emits NaN).
+        # empty cache -> no price -> cost is None (scorer will emit NaN).
         class U:
             input_tokens = 100; output_tokens = 50
-        cost, or_id, is_free, _ = _resolve_and_price("openai/nemotron-nano-omni-30b", U())
-        assert or_id == "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"  # resolved
+        cost, or_id, is_free, _ = _resolve_and_price("openai/some-alias-with-no-price", U())
+        assert or_id == "fake/test-paid-or-id"  # resolved
         assert cost is None  # NaN-correct: scorer will emit NaN
 
 

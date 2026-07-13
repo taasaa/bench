@@ -13,13 +13,15 @@ def test_price_ratio_uses_reference_model_cost(tmp_path, monkeypatch):
     """W3b: scorer resolves the DESIGNATED reference model's cost, not the subject's.
 
     Register minimax-m3 as reference (cost 999), then score a SUBJECT (a priced
-    nemotron alias) and assert reference_cost_usd == 999 (reference-driven).
+    alias — model name is incidental; only the resolution + pricing path is
+    under test) and assert reference_cost_usd == 999 (reference-driven).
     """
+    from unittest.mock import MagicMock, patch
+
     from scorers import reference_model as rm
     from scorers.baseline_store import BaselineStore, Baseline
     from scorers.price_ratio import price_ratio_scorer
     from scorers.protocol import TaskBudget
-    from unittest.mock import MagicMock
 
     monkeypatch.setattr(rm, "_REFERENCE_FILE", tmp_path / "ref.json")
     rm.set_reference_model_id("openai/minimax-m3")
@@ -44,7 +46,7 @@ def test_price_ratio_uses_reference_model_cost(tmp_path, monkeypatch):
     scorer = price_ratio_scorer(task_budget=budget)
 
     state = MagicMock()
-    state.model = "openai/nemotron-ultra-550b"  # the SUBJECT (a priced alias)
+    state.model = "openai/test-subject-alias"  # the SUBJECT (name is incidental)
     state.metadata = {"task_name": "add_tests"}
 
     class U:
@@ -52,22 +54,30 @@ def test_price_ratio_uses_reference_model_cost(tmp_path, monkeypatch):
         output_tokens = 1_000_000
 
     state.output.usage = U()
-    score = _run(scorer(state, MagicMock()))
+    # Mock BOTH the resolution (alias -> OR id) and the market price lookup
+    # so the test is independent of proxy state and live cache contents.
+    with patch(
+        "scorers.price_ratio.resolve_openrouter_id", return_value="fake/subject-or-id"
+    ), patch(
+        "scorers.price_ratio.resolve_market_price", return_value=(1.0, 2.0)
+    ):
+        score = _run(scorer(state, MagicMock()))
     assert score.metadata["reference_cost_usd"] == 999.0  # reference-model cost used
 
 
 def test_scorers_unchanged_when_no_reference_registered(tmp_path, monkeypatch):
     """W3b: with no reference registered, scorers behave exactly as before (store=None)."""
+    from unittest.mock import MagicMock, patch
+
     from scorers import reference_model as rm
     from scorers.price_ratio import price_ratio_scorer
     from scorers.protocol import TaskBudget
-    from unittest.mock import MagicMock
 
     monkeypatch.setattr(rm, "_REFERENCE_FILE", tmp_path / "ref.json")  # does not exist
     budget = TaskBudget(reference_cost_usd=0.001)
     scorer = price_ratio_scorer(task_budget=budget)
     state = MagicMock()
-    state.model = "openai/nemotron-ultra-550b"
+    state.model = "openai/test-subject-alias"
     state.metadata = {"task_name": "add_tests"}
 
     class U:
@@ -75,7 +85,12 @@ def test_scorers_unchanged_when_no_reference_registered(tmp_path, monkeypatch):
         output_tokens = 1_000_000
 
     state.output.usage = U()
-    score = _run(scorer(state, MagicMock()))
+    with patch(
+        "scorers.price_ratio.resolve_openrouter_id", return_value="fake/subject-or-id"
+    ), patch(
+        "scorers.price_ratio.resolve_market_price", return_value=(1.0, 2.0)
+    ):
+        score = _run(scorer(state, MagicMock()))
     # No reference registered -> Tier-2 task_budget wins (0.001)
     assert score.metadata["reference_cost_usd"] == 0.001
 
