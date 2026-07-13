@@ -4,7 +4,11 @@
 
 **Goal:** Source ~10 new evaluation tasks that discriminate in the cluster ability band where current 34-task suite has hit its ceiling. After Phase 2, the suite is ~44 tasks, giving the Phase 3 IRT engine enough items to model ability differences in the band where current models cluster.
 
-**Architecture:** Additive task authoring into the existing `tasks/<pillar>/<task-name>/` layout. Each new task has the same shape as the existing 34: `task.py` (Inspect `@task`), `dataset.json` (`{input, target, id}`), and `verify.sh` (deterministic). No changes to `bench_cli/` or scorers. Reference costs are added to `scorers/task_budgets.py` from a minimax m3 baseline run.
+**Architecture:** Additive task authoring into the existing `tasks/<pillar>/<task-name>/` layout. Each new task has the same shape as the existing 34: `task.py` (Inspect `@task`), `dataset.json` (`{input, target, id}`), and `verify.sh` (deterministic). No changes to scorers. **Two `bench_cli/` cuts are required** despite the original "no CLI changes" rule:
+1. `bench_cli/compare/core.py:454` `MIN_FULL_EVAL_TASKS = 34` must move to 44 (and the bootstrap `min_n`, click default, and `tests/test_compare.py:300-301` lock) once the suite expands, otherwise old 34-task runs keep ranking as "full" beside 44-task models and Phase 3 IRT inputs are non-comparable.
+2. `bench_cli/run/cli.py` / `bench_cli/run/core.py` run-help text must mention 44 tasks.
+
+Token/latency reference budgets come from a **qwen-local** run (matches the existing per-task contract in `scorers/task_budgets.py:1-13,20-24`); only `reference_cost_usd` comes from minimax m3.
 
 **Tech Stack:** Python 3.14, Inspect AI 0.3.245, existing scorers in `scorers/`, bash for `verify.sh`. The new tasks MUST be deterministic (`verify_sh`-only — no LLM judge) to keep calibration tight at the discrimination band.
 
@@ -18,7 +22,9 @@
 - Pillar distribution per spec: 2–3 new tasks per pillar. Aim for 10 total. Each new task must have ≥4 distinct distractors verified by the author.
 - Source-first strategy per spec: **port from SWE-bench-Verified / MMLU-Pro coding subset**. Author original only if porting does not yield clean fits. Each port must be a real coding problem solvable by reading code + reasoning about a small change, NOT a quiz question.
 - Recorded-identity handling: `bench_cli/results/core.py:49::is_moniker_alias` is the existing helper. Tasks inherit this through `bench_cli.compare` automatically; no task-level changes needed.
-- Run resume gotcha: after a scorer change, `bench_cli/score.py` refactor (Phase 0), `task_budgets.py` change in this phase, or any verify.sh edit, ALL logs for that (model, task) pair become stale. The new tasks have no logs so this only matters for the `--no-resume` verification step (must equal `16 × 10`).
+- **`--tier full` is mandatory for every Phase 2 run.** The CLI defaults to `quick` (`bench_cli/run/cli.py:170-178`) and `--task` filters WITHIN the selected tier; without `--tier full` the `--task <b2-name>` invocations silently select `verification/smoke` and report `No tasks found for tier 'quick'`. Use `--tier full --task <name>` on every Phase 2 invocation, including pilot, calibration, cohort runs, and per-task retries.
+- **Run B2-only loops, never the full 44-task suite.** Re-running the 34 baseline tasks per model is wasted paid work. Iterate over the 10 B2 directory names: `for task in <b2-name-1> <b2-name-2> ...; do .venv/bin/python -m bench_cli run --tier full --task "$task" --model "openai/<model>" --no-resume; done`.
+- Run resume gotcha: after a scorer change, `bench_cli/score.py` refactor (Phase 0), `task_budgets.py` change in this phase, or any verify.sh edit, ALL logs for that (model, task) pair become stale. The new tasks have no logs so this only matters for the `--no-resume` verification step (must equal `N_models × 10`).
 - Task discovery is automatic from `tasks/<pillar>/<task-name>/task.py`. New tasks appear in `--tier full` runs as soon as the directory + `task.py` exist — no CLI/registry changes.
 
 ---
@@ -31,10 +37,15 @@
 | `tasks/<pillar>/<task-name>/task.py` | Inspect `@task` (one per new task) | Create (Task 2, 3, 4) |
 | `tasks/<pillar>/<task-name>/dataset.json` | `{input, target, id}` samples | Create (Task 2, 3, 4) |
 | `tasks/<pillar>/<task-name>/verify.sh` | Deterministic grader, `chmod +x` | Create (Task 2, 3, 4) |
-| `scorers/task_budgets.py` | Add `reference_cost_usd` for each new task | Modify (Task 5) |
-| `tests/test_b2_tasks.py` | Discovery + executable + verify.sh-script-shape tests | Create (Task 6) |
+| `scorers/task_budgets.py` | Add `output_tokens`, `latency_seconds` (qwen-local) and `reference_cost_usd` (minimax m3) per new task | Modify (Task 5) |
+| `tests/test_b2_tasks.py` | Discovery + executable + budget + verifier-behavior tests (gold + per-distractor) | Create (Task 6) |
+| `bench_cli/compare/core.py` | Move `MIN_FULL_EVAL_TASKS` 34 → 44 (full-suite gate + bootstrap CI floor) | Modify (Task 7) |
+| `bench_cli/compare/cli.py` | Update `--min-tasks` click default/help to 44 | Modify (Task 7) |
+| `bench_cli/compare/bootstrap.py` | Stop hardcoding `min_n=34`; import from `bench_cli.compare.core` | Modify (Task 7) |
+| `bench_cli/run/cli.py`, `bench_cli/run/core.py` | Update run-help text and tier docstring to "44 tasks" | Modify (Task 7) |
+| `tests/test_compare.py` | Update `assert MIN_FULL_EVAL_TASKS == 34` to 44 (and any other 34-anchored assertions) | Modify (Task 7) |
 
-No CLI changes. No `bench_cli/` changes for Phase 2.
+Two `bench_cli/` changes ARE required (Task 7 cutover) — original "no CLI changes" rule is overridden by the 34→44 threshold cutover.
 
 ---
 
@@ -133,7 +144,13 @@ Read the doc back. Confirm 10 candidates total, 2-3 per pillar, with discriminat
 
 **Why pilot first:** Authoring all 10 then running is a 10x blast radius. Pilot one and run pilot on strong + weak baseline to verify discriminative separation before scaling out. If separation is below target, swap the candidate before authoring 9 more.
 
-**Pilot target:** task #1 from the decision doc (the highest-confidence discriminative candidate).
+**Pilot target:** the highest-confidence discriminative candidate from the decision doc. Recommended pilot (per `/tmp/bench-b2-source-research.md`): **`b2-proxy-auth-netloc-rebuild`** (SWE-bench-Verified `psf__requests-6028`, requests PR #6028 / issue #6027). Backup pilots if separation <0.4: `b2-layered-setting-none-deletes` (requests-1921) or `b2-merge-attrs-copy-isolation` (xarray-4629).
+
+**Strong/weak aliases (LIVE, validated against `~/dev/litellm/config.yaml`):**
+- Strong: `openai/go-kimi-k2.7-code`
+- Weak: `openai/gemma-local`
+- Reference (cost calibration): `openai/go-minimax-m3`
+- Re-resolve at run-time; if any alias 404s, swap to a viable proxy alias and update the decision doc.
 
 - [ ] **Step 1: Author `task.py` modelled on `tasks/competence/q3-answer-the-question/task.py`**
 
@@ -224,11 +241,11 @@ Verify both before proceeding.
 
 - [ ] **Step 5: Run pilot on strong + weak baseline**
 
-Run the pilot task on TWO models (one strong, one weak) to verify discriminative separation:
+Run the pilot task on TWO models (one strong, one weak) to verify discriminative separation. **`--tier full` is required** so `--task <b2-name>` matches:
 
 ```bash
-.venv/bin/python -m bench_cli run --model openai/kimi-k2.7-code --task <task-name> --no-resume
-.venv/bin/python -m bench_cli run --model openai/gemma-local --task <task-name> --no-resume
+.venv/bin/python -m bench_cli run --tier full --model openai/go-kimi-k2.7-code --task <task-name> --no-resume
+.venv/bin/python -m bench_cli run --tier full --model openai/gemma-local --task <task-name> --no-resume
 ```
 
 Compare per-sample correctness between the two. **Target:** separation ≥ 0.4 correctness difference. If less, swap the candidate per the decision doc's anti-patterns.
@@ -286,13 +303,13 @@ git commit -m "task(b2): batch C — <task6-name>, <task7-name>, <task8-name>"
 
 - [ ] **Step 4: Interim discovery check**
 
-After Batches A–C land, verify all 9 (1 pilot + 3 + 2 + 3) new tasks are discoverable:
+After Batches A–C land, verify all 9 (1 pilot + 3 + 2 + 3) new tasks are discoverable. **Use the spec count, not raw `wc -l`** — the CLI prints headers/blank lines/footer so `wc -l` over-counts. Use:
 
 ```bash
-.venv/bin/python -m bench_cli run --tier full --list-tasks | wc -l
+.venv/bin/python -c "from bench_cli.run.core import _discover_tasks; print(len(_discover_tasks('full')))"
 ```
 
-This line count should have grown by ~9 (from 34 → ~43). If fewer, a task file is missing `task.py` or the `@task` decorator.
+Expected after the pilot + Batches A + B + C: 43 (34 baseline + 9 new). If fewer, a task file is missing `task.py` or the `@task` decorator.
 
 - [ ] **Step 5: Commit batch as it lands; do not bundle batches across commits**
 
@@ -316,25 +333,26 @@ git commit -m "task(b2): final batch — <task9-name>, <task10-name>"
 - [ ] **Step 2: Full discovery check**
 
 ```bash
-.venv/bin/python -m bench_cli run --tier full --list-tasks | wc -l
+.venv/bin/python -c "from bench_cli.run.core import _discover_tasks; print(len(_discover_tasks('full')))"
 ```
 
-Target line count: original 34 + 10 new = 44 tasks.
+Target: original 34 + 10 new = 44 tasks.
 
 - [ ] **Step 3: Pillar distribution audit**
 
-Confirm each pillar has 2-3 new tasks:
+Confirm each pillar has 2-3 new B2 tasks (and overall total grew by 10):
 
 ```bash
 .venv/bin/python -c "
 from pathlib import Path
 for pillar in ['analysis', 'competence', 'execution', 'universal']:
-    n = sum(1 for p in Path('tasks', pillar).iterdir() if p.is_dir())
-    print(f'{pillar}: {n} tasks')
+    total = sum(1 for p in Path('tasks', pillar).iterdir() if p.is_dir())
+    b2 = sum(1 for p in Path('tasks', pillar).iterdir() if p.is_dir() and p.name.startswith('b2-'))
+    print(f'{pillar}: {total} total ({b2} B2)')
 "
 ```
 
-Compare against the pre-Phase-2 counts (analysis=7, competence=9, execution=10, universal=8 → 34 tasks total). Expect each pillar to have grown by 2 or 3.
+Compare against the pre-Phase-2 counts (analysis=7, competence=9, execution=10, universal=8 → 34 tasks total). Expect each pillar B2 count to be 2 or 3; total = 44.
 
 - [ ] **Step 4: Commit audit (no code change; advisory commit)**
 
@@ -342,175 +360,208 @@ If the audit reveals a missing pillar slot, open a follow-up commit adding the t
 
 ---
 
-## Task 5: Calibrate `reference_cost_usd` for the new tasks
+## Task 5: Calibrate token/latency (qwen-local) + reference_cost_usd (minimax m3) for the new tasks
 
 **Files:**
 - Modify: `scorers/task_budgets.py`
+- Create: `scripts/extract_b2_costs.py`
 
-**Why this exists:** The cost pillar uses `reference_cost_usd` per task to compute `price_ratio = reference / actual`. The existing 34 tasks have these calibrated from a prior minimax m3 run; the 10 new ones need the same calibration pass before the cost pillar can score them sensibly.
+**Why two reference models:** the existing per-task contract in `scorers/task_budgets.py:1-13,20-24` defines `output_tokens` / `latency_seconds` against **qwen-local** (via BaselineStore / task_budgets Tier-2 fallback) and `reference_cost_usd` against **minimax m3**. Mixing the two baselines for the new B2 tasks would silently break cross-task pillar comparability. Run **two** B2-only loops and let the helper merge the per-task averages.
 
-- [ ] **Step 1: Run the new tasks on minimax m3**
+- [ ] **Step 1: Run the new tasks on minimax m3 (cost calibration)**
 
-```bash
-.venv/bin/python -m bench_cli run --model openai/minimax-m3 --no-resume
-```
-
-This produces 10 new `.eval` logs (one per new task). The `--no-resume` is mandatory.
-
-- [ ] **Step 2: Extract per-task avg_cost_usd from the new logs**
+Loop B2-only with `--tier full --task ... --no-resume`; do NOT rerun the 34 baseline tasks:
 
 ```bash
-.venv/bin/python - <<'PY'
-import zipfile, json, math
-from pathlib import Path
-
-for p in sorted(Path("logs").rglob("*.eval")):
-    if any(name in p.name for name in [
-        "b2-multi-file-rename-with-test-gate",
-        "b2-import-cycle-detect",
-        # ... all 10 new task names ...
-    ]):
-        try:
-            with zipfile.ZipFile(p) as z:
-                if "header.json" not in z.namelist():
-                    continue
-                # Take the eval task name from the header
-                h = json.loads(z.open("header.json").read().decode())
-                # Sample-level cost comes from samples — extract avg cost
-                # ... (use a small helper script; do not inline here)
-        except Exception as e:
-            print(f"SKIP {p}: {e}")
-PY
+B2_TASKS="b2-proxy-auth-netloc-rebuild b2-layered-setting-none-deletes ..."  # 10 names
+for task in $B2_TASKS; do
+    .venv/bin/python -m bench_cli run --tier full --task "$task" \
+        --model openai/go-minimax-m3 --no-resume
+done
 ```
 
-The exact extraction logic mirrors what `bench_cli.compare` already does. To avoid reinventing it, write a small helper script that imports the existing `load_compare_data` and prints one line per B2 task with `avg_cost_usd`, `avg_tokens`, and `avg_time`. Create `scripts/extract_b2_costs.py`:
+- [ ] **Step 2: Run the new tasks on qwen-local (token + latency calibration)**
+
+Same B2-only loop, qwen-local route:
+
+```bash
+for task in $B2_TASKS; do
+    .venv/bin/python -m bench_cli run --tier full --task "$task" \
+        --model openai/qwen-local --no-resume
+done
+```
+
+- [ ] **Step 3: Extract per-task averages from the new logs**
+
+Write `scripts/extract_b2_costs.py` that imports the existing `load_compare_data` and prints one line per B2 task joining qwen-local (`output_tokens`, `latency_seconds`) with minimax-m3 (`reference_cost_usd`). Critical fixes vs. the original plan: (a) Inspect records tasks as `b2_proxy_auth_netloc_rebuild` (snake_case), not the directory name - filter by `replace("_", "-").startswith("b2-")`; (b) recorded identity is `minimax/minimax-m3` not `minimax-m3`, so accept the `minimax` prefix and assert exactly one row per B2 task from each reference model. Fail-closed: a missing or ambiguous row aborts the calibration.
 
 ```python
 #!/usr/bin/env python3
-"""Extract per-task efficiency averages from .eval logs for new B2 tasks.
+"""Extract per-task token/latency/cost averages from B2 .eval logs.
 
-Usage: .venv/bin/python scripts/extract_b2_costs.py [--log-dir logs] [--model minimax-m3]
+Merges minimax-m3 (cost) and qwen-local (token + latency) rows per B2
+task and prints a tab-separated table the engineer copies into
+`scorers/task_budgets.py`.
 
-Prints tab-separated lines per (model, task) for tasks whose directory
-starts with 'b2-'. Pipe into a Python dict literal for `task_budgets.py`.
+Usage: .venv/bin/python scripts/extract_b2_costs.py [--log-dir logs]
+
+Asserts exactly one cost row and one token/latency row per B2 task.
+Exits nonzero on missing or ambiguous data.
 """
 from __future__ import annotations
 
 import argparse
-import json
-from pathlib import Path
+import sys
 
 from bench_cli.compare.core import load_compare_data
-from bench_cli.results.core import is_moniker_alias  # noqa: F401 -- used downstream
 
 
-def _b2_task_filter(task: str) -> bool:
-    return task.startswith("b2-")
+COST_MODEL_PREFIXES = ("minimax/", "minimaxai/minimax-m3", "minimax-m3")
+TOKEN_MODEL_PREFIXES = ("qwen/", "qwen-local")
+
+
+def _b2_filter(task_name: str) -> bool:
+    return task_name.replace("_", "-").startswith("b2-")
+
+
+def _select_model(matrix_for_task, prefixes):
+    """Pick the single recorded identity matching any prefix. Abort on 0/>1."""
+    matches = [m for m in matrix_for_task if any(m.startswith(p) for p in prefixes)]
+    if len(matches) == 0:
+        return None
+    if len(matches) > 1:
+        raise RuntimeError(
+            f"ambiguous model match for prefixes={prefixes}: {matches}"
+        )
+    return matches[0]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log-dir", default="logs")
-    parser.add_argument(
-        "--model",
-        default="minimax-m3",
-        help="Reference model whose avg cost will seed reference_cost_usd.",
-    )
     args = parser.parse_args()
 
     data = load_compare_data(args.log_dir)
-    b2_tasks = [t for t in data.tasks if _b2_task_filter(t)]
+    b2_tasks = [t for t in data.tasks if _b2_filter(t)]
+    if not b2_tasks:
+        print("No B2 tasks in log dir; aborting.", file=sys.stderr)
+        raise SystemExit(2)
 
-    out_rows: list[tuple[str, float, float, float]] = []
+    rows = []
     for task in b2_tasks:
-        models_to_cost = data.matrix.get(task, {})
-        for model, ps in models_to_cost.items():
-            if is_moniker_alias(model):
-                continue
-            # Use the requested --model first; fall back to first concrete.
-            if model == args.model or not out_rows:
-                out_rows.append((
-                    task,
-                    ps.avg_cost_usd if ps.avg_cost_usd == ps.avg_cost_usd else float("nan"),
-                    ps.avg_tokens,
-                    ps.avg_time,
-                ))
-                break
+        matrix_for_task = data.matrix.get(task, {})
+        cost_model = _select_model(matrix_for_task, COST_MODEL_PREFIXES)
+        token_model = _select_model(matrix_for_task, TOKEN_MODEL_PREFIXES)
+        if cost_model is None:
+            raise RuntimeError(
+                f"task={task}: no minimax-m3 cost row (run Step 1 first)"
+            )
+        if token_model is None:
+            raise RuntimeError(
+                f"task={task}: no qwen-local token row (run Step 2 first)"
+            )
 
-    # Tab-separated output. Engineer copies into task_budgets.py.
-    print("task_name\\tavg_cost_usd\\tavg_tokens\\tavg_time")
-    for task, cost, tokens, time_s in out_rows:
-        print(f"{task}\\t{cost:.6f}\\t{tokens:.1f}\\t{time_s:.2f}")
+        cost_ps = matrix_for_task[cost_model]
+        token_ps = matrix_for_task[token_model]
+        cost = cost_ps.avg_cost_usd
+        if cost != cost:  # NaN guard
+            raise RuntimeError(f"task={task}: cost is NaN")
+        if cost <= 0:
+            raise RuntimeError(f"task={task}: cost <= 0 ({cost})")
+
+        rows.append((task, round(cost, 6), round(token_ps.avg_tokens, 1),
+                     round(token_ps.avg_time, 2)))
+
+    print("task_name\treference_cost_usd\toutput_tokens\tlatency_seconds")
+    for task, cost, tokens, time_s in rows:
+        print(f"{task}\t{cost:.6f}\t{tokens:.1f}\t{time_s:.2f}")
 
 
 if __name__ == "__main__":
     main()
 ```
 
-For plan-level brevity, the deliverable is: extract 10 (task_name, avg_cost_usd) pairs and apply them to `task_budgets.py`.
+Run it after both Steps 1 and 2 complete:
 
-- [ ] **Step 3: Update `scorers/task_budgets.py`**
+```bash
+.venv/bin/python scripts/extract_b2_costs.py
+```
 
-Add one new entry per new task to `scorers/task_budgets.py`. Match the existing dict literal at the top of the module (around line 24). Use the values from the script above; round `reference_cost_usd` to the nearest 1e-6:
+Expected: 10 lines, one per B2 task. If shorter, the missing row's model has no log yet - re-run that `(task, model)` pair.
+
+- [ ] **Step 4: Update `scorers/task_budgets.py`**
+
+For each of the 10 B2 tasks, add a `TaskBudget` entry to the `TASK_BUDGETS` dict. Use `output_tokens` and `latency_seconds` from the qwen-local column and `reference_cost_usd` from the minimax-m3 column. The key is the directory name (hyphenated); `get_task_budget` normalizes hyphen<->underscore for lookups.
 
 ```python
     "<task-directory-name>": TaskBudget(
-        output_tokens=<avg_tokens from Step 2>,
-        latency_seconds=<avg_time from Step 2>,
-        reference_cost_usd=<avg_cost_usd from Step 2 rounded to nearest 1e-6>,
+        output_tokens=<qwen-local avg_tokens from Step 3>,
+        latency_seconds=<qwen-local avg_time from Step 3>,
+        reference_cost_usd=<minimax-m3 avg_cost_usd from Step 3>,
     ),
 ```
 
-If multiple minimax-m3 samples exist for a B2 task, use the mean across samples. `output_tokens` and `latency_seconds` come from the script's last two columns.
+If multiple samples exist for a B2 task per reference model, use the mean across samples.
 
-- [ ] **Step 4: Sanity-check pricing appears in compare**
+- [ ] **Step 5: Sanity-check pricing appears in compare**
 
-Run the compare JSON path on the minimax-m3 logs and confirm the new tasks now appear; the per-row `price_ratio` value will be populated automatically by the existing `scorers/price_ratio.py` resolution chain when compare loads the log:
+Confirm the new tasks appear with a non-null `price_ratio` for the minimax-m3 recorded identity. Filter by the recorded identity (`minimax/minimax-m3`), not the routing alias, since recorded identity is what compare indexes by:
 
 ```bash
-.venv/bin/python -m bench_cli compare --json 2>&1 | python -c "
+.venv/bin/python -m bench_cli compare --json 2>&1 | .venv/bin/python -c "
 import json, sys
 data = json.loads(sys.stdin.read())
-b2 = [r for r in data if r['task'].startswith('b2-') and 'minimax' in r['model'].lower()]
+b2 = [r for r in data if r['task'].replace('_','-').startswith('b2-') and 'minimax' in r['model'].lower()]
 print(f'B2 rows for minimax-m3: {len(b2)}')
 for row in sorted(b2, key=lambda r: r['task']):
-    print(f\"  {row['task']:<40} cost_usd={row['avg_cost_usd']}  price_ratio={row['price_ratio']}\")
+    print(f"  {row['task']:<40} cost_usd={row['avg_cost_usd']}  price_ratio={row['price_ratio']}")
 "
 ```
 
-Expected: 10 rows (one per B2 task) with non-null `price_ratio`. If `price_ratio` is null, the new task is missing from `task_budgets.py` — re-check Step 3.
+Expected: 10 rows with non-null `price_ratio`. If null, the task is missing from `task_budgets.py`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add scorers/task_budgets.py scripts/extract_b2_costs.py
-git commit -m "feat(budgets): reference_cost_usd for B2 task set + extract helper"
+git commit -m "feat(budgets): B2 task calibration (cost=minimax-m3, token+latency=qwen-local) + extract helper"
 ```
+
 
 ---
 
-## Task 6: B2 task discovery tests + verification helper
+## Task 6: B2 task behavioral tests + verifier smoke
 
 **Files:**
 - Create: `tests/test_b2_tasks.py`
 
-**Why this exists:** Once 10 new tasks exist, regression protection matters: a future reorganization of `tasks/` must not silently drop them from `--tier full` discovery. These tests guard against that.
+**Why this exists:** the original plan's six tests verified file shape only — they never executed a B2 verifier, allowed `>= 8` tasks (not the contractually-agreed 10), and never enforced per-task gold/distractor behavior. A verifier that rejects the gold answer or accepts a designed distractor would pass all six tests and silently invalidate Phase 3 IRT inputs. These tests replace the originals with strict discovery + behavioral coverage, mirroring the spirit of `tests/test_tier2_tasks.py` and the executable-aware helper in `tests/conftest.py`.
 
 - [ ] **Step 1: Write the test file**
 
 Create `tests/test_b2_tasks.py`:
 
 ```python
-"""Discovery + executable-bit + verify.sh shape tests for B2 tasks.
+"""Discovery + executable + dataset-shape + budget + verifier-behavior tests
+for Phase 2 B2 tasks.
 
-Per the Phase 2 plan, every new B2 task must:
-  1. Live under tasks/<pillar>/<task-name>/ with task.py + verify.sh + dataset.json.
+Each B2 task MUST:
+  1. Live under tasks/<pillar>/b2-*/ with task.py + verify.sh + dataset.json.
   2. Have an executable verify.sh (os.access(..., os.X_OK)).
-  3. Have a dataset.json that decodes as a JSON list with required keys.
-  4. Have a task.py that exposes @task-decorated callables.
+  3. Have a dataset.json that parses as a list of samples, each with
+     input/target/id, with >= 4 unique ids.
+  4. Have a task.py that exposes >= 1 @task-decorated callable.
+  5. Be discoverable through `_discover_tasks("full")` AND loadable through
+     Inspect's `_resolve_task` (so a typo in @task does not silently break
+     the run).
+  6. Have a registered TaskBudget in scorers/task_budgets.py after Task 5.
+  7. Pass its verifier against a known-good response (the dataset's target
+     OR a hand-written golden answer) AND fail its verifier against at least
+     4 designed distractor samples per task (assertions parameterized below).
 
-The test below scans the b2-* directory entries and asserts each task satisfies
-the four invariants above.
+The test harness lives alongside tests/test_tier2_tasks.py: import the shared
+`executable_verify` helper from tests/conftest.py for known-good/known-bad
+coverage.
 """
 
 from __future__ import annotations
@@ -518,10 +569,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
+
+import pytest
+
+from scorers.task_budgets import get_task_budget
 
 
 _TASKS_ROOT = Path(__file__).resolve().parent.parent / "tasks"
+_REQUIRED_FILES = ("task.py", "dataset.json", "verify.sh")
 
 
 def _b2_task_dirs() -> list[Path]:
@@ -533,56 +590,113 @@ def _b2_task_dirs() -> list[Path]:
     return sorted(out)
 
 
-def test_b2_tasks_count_is_at_least_8():
-    """Phase 2 ships ~10 tasks; conservative floor at 8 to allow for swaps."""
-    assert len(_b2_task_dirs()) >= 8, (
-        f"expected ≥8 B2 tasks, found {len(_b2_task_dirs())}: "
-        f"{[p.name for p in _b2_task_dirs()]}"
+def _expected_b2_names() -> list[str]:
+    """Read the B2 candidate list from the decision doc if present."""
+    doc = _TASKS_ROOT.parent / "docs" / "decisions" / "2026-07-11-b2-task-candidates.md"
+    if not doc.is_file():
+        return []
+    text = doc.read_text()
+    return sorted(set(re.findall(r"`(b2-[a-z0-9-]+)`", text)))
+
+
+def test_b2_tasks_count_is_exactly_10():
+    """Phase 2 ships exactly 10 tasks; allow swaps down to 8 only if documented."""
+    names = [p.name for p in _b2_task_dirs()]
+    expected = _expected_b2_names()
+    if expected:
+        missing = [n for n in expected if n not in names]
+        assert not missing, f"expected B2 tasks missing from filesystem: {missing}"
+    assert len(names) >= 8, f"expected >=8 B2 tasks, found {len(names)}: {names}"
+    assert len(names) <= 10, f"expected <=10 B2 tasks, found {len(names)}: {names}"
+
+
+@pytest.mark.parametrize("task_dir", _b2_task_dirs(), ids=lambda p: p.name)
+def test_b2_task_has_required_files(task_dir: Path):
+    for name in _REQUIRED_FILES:
+        assert (task_dir / name).is_file(), f"missing {name} in {task_dir}"
+
+
+@pytest.mark.parametrize("task_dir", _b2_task_dirs(), ids=lambda p: p.name)
+def test_b2_verify_sh_is_executable(task_dir: Path):
+    verify = task_dir / "verify.sh"
+    assert os.access(verify, os.X_OK), f"verify.sh not executable in {task_dir}"
+
+
+@pytest.mark.parametrize("task_dir", _b2_task_dirs(), ids=lambda p: p.name)
+def test_b2_dataset_json_is_well_formed(task_dir: Path):
+    ds = task_dir / "dataset.json"
+    with ds.open() as f:
+        samples = json.load(f)
+    assert isinstance(samples, list), f"dataset.json not a list in {task_dir}"
+    assert len(samples) >= 4, f"dataset.json must have >=4 samples in {task_dir}"
+    for sample in samples:
+        for key in ("input", "target", "id"):
+            assert key in sample, f"sample missing {key} in {task_dir}"
+    ids = [s["id"] for s in samples]
+    assert len(ids) == len(set(ids)), f"duplicate ids in {task_dir}"
+
+
+@pytest.mark.parametrize("task_dir", _b2_task_dirs(), ids=lambda p: p.name)
+def test_b2_task_py_has_task_decorator(task_dir: Path):
+    text = (task_dir / "task.py").read_text()
+    assert re.search(r"^@task\s*$", text, re.MULTILINE), (
+        f"no @task decorator in {task_dir}/task.py"
     )
 
 
-def test_b2_tasks_have_required_files():
-    """Every B2 task has task.py, dataset.json, verify.sh."""
-    for p in _b2_task_dirs():
-        for name in ("task.py", "dataset.json", "verify.sh"):
-            assert (p / name).is_file(), f"missing {name} in {p}"
+def test_b2_tasks_discoverable_in_full_tier():
+    """Every B2 directory must appear in `_discover_tasks("full")`."""
+    from bench_cli.run.core import _discover_tasks
+
+    discovered = {Path(s).parent.name for s in _discover_tasks("full")}
+    on_disk = {p.name for p in _b2_task_dirs()}
+    missing = on_disk - discovered
+    assert not missing, f"B2 tasks not discovered in --tier full: {missing}"
 
 
-def test_b2_verify_sh_is_executable():
-    """verify.sh must be chmod +x — scorer checks this at runtime."""
-    for p in _b2_task_dirs():
-        verify = p / "verify.sh"
-        assert os.access(verify, os.X_OK), f"verify.sh not executable in {p}"
+@pytest.mark.parametrize("task_dir", _b2_task_dirs(), ids=lambda p: p.name)
+def test_b2_task_loads_through_resolve_task(task_dir: Path):
+    """The @task factory must load without error via Inspect's resolver."""
+    from inspect_ai._util.registry import registry_info
+
+    spec = f"tasks/{task_dir.parent.name}/{task_dir.name}/task.py"
+    info = registry_info(spec)
+    assert info is not None, f"could not resolve Inspect task: {spec}"
 
 
-def test_b2_dataset_json_well_formed():
-    """dataset.json must parse, be a list, every sample has input/target/id."""
-    for p in _b2_task_dirs():
-        ds = p / "dataset.json"
-        with ds.open() as f:
-            data = json.load(f)
-        assert isinstance(data, list), f"dataset.json not a list in {p}"
-        assert data, f"dataset.json empty in {p}"
-        for sample in data:
-            for key in ("input", "target", "id"):
-                assert key in sample, f"sample missing {key} in {p}"
-        # Each id must be unique.
-        ids = [s["id"] for s in data]
-        assert len(ids) == len(set(ids)), f"duplicate ids in {p}"
+@pytest.mark.parametrize("task_dir", _b2_task_dirs(), ids=lambda p: p.name)
+def test_b2_task_has_calibrated_budget(task_dir: Path):
+    """TaskBudget must be registered after Task 5 calibration."""
+    budget = get_task_budget(task_dir.name)
+    assert budget is not None, f"no TaskBudget for {task_dir.name}"
+    assert budget.reference_cost_usd is not None and budget.reference_cost_usd > 0, (
+        f"missing/zero reference_cost_usd for {task_dir.name}"
+    )
 
 
-def test_b2_task_py_has_decorated_callable():
-    """task.py exposes ≥1 @task-decorated callable (Inspect discovery)."""
-    for p in _b2_task_dirs():
-        text = (p / "task.py").read_text()
-        # Regex matches the @task decorator followed by `def <name>():`
-        assert re.search(r"^@task\s*$", text, re.MULTILINE), \
-            f"no @task decorator in {p}/task.py"
+@pytest.mark.parametrize("task_dir", _b2_task_dirs(), ids=lambda p: p.name)
+def test_b2_verifier_passes_on_golden_answer(task_dir: Path):
+    """Build a golden answer from each sample's `target` field; verifier must pass."""
+    samples = json.loads((task_dir / "dataset.json").read_text())
+    verify = task_dir / "verify.sh"
+    for sample in samples:
+        target = sample["target"]
+        proc = subprocess.run(
+            ["bash", str(verify)],
+            input=target,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            cwd=str(task_dir),
+        )
+        assert proc.returncode == 0, (
+            f"verifier failed for {task_dir.name}/{sample['id']} on golden target.\n"
+            f"stdout: {proc.stdout}\nstderr: {proc.stderr}"
+        )
 
 
 def test_b2_pillar_distribution_in_range_2_to_3():
-    """Per-pillar distribution: each pillar grew by 2-3 tasks."""
-    counts: dict[str, int] = {}
+    counts = {}
     for pillar in ("analysis", "competence", "execution", "universal"):
         counts[pillar] = sum(
             1 for p in (_TASKS_ROOT / pillar).iterdir()
@@ -592,133 +706,259 @@ def test_b2_pillar_distribution_in_range_2_to_3():
         assert 2 <= n <= 3, f"{pillar} pillar has {n} B2 tasks (expected 2-3)"
 ```
 
-- [ ] **Step 2: Run tests — confirm pass**
+- [ ] **Step 2: Add per-task distractor behavioral coverage**
 
-Run: `.venv/bin/pytest tests/test_b2_tasks.py -v`
-Expected: all 6 tests pass after Tasks 1–5 are complete (10 B2 tasks in `tasks/<pillar>/`).
+For each B2 task, add 4+ distractor samples in `dataset.json` (each with a `target` that the verifier is designed to fail), then add a parameterized `test_b2_verifier_fails_on_distractors` in the same test file that exercises each distractor. The verifier for the pilot must fail for at least 4 designed distractors; otherwise the discriminative rationale is suspect. Use the executable-aware helper pattern from `tests/test_tier2_tasks.py:48-122`. Do not relax this rule even if the verifier is hard to author: that is itself a discriminative signal.
 
-- [ ] **Step 3: Run full suite — confirm no regressions**
+- [ ] **Step 3: Run tests — confirm pass**
 
-Run: `.venv/bin/pytest -q`
+```bash
+.venv/bin/pytest tests/test_b2_tasks.py -v
+```
+
+Expected: all tests pass after Tasks 1-5 are complete (10 B2 tasks in `tasks/<pillar>/`, with budgets registered).
+
+- [ ] **Step 4: Run full suite — confirm no regressions**
+
+```bash
+.venv/bin/pytest -q
+```
+
 Expected: full suite green.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add tests/test_b2_tasks.py
-git commit -m "test(b2): B2 task discovery + executable + shape tests"
+git commit -m "test(b2): B2 task discovery + budget + verifier behavior (gold + distractors)"
 ```
 
 ---
 
-## Task 7: Full-eval run for 16 models with `--no-resume`
-
-**Files:** No new files; this task produces ~160 new `.eval` logs in `logs/`.
-
-**Why this exists:** The PRD Test Plan locks Phase 2's success criteria item #10 (`≥8 new tasks classified high-discrimination by IRT`) but the IRT engine itself is Phase 3. Phase 2 only delivers the data — the classification lands in Phase 3. So Phase 2's run produces the **inputs**; Phase 3 verifies the discrimination.
-
-- [ ] **Step 1: Build the 16-model run list**
-
-The "16" is illustrative — the actual cohort is whatever set of models currently has full-eval coverage across the 34 baseline tasks (`MIN_FULL_EVAL_TASKS`). Derive the concrete list at session time from the existing logs rather than hardcoding it, with the viability tier (added 2026-07-07) as a useful prior. Run from the project root:
-
-```bash
-.venv/bin/python -c "
-from pathlib import Path
-import re
-counts: dict[str, int] = {}
-for p in Path('logs').rglob('*.eval'):
-    # Naming convention: <task-name>_<model>_<date>.eval or similar.
-    # Pull task-name using the existing convention (excludes date suffix).
-    m = re.match(r'(\d{4}-\d{2}-\d{2})_([a-z0-9-]+)_', p.name)
-    if not m:
-        continue
-    task = m.group(2)
-    counts[task] = counts.get(task, 0) + 1
-# Models with coverage on >= 34 distinct task directories.
-# Use the cohort from the most recent full-eval cycle as a starting point.
-print('\n'.join(sorted(counts.keys())))
-"
-```
-
-Capture the output as `MODELS` for Step 2. The candidates from viability are: kimi, mimo, deepseek-v4-pro, minimax-m3, qwen3.5-max, glm-5.2 (subject to current LiteLLM proxy config at `~/dev/litellm/config.yaml`). Drop any model that fails the viability smoke before the full run.
-
-If fewer than 10 concrete models are available, document it in the session handoff and proceed with what is — the SC10 floor is "≥8 tasks classified high-discrimination", not "≥16 models × 10 tasks".
-
-- [ ] **Step 2: Run `--no-resume` per model in parallel where possible**
-
-```bash
-# Use the captured MODELS list from Step 1.
-while read -r model; do
-    [[ -z "$model" || "$model" == \#* ]] && continue
-    echo "RUNNING $model"
-    .venv/bin/python -m bench_cli run --model "openai/$model" --no-resume
-done <<< "$MODELS"
-```
-
-`-j` parallelism may be set per the speedup backlog. Do not exceed LiteLLM proxy RPM limits (see `~/dev/litellm/config.yaml` for `enforce_model_rate_limits`). Run sequentially when proxy RPM is at risk; parallel only after a single smoke run confirms safety.
-
-- [ ] **Step 3: Count new logs written**
-
-```bash
-.venv/bin/python -c "
-from pathlib import Path
-new_tasks = [p.parent.name for p in Path('tasks').rglob('task.py')
-             if p.parent.name.startswith('b2-')]
-hits = []
-for p in Path('logs').rglob('*.eval'):
-    for name in new_tasks:
-        if name in p.name:
-            hits.append(p.name)
-            break
-print(f'new task logs: {len(hits)}')
-print('unique task names logged:', len({h for h in hits for n in new_tasks if n in h}))
-"
-```
-
-**Verification:** `len(hits) == N_models × 10 tasks` (allow ±10 for transient network errors — retry failures individually). If short, the `--no-resume` hypothesis is the first thing to check (per spec's CRITICAL EXECUTION NOTE in section 2A).
-
-- [ ] **Step 4: Distribution check**
-
-Confirm each of the 10 tasks has logs from N_models models. If any task has 0 logs, re-run that one task for the missing models only (`bench run --model openai/<m> --task <task>`).
-
-- [ ] **Step 5: Commit (none — logs live in `logs/` which is gitignored or not tracked depending on repo config)**
-
-If `logs/` is in `.gitignore`, there's nothing to commit. If not, do not bulk-commit 160 files — add `logs/` to `.gitignore` if not already there.
-
----
-
-## Task 8: README + handoff updates
+## Task 7: 34->44 full-eval cutover (suite semantics)
 
 **Files:**
-- Modify: `README.md` (suite size: 34 → 44 tasks; mention `--tier full` now includes B2)
-- Modify: `docs/plans/2026-07-11-phase-0-rescore-and-capability-default.md` ("Next" pointer to Phase 3)
+- Modify: `bench_cli/compare/core.py` (`MIN_FULL_EVAL_TASKS` 34 -> 44)
+- Modify: `bench_cli/compare/bootstrap.py` (`min_n` -> import from `compare.core`)
+- Modify: `bench_cli/compare/cli.py` (`--min-tasks` default + help text 34 -> 44)
+- Modify: `bench_cli/run/cli.py` and `bench_cli/run/core.py` (run-help text + tier docstring 34 -> 44)
+- Modify: `tests/test_compare.py` (`assert MIN_FULL_EVAL_TASKS == 34` -> 44; any other 34-anchored fixtures)
 
-- [ ] **Step 1: Update task count in `README.md`**
+**Why this exists:** the original plan's "no bench_cli/ changes" rule is overridden by the cutover. After the suite grows to 44 tasks, models with only the 34 baseline logs must NOT remain ranked as "full" beside 44-task models, and their means/CIs come from different item sets. Cutting over BEFORE B2 data collection keeps comparison semantics consistent; cutting over AFTER makes all in-flight runs partial mid-stream.
 
-Find the "Suite size" line in the README quick reference and update from `34 tasks` to `44 tasks (34 baseline + 10 B2 discrimination tasks)`.
+The original Task 7 (cohort collection) is now **Task 8** below.
+
+- [ ] **Step 1: Update `MIN_FULL_EVAL_TASKS` to 44**
+
+Edit `bench_cli/compare/core.py:454`:
+
+```python
+MIN_FULL_EVAL_TASKS = 44  # `--tier full` task count after Phase 2; partial evals are excluded from ranking
+```
+
+- [ ] **Step 2: Centralize bootstrap `min_n` on the constant**
+
+Replace the literal `34` in `bench_cli/compare/bootstrap.py:13-30` with `MIN_FULL_EVAL_TASKS` imported from `bench_cli.compare.core`. Bootstrap default param docstring stays as "default 44".
+
+- [ ] **Step 3: Update click defaults/help to 44**
+
+In `bench_cli/compare/cli.py`, change the `--min-tasks` Click default and help text from `34` to `44`. In `bench_cli/run/cli.py:175-178` and `bench_cli/run/core.py:212-215`, update the run-help text and tier docstring from "all 34 eval tasks" to "all 44 eval tasks".
+
+- [ ] **Step 4: Update test lock**
+
+In `tests/test_compare.py:300-301`:
+
+```python
+def test_min_full_eval_tasks_is_44():
+    assert MIN_FULL_EVAL_TASKS == 44
+```
+
+- [ ] **Step 5: Run targeted tests**
+
+```bash
+.venv/bin/pytest tests/test_compare.py tests/test_viability_tier.py -q
+.venv/bin/pytest -q
+```
+
+Expected: 755+ tests green.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add bench_cli/compare/core.py bench_cli/compare/bootstrap.py bench_cli/compare/cli.py bench_cli/run/cli.py bench_cli/run/core.py tests/test_compare.py
+git commit -m "feat(suite): full-eval gate 34 -> 44 after Phase 2 B2 expansion"
+```
+
+---
+
+## Task 8: B2-only cohort run
+
+**Files:** No new files; this task produces `N_models x 10` new `.eval` logs in `logs/`.
+
+**Why this exists:** the PRD Test Plan locks Phase 2's success criteria item #10 (`>=8 new tasks classified high-discrimination by IRT`), but the IRT engine itself is Phase 3. Phase 2 only delivers the data; Phase 3 verifies the discrimination. Run **only the 10 B2 tasks per model**, never the full 44-task suite, to bound paid work.
+
+- [ ] **Step 1: Build the runnable cohort from the live proxy + recorded-identity matching**
+
+The original plan's filename-regex approach is broken (current logs use `<timestamp>_<task>_<id>.eval` with no model token). Build the cohort from recorded identities in `load_compare_data`, mapped back to their runnable proxy aliases.
+
+```bash
+.venv/bin/python - <<'PY'
+"""Print the cohort: runnable proxy alias -> recorded identity,
+restricted to identities with >= MIN_FULL_EVAL_TASKS (44) baseline coverage
+after the Task 7 cutover.
+
+Validate the cohort, do not pre-flight from filenames.
+"""
+from bench_cli.compare.core import load_compare_data, MIN_FULL_EVAL_TASKS
+from bench_cli.run.core import build_model_route
+
+data = load_compare_data("logs")
+# Concrete recorded identities with full coverage on baseline tasks
+# (post-cutover: >= 44 tasks = full eval).
+covered = {
+    model for model, aggs in (data.model_aggregates or {}).items()
+    if aggs.get("n", 0) >= MIN_FULL_EVAL_TASKS
+}
+# Map recorded -> runnable alias by probing the live proxy for known aliases.
+# The proxy is the source of truth: if a recorded identity has no runnable
+# alias, drop it from the cohort.
+KNOWN_PROXY_ALIASES = [
+    "go-kimi-k2.7-code", "go-minimax-m3", "qwen-local", "gemma-local",
+    "go-mimo-pro", "deepseek-v4-pro", "qwen3.5-max", "glm-5.2",
+]
+cohort = []
+for recorded in sorted(covered):
+    for alias in KNOWN_PROXY_ALIASES:
+        try:
+            route = build_model_route(alias, None)
+        except Exception:
+            continue
+        if route.recorded_name == recorded:
+            cohort.append((alias, recorded))
+            break
+for alias, recorded in cohort:
+    print(f"{alias}\t{recorded}")
+PY
+```
+
+Capture the output as `COHORT` for Step 2. Drop any alias that 404s on the proxy at first smoke. If fewer than 8 concrete models are available, document it in the session handoff and proceed with what exists — the SC10 floor is ">=8 tasks classified high-discrimination", not ">=16 models x 10 tasks".
+
+- [ ] **Step 2: Run `--no-resume` per `(model, task)` pair — B2 only**
+
+```bash
+B2_TASKS="b2-proxy-auth-netloc-rebuild b2-layered-setting-none-deletes ..."  # 10 names
+while read -r line; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    alias=$(echo "$line" | cut -f1)
+    for task in $B2_TASKS; do
+        echo "RUNNING $alias on $task"
+        .venv/bin/python -m bench_cli run --tier full --task "$task" \
+            --model "openai/$alias" --no-resume
+    done
+done <<< "$COHORT"
+```
+
+`-j` parallelism may be set per the speedup backlog. Do not exceed LiteLLM proxy RPM limits (see `~/dev/litellm/config.yaml` `enforce_model_rate_limits`). Run sequentially when proxy RPM is at risk; parallel only after a single smoke run confirms safety.
+
+- [ ] **Step 3: Verify the new logs**
+
+Inspect log headers for each successful `(recorded_identity, task)` pair. The plan's filename-only count is unreliable (pilot/calibration logs and retries inflate it); header inspection is the only authoritative check.
+
+```bash
+.venv/bin/python - <<'PY'
+"""Snapshot new logs created during Task 8 Step 2 and verify
+the exact Cartesian product `cohort x B2_tasks` is present."""
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from bench_cli.compare.core import load_compare_data
+
+START = datetime.utcnow() - timedelta(hours=4)  # tune at runtime
+EXPECTED_TASKS = []  # 10 B2 directory names
+COHORT = set()        # recorded identities from Step 1
+
+seen = set()
+for p in Path("logs").rglob("*.eval"):
+    try:
+        from bench_cli.inspect.core import read_log_header
+        h = read_log_header(p)
+    except Exception:
+        continue
+    if h.status != "success":
+        continue
+    started = datetime.fromisoformat(h.started_at.replace("Z", ""))
+    if started < START:
+        continue
+    task = h.task_args.task  # snake_case
+    model = h.eval.model      # recorded identity
+    if task.replace("_", "-") in EXPECTED_TASKS and model in COHORT:
+        seen.add((task, model))
+
+missing = {
+    (t.replace("-", "_"), m) for m in COHORT for t in EXPECTED_TASKS
+} - seen
+print(f"present: {len(seen)}, missing: {len(missing)}")
+for pair in sorted(missing):
+    print(f"  missing: {pair}")
+PY
+```
+
+Expected: `missing == 0`. If short, re-run only the missing `(task, alias)` pairs:
+
+```bash
+.venv/bin/python -m bench_cli run --tier full --task <task> --model openai/<alias> --no-resume
+```
+
+- [ ] **Step 4: Commit (none — `logs/` is gitignored)**
+
+If `logs/` is in `.gitignore`, nothing to commit. If not, add it; do not bulk-commit logs.
+
+---
+
+## Task 9: README + handoff updates
+
+**Files:**
+- Modify: `README.md` (suite size 34 -> 44; mention B2 discrimination tasks)
+- (Removed: `docs/plans/2026-07-11-phase-0-rescore-and-capability-default.md` is no longer in this plan — the previous "Next" pointer there is already up to date.)
+
+- [ ] **Step 1: Update task count and B2 mention in `README.md`**
+
+Find the run-help / quick-reference block (no literal "Suite size" line exists — update both the `--tier full` description and the quick-reference count). Update from `34` to `44 tasks (34 baseline + 10 B2 discrimination tasks)`.
 
 - [ ] **Step 2: Update second-brain handoff (via `brain-ctl`)**
 
 After the session ends, run:
 
 ```bash
-brain-ctl sessions:append bench <session-id> --work-done "Phase 2 shipped: 10 B2 tasks added (tasks/<pillar>/b2-*/), reference costs calibrated, 160 new logs in-place. Suite now 44 tasks; Phase 3 IRT can begin."
+brain-ctl sessions:append bench <session-id> --work-done "Phase 2 shipped: 10 B2 tasks added (tasks/<pillar>/b2-*/), reference costs calibrated, B2-only cohort logs in-place, full-eval gate moved 34 -> 44. Phase 3 IRT can begin."
 ```
 
 For per-task status changes:
 
 ```bash
-# Step 2.1: capture current task IDs from the live state.
-brain-ctl tasks:list bench --filter status=active
-# Identify the row whose text starts with "bench: add harder discriminating tasks".
-# Capture its `id` field — that's the correctness-ceiling task to close.
-CEILING_TASK_ID=<id from above, e.g. 29b2501c>
+CEILING_TASK_ID=$(brain-ctl tasks bench --filter status=active \
+    | python3 -c '
+import json, sys, re
+raw = sys.stdin.read()
+# brain-ctl tasks bench output may be a list of dicts (JSON) or text rows.
+try:
+    rows = json.loads(raw)
+    for r in rows:
+        if "harder discriminating" in r.get("text",""):
+            print(r["id"]); break
+except Exception:
+    for line in raw.splitlines():
+        m = re.search(r"\b([0-9a-f]{8})\b.*harder discriminating", line)
+        if m: print(m.group(1)); break
+')
 
-brain-ctl tasks:close bench "$CEILING_TASK_ID"    # correctness ceiling (PHASE 2 supersedes)
-brain-ctl tasks:create bench "Phase 3 — IRT engine" --priority high
+if [[ -n "$CEILING_TASK_ID" ]]; then
+    brain-ctl tasks:complete bench "$CEILING_TASK_ID"
+fi
+brain-ctl tasks:create bench "Phase 3 - IRT engine" --priority high
 ```
 
-Exact IDs are looked up from `brain-ctl tasks:list bench --filter status=active`. Insert as needed.
+Exact IDs are looked up from `brain-ctl tasks bench`. Insert as needed.
 
 - [ ] **Step 3: Commit README update**
 
@@ -731,18 +971,17 @@ git commit -m "docs: B2 suite is 44 tasks total"
 
 ## Done Criteria
 
-- [ ] All 8 tasks shipped. **≥8 new `b2-*` task directories** under `tasks/<pillar>/` (per `test_b2_tasks_count_is_at_least_8`; aim for 10, but a task can be swapped per the pilot calibration in Task 2 Step 5).
-- [ ] Decision doc at `docs/decisions/2026-07-11-b2-task-candidates.md` lists the 10 candidates with rationale.
-- [ ] Every new task has: executable `verify.sh`, valid `dataset.json` (≥4 samples, unique ids), `@task`-decorated callable in `task.py`.
-- [ ] `scorers/task_budgets.py` has `reference_cost_usd` for each new task.
-- [ ] `tests/test_b2_tasks.py` exists and all 6 tests pass.
-- [ ] 160 new `.eval` logs in `logs/`. Per-task count ≈ 16 models.
+- [ ] All 9 tasks shipped. **Exactly 10** new `b2-*` task directories under `tasks/<pillar>/` (the test floor of 8 exists only for in-flight swaps).
+- [ ] Decision doc at `docs/decisions/2026-07-11-b2-task-candidates.md` lists the 10 candidates with the verified SWE-bench-Verified source identities and discriminative rationale from `/tmp/bench-b2-source-research.md`.
+- [ ] Every new task has: executable `verify.sh`, valid `dataset.json` (>= 4 samples, unique ids, >= 4 designed distractor samples), `@task`-decorated callable in `task.py`.
+- [ ] `scorers/task_budgets.py` has `reference_cost_usd`, `output_tokens`, and `latency_seconds` for each new task (qwen-local for the latter two, minimax-m3 for the first).
+- [ ] `tests/test_b2_tasks.py` exists; every test passes including gold-answer and per-distractor behavioral coverage.
+- [ ] Full-eval gate moved 34 -> 44 (`MIN_FULL_EVAL_TASKS`, bootstrap `min_n`, compare CLI default/help, run-help text, test locks).
+- [ ] New B2 `.eval` logs cover the exact Cartesian product `cohort x B2_tasks` with header-verified `(recorded_identity, task, status=success)` triples. Per-task count equals `|cohort|`.
 - [ ] Pillar distribution: 2-3 new tasks per pillar.
-- [ ] SC10 (partial): tasks are in place; full verification (`≥8 classified high-discrimination by IRT`) lands in Phase 3.
+- [ ] SC10 (partial): tasks are in place; full verification (`>=8 classified high-discrimination by IRT`) lands in Phase 3.
 - [ ] Brain handoff updated via `brain-ctl`.
-- [ ] `.venv/bin/pytest -q` → green.
-
-## Out of Scope (Phase-gated)
+- [ ] `.venv/bin/pytest -q` -> green.## Out of Scope (Phase-gated)
 
 - IRT discrimination classification of B2 tasks (Phase 3 — SC10 full verification).
 - Preset router that uses IRT θ on the new task set (Phase 4).
