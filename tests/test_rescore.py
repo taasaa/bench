@@ -143,3 +143,27 @@ def test_rescore_idempotent(tmp_path: Path) -> None:
     assert mtime_after_second == mtime_after_first, (
         "second run rewrote the log — idempotency violated"
     )
+
+
+from click.testing import CliRunner
+
+from bench_cli.main import cli
+
+
+def test_rescore_cli_runs(tmp_path: Path) -> None:
+    """``bench rescore`` reports total/updated/skipped counts on stdout."""
+    eval_dir = tmp_path / "logs"
+    eval_dir.mkdir()
+    _make_eval_log(eval_dir / "good.eval")
+    _make_eval_log(eval_dir / "bad.eval", corrupt=True)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["rescore", "--log-dir", str(eval_dir), "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    out = result.output.lower()
+    assert "rescored" in out or "rescore" in out
+    # Both logs scanned.
+    assert "2" in out
+    # Bad log appears in skips.
+    assert "bad.eval" in out

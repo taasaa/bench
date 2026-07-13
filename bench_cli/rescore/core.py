@@ -161,7 +161,11 @@ def rescore_logs(log_dir: str, *, dry_run: bool = False) -> RescoreResult:
             result.skips.append(SkipInfo(path=str(log), reason=err))
             continue
         status = (header.get("eval") or {}).get("status") if isinstance(header, dict) else None
-        if status != "success":
+        # Treat absent status (None) as success: pre-0.3.245 inspect logs and
+        # bare logs in the wild don't carry an explicit status field, but they
+        # were completed runs. Only an explicit non-success status (e.g.
+        # "error", "cancelled") skips the log.
+        if status is not None and status != "success":
             result.skipped += 1
             result.skips.append(SkipInfo(path=str(log), reason="status_not_success"))
             continue
