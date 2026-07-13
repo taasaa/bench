@@ -1064,7 +1064,7 @@ def format_compact_table(
     return "\n".join(lines)
 
 
-def format_json(data: CompareData, legacy_weighted: bool = False) -> str:
+def format_json(data: CompareData, legacy_weighted: bool = False, include_ci: bool = True) -> str:
     """Machine-readable JSON output.
 
     Each row carries the existing per-(task, model) breakdown plus aggregated
@@ -1135,6 +1135,18 @@ def format_json(data: CompareData, legacy_weighted: bool = False) -> str:
                 row["answer_tokens_per_suite"] = (
                     round(ans_s, 1) if ans_s is not None else None
                 )
+                # Phase 1 Task 4: per-row CI emission. Suppressed when
+                # include_ci=False (i.e. --no-ci). Rounded to 4 dp (same as
+                # the other ratio fields above). None stays None.
+                if include_ci:
+                    ci_lo = agg.get("ci_low")
+                    ci_hi = agg.get("ci_high")
+                    row["ci_low"] = (
+                        round(ci_lo, 4) if ci_lo is not None else None
+                    )
+                    row["ci_high"] = (
+                        round(ci_hi, 4) if ci_hi is not None else None
+                    )
 
             if legacy_weighted:
                 row["legacy_weighted_total"] = (

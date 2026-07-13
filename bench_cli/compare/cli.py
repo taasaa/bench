@@ -56,6 +56,12 @@ from bench_cli.compare.core import (
     help="Use deprecated 0.5/0.2/0.15/0.15 weighted blend. "
          "Default is capability-only ranking (pass@1 mean).",
 )
+@click.option(
+    "--no-ci",
+    is_flag=True,
+    default=False,
+    help="Suppress bootstrap CI computation and rendering (faster).",
+)
 @click.option("-v", "verbosity", count=True, help="Verbosity: -v per-task, -vv full table.")
 def compare(
     log_dir: str,
@@ -65,16 +71,36 @@ def compare(
     as_json: bool,
     verbosity: int,
     legacy_weighted: bool,
+    no_ci: bool,
 ) -> None:
     """Compare evaluation results across models with pillar breakdowns."""
     data = load_compare_data(log_dir, latest)
+    include_ci = not no_ci
 
     if as_json:
-        click.echo(format_json(data, legacy_weighted=legacy_weighted))
+        click.echo(
+            format_json(
+                data, legacy_weighted=legacy_weighted, include_ci=include_ci
+            )
+        )
     elif verbosity >= 2:
-        click.echo(format_pillar_table(data, "BENCHMARK RESULTS", legacy_weighted=legacy_weighted))
+        click.echo(
+            format_pillar_table(
+                data,
+                "BENCHMARK RESULTS",
+                legacy_weighted=legacy_weighted,
+                include_ci=include_ci,
+            )
+        )
     elif verbosity >= 1:
-        click.echo(format_compact_table(data, min_tasks=min_tasks, legacy_weighted=legacy_weighted))
+        click.echo(
+            format_compact_table(
+                data,
+                min_tasks=min_tasks,
+                legacy_weighted=legacy_weighted,
+                include_ci=include_ci,
+            )
+        )
     else:
         click.echo(
             format_summary(
@@ -82,6 +108,7 @@ def compare(
                 min_tasks=min_tasks,
                 show_partial=show_partial,
                 legacy_weighted=legacy_weighted,
+                include_ci=include_ci,
             )
         )
 

@@ -954,3 +954,31 @@ def test_tie_badge_in_renderer():
     # model in this fixture).
     assert "tied with #1" in out
 
+
+# ---- --no-ci regression guard (Phase 1 Task 4) --------------------------
+def test_format_summary_no_ci_omits_brackets():
+    """--no-ci path: include_ci=False drops the numeric CI bracket entirely
+    (insufficient-data fallback may stay, since it carries no numeric value)."""
+    import re as _re_no_ci
+    data = CompareData()
+    data.tasks = [f"t{i}" for i in range(34)]
+    data.models = ["m1"]
+    data.matrix = {
+        f"t{i}": {
+            "m1": PillarScores(
+                correctness=0.85,
+                token_ratio=1.0, time_ratio=1.0,
+                avg_tokens=100, avg_time=1.0, samples=1,
+            )
+        }
+        for i in range(34)
+    }
+    out = format_summary(data, include_ci=False)
+    # No numeric bracket pattern "[<digit>" should appear (catches CI and
+    # any future numeric brackets).
+    assert _re_no_ci.search(r"\[\d", out) is None, (
+        f"numeric CI bracket leaked into no-CI output:\n{out}"
+    )
+    # Capability percentage still renders.
+    assert "85" in out
+
