@@ -711,3 +711,39 @@ def test_format_compact_table_legacy_includes_total_row():
     assert "TOTAL" in out
     assert "0.50×correct" in out or "0.5×correct" in out
 
+
+def test_format_json_default_no_weighted_total():
+    """SC2 (JSON): default JSON omits the legacy weighted blend."""
+    import json as _json
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_json(data)
+    parsed = _json.loads(out)
+    assert all("legacy_weighted_total" not in row for row in parsed)
+    # New efficiency columns present.
+    row = parsed[0]
+    for key in ("cost_per_task", "tokens_per_task", "time_per_task",
+                "intelligence_per_dollar", "intelligence_per_token",
+                "intelligence_per_token_total"):
+        assert key in row, f"missing {key} in default JSON output"
+
+
+def test_format_json_legacy_includes_weighted_total():
+    """SC2 (JSON legacy opt-in): --legacy-weighted adds legacy_weighted_total."""
+    import json as _json
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_json(data, legacy_weighted=True)
+    parsed = _json.loads(out)
+    assert "legacy_weighted_total" in parsed[0]
+

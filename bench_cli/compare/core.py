@@ -1010,36 +1010,83 @@ def format_compact_table(
     return "\n".join(lines)
 
 
-def format_json(data: CompareData) -> str:
-    """Machine-readable JSON output."""
+def format_json(data: CompareData, legacy_weighted: bool = False) -> str:
+    """Machine-readable JSON output.
+
+    Each row carries the existing per-(task, model) breakdown plus aggregated
+    efficiency + AA sub-measures from the model view, key names match the
+    aggregator's dict keys for callers that bridge both:
+
+      cost_per_task, tokens_per_task, answer_tokens_per_task, time_per_task,
+      cost_per_suite, tokens_per_suite, answer_tokens_per_suite, time_per_suite,
+      intelligence_per_dollar, intelligence_per_token, intelligence_per_token_total.
+
+    When ``legacy_weighted=True``, a top-level ``legacy_weighted_total`` field
+    is added per row for backward compat. Default omits it.
+    """
     import json
 
     rows = []
     for task in data.tasks:
         for model in data.models:
             ps = data.matrix.get(task, {}).get(model)
-            if ps:
-                rows.append(
-                    {
-                        "task": task,
-                        "model": model,
-                        "correctness": round(ps.correctness, 4),
-                        "token_ratio": round(ps.token_ratio, 4),
-                        "time_ratio": round(ps.time_ratio, 4),
-                        "avg_tokens": round(ps.avg_tokens, 1),
-                        "avg_time": round(ps.avg_time, 2),
-                        "samples": ps.samples,
-                        "token_suppressed": ps.token_suppressed,
-                        "time_suppressed": ps.time_suppressed,
-                        "price_ratio": (
-                            round(ps.price_ratio, 4) if not math.isnan(ps.price_ratio) else None
-                        ),
-                        "avg_cost_usd": (
-                            round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None
-                        ),
-                        "tier_breakdown": ps.tier_breakdown,
-                    }
+            if not ps:
+                continue
+            row = {
+                "task": task,
+                "model": model,
+                "correctness": round(ps.correctness, 4),
+                "token_ratio": round(ps.token_ratio, 4),
+                "time_ratio": round(ps.time_ratio, 4),
+                "avg_tokens": round(ps.avg_tokens, 1),
+                "avg_answer_tokens": (
+                    round(ps.avg_answer_tokens, 1)
+                    if ps.avg_answer_tokens is not None
+                    else None
+                ),
+                "avg_time": round(ps.avg_time, 2),
+                "samples": ps.samples,
+                "token_suppressed": ps.token_suppressed,
+                "time_suppressed": ps.time_suppressed,
+                "price_ratio": (
+                    round(ps.price_ratio, 4) if not math.isnan(ps.price_ratio) else None
+                ),
+                "avg_cost_usd": (
+                    round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None
+                ),
+                "tier_breakdown": ps.tier_breakdown,
+            }
+            # Aggregated efficiency + AA sub-measures (per-row copy from
+            # the model aggregator — JSON consumers typically aggregate
+            # themselves, but pre-providing the values keeps the schema
+            # discoverable).
+            agg = _aggregate_model_pillars(data, model)
+            if agg is not None:
+                for k in (
+                    "cost_per_task", "tokens_per_task", "time_per_task",
+                    "cost_per_suite", "tokens_per_suite", "time_per_suite",
+                    "intelligence_per_dollar",
+                    "intelligence_per_token",
+                    "intelligence_per_token_total",
+                ):
+                    v = agg[k]
+                    if isinstance(v, float) and math.isnan(v):
+                        v = None
+                    row[k] = round(v, 6) if isinstance(v, float) else v
+                ans_t = agg.get("answer_tokens_per_task")
+                row["answer_tokens_per_task"] = (
+                    round(ans_t, 1) if ans_t is not None else None
                 )
+                ans_s = agg.get("answer_tokens_per_suite")
+                row["answer_tokens_per_suite"] = (
+                    round(ans_s, 1) if ans_s is not None else None
+                )
+
+            if legacy_weighted:
+                row["legacy_weighted_total"] = (
+                    round(_weighted_total(agg), 6) if agg is not None else None
+                )
+            rows.append(row)
     return json.dumps(rows, indent=2)
 
 
