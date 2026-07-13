@@ -441,7 +441,7 @@ def test_format_compact_table_excludes_partial():
     for t in partial_data.tasks:
         data.matrix.setdefault(t, {})["m_partial"] = partial_data.matrix[t]["m_partial"]
 
-    out = format_compact_table(data)
+    out = format_compact_table(data, legacy_weighted=True)
     assert "m_full" in out
     assert "m_partial" not in out
     assert "TOTAL" in out  # weighted TOTAL row present
@@ -452,9 +452,9 @@ def test_format_compact_table_excludes_partial():
 
 
 def test_format_pillar_table_total_row_present():
-    """The full table renders a TOTAL row with the weighted blend."""
+    """Legacy view: the full table renders a TOTAL row with the weighted blend."""
     data = _make_full_eval_model(correctness=0.8)
-    out = format_pillar_table(data, "BENCHMARK RESULTS")
+    out = format_pillar_table(data, "BENCHMARK RESULTS", legacy_weighted=True)
     assert "TOTAL" in out
     # TOTAL row should show one nonzero value (~0.9 for correct=0.8, ratios=1.0)
     total_idx = [i for i, l in enumerate(out.split("\n")) if l.startswith("TOTAL")][0]
@@ -464,9 +464,9 @@ def test_format_pillar_table_total_row_present():
 
 
 def test_format_pillar_table_total_handles_missing_ratios():
-    """Total falls back to defaults (1.0) when ratios are absent."""
+    """Legacy view: total falls back to defaults (1.0) when ratios are absent."""
     data = _make_full_eval_model(correctness=0.5, price=float("nan"))
-    out = format_pillar_table(data, "BENCHMARK RESULTS")
+    out = format_pillar_table(data, "BENCHMARK RESULTS", legacy_weighted=True)
     # total = 0.5*0.5 + 0.5*1.0 (no valid ratios → default to 1.0) = 0.75
     assert "0.75" in out
 
@@ -662,3 +662,52 @@ def test_format_summary_renders_intelligence_per_token_answer_preferred():
     # answer tokens were used (the total-token path would have produced
     # `int/tok=0.00`).
     assert "int/tok=0.01" in out
+
+
+def test_format_pillar_table_default_shows_capability_only():
+    """SC1 + SC2 (pillar table): default pillar table is capability-only;
+    weighted TOTAL footer appears only with legacy_weighted=True."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1,
+                                  avg_cost_usd=0.002)}
+    }
+    out = format_pillar_table(data)
+    assert "0.50×correct" not in out  # no weighted footer
+
+
+def test_format_compact_table_default_no_total_row():
+    """SC2 (compact table): default compact view omits TOTAL row entirely;
+    MEAN is kept as the trend row. Stricter than `not in or not in`: the body
+    TOTAL row alone (without the `TOTAL = ...` footer) MUST be hidden too."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_compact_table(data, min_tasks=1)
+    # MEAN row is preserved (gives trend visibility).
+    assert "MEAN" in out
+    # The string "TOTAL" must NOT appear at all in the default view — body row
+    # OR footer formula would both be a SC2 violation.
+    assert "TOTAL" not in out
+
+
+def test_format_compact_table_legacy_includes_total_row():
+    """SC2 (legacy opt-in): legacy_weighted=True shows TOTAL row + formula footer."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_compact_table(data, min_tasks=1, legacy_weighted=True)
+    assert "TOTAL" in out
+    assert "0.50×correct" in out or "0.5×correct" in out
+

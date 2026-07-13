@@ -603,6 +603,7 @@ def _format_pillar_breakdown(agg: dict) -> str:
 def format_pillar_table(
     data: CompareData,
     title: str | None = None,
+    legacy_weighted: bool = False,
 ) -> str:
     """Single pillar table with per-model columns.
 
@@ -612,6 +613,8 @@ def format_pillar_table(
       [column headers]
       [task rows]
       [MEAN row]
+      [TOTAL row — legacy_weighted only]
+      [TOTAL = ...×correct + ... footer — legacy_weighted only]
     """
     if not data.tasks or not data.models:
         return "No scored eval logs found."
@@ -742,39 +745,41 @@ def format_pillar_table(
         mean_row += " "
     lines.append(mean_row)
 
-    # TOTAL row (weighted blend 0.5/0.2/0.15/0.15 — matches leaderboard)
-    lines.append("─" * sep_w)
-    total_row = "TOTAL".ljust(task_col_w)
-    for model in data.models:
-        agg = _aggregate_model_pillars(data, model)
-        if agg is None:
-            for col_w in _COL_WIDTHS:
-                total_row += " " + "  --".rjust(col_w)
+    # TOTAL row (weighted blend 0.5/0.2/0.15/0.15 — matches leaderboard).
+    # Gated by legacy_weighted: default view is capability-only (SC2).
+    if legacy_weighted:
+        lines.append("─" * sep_w)
+        total_row = "TOTAL".ljust(task_col_w)
+        for model in data.models:
+            agg = _aggregate_model_pillars(data, model)
+            if agg is None:
+                for col_w in _COL_WIDTHS:
+                    total_row += " " + "  --".rjust(col_w)
+                total_row += " "
+                continue
+            total = _weighted_total(agg)
+            cells = [
+                f"{total * 100:.1f}",
+                "  --",  # ratio columns left blank — the value is in CORRECT of TOTAL row
+                "  --",
+                "  --",
+                "  --",
+                "  --",
+                "  --",
+            ]
+            cells[0] = f"{total:.2f}"
+            for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
+                total_row += " " + cell.rjust(col_w)
             total_row += " "
-            continue
-        total = _weighted_total(agg)
-        cells = [
-            f"{total * 100:.1f}",
-            "  --",  # ratio columns left blank — the value is in CORRECT of TOTAL row
-            "  --",
-            "  --",
-            "  --",
-            "  --",
-            "  --",
-        ]
-        cells[0] = f"{total:.2f}"
-        for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
-            total_row += " " + cell.rjust(col_w)
-        total_row += " "
-    lines.append(total_row)
+        lines.append(total_row)
 
-    lines.append("")
-    lines.append(
-        f"TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
-        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio_gm "
-        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio_gm "
-        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio_gm"
-    )
+        lines.append("")
+        lines.append(
+            f"TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
+            f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio_gm "
+            f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio_gm "
+            f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio_gm"
+        )
 
     return "\n".join(lines)
 
@@ -916,12 +921,15 @@ def format_summary(
 def format_compact_table(
     data: CompareData,
     min_tasks: int = MIN_FULL_EVAL_TASKS,
+    legacy_weighted: bool = False,
 ) -> str:
     """Per-task correctness grid for -v output, full evals only.
 
-    Includes a TOTAL row at the bottom computed via the weighted formula
-    (0.5/0.2/0.15/0.15) instead of a correctness-only mean, so the compact
-    view matches the leaderboard.
+    Default view (legacy_weighted=False): capability-only — MEAN row only.
+    No weighted TOTAL row, no TOTAL = ... footer (SC2).
+
+    Legacy view (legacy_weighted=True): adds the TOTAL row + footer using the
+    historical 0.5/0.2/0.15/0.15 weighted blend.
     """
     if not data.tasks or not data.models:
         return "No scored eval logs found."
@@ -981,21 +989,23 @@ def format_compact_table(
         mean_row += f"  {avg:.0%}".rjust(model_col_w + 2)
     lines.append(mean_row)
 
-    # TOTAL row (weighted blend, matches leaderboard)
-    lines.append("─" * (task_col_w + (model_col_w + 2) * len(model_models := full_models)))
-    total_row = "TOTAL".ljust(task_col_w)
-    for model in full_models:
-        agg = _aggregate_model_pillars(data, model)
-        total = _weighted_total(agg) if agg else 0.0
-        total_row += f"  {total:>5.1%}".rjust(model_col_w + 2)
-    lines.append(total_row)
+    # TOTAL row + footer — gated by legacy_weighted (SC2: no weighted score
+    # in the default compact view).
+    if legacy_weighted:
+        lines.append("─" * (task_col_w + (model_col_w + 2) * len(full_models)))
+        total_row = "TOTAL".ljust(task_col_w)
+        for model in full_models:
+            agg = _aggregate_model_pillars(data, model)
+            total = _weighted_total(agg) if agg else 0.0
+            total_row += f"  {total:>5.1%}".rjust(model_col_w + 2)
+        lines.append(total_row)
 
-    lines.append(
-        f"  TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
-        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
-        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
-        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
-    )
+        lines.append(
+            f"  TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
+            f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
+            f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
+            f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
+        )
 
     return "\n".join(lines)
 
