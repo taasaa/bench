@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from bench_cli.compare import (
@@ -465,3 +467,92 @@ def test_format_pillar_table_total_handles_missing_ratios():
     out = format_pillar_table(data, "BENCHMARK RESULTS")
     # total = 0.5*0.5 + 0.5*1.0 (no valid ratios → default to 1.0) = 0.75
     assert "0.75" in out
+
+
+def test_aggregate_pillars_includes_cost_per_task():
+    """SC3 partial: cost_per_task is the arithmetic mean of per-task avg_cost_usd
+    values across scored tasks, ignoring nan entries."""
+    data = CompareData()
+    data.tasks = ["t1", "t2"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.001)},
+        "t2": {"m1": PillarScores(correctness=0.6, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=200, avg_time=4.0, samples=1, avg_cost_usd=0.003)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["cost_per_task"] == pytest.approx(0.002)
+    assert agg["tokens_per_task"] == pytest.approx(150.0)
+    assert agg["time_per_task"] == pytest.approx(3.0)
+
+
+def test_aggregate_pillars_drops_nan_cost_in_mean():
+    """SC3: avg_cost_usd=nan tasks do NOT pollute cost_per_task mean."""
+    data = CompareData()
+    data.tasks = ["t1", "t2"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=float("nan"))},
+        "t2": {"m1": PillarScores(correctness=0.6, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=200, avg_time=4.0, samples=1, avg_cost_usd=0.002)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["cost_per_task"] == pytest.approx(0.002)
+
+
+def test_aggregate_pillars_intelligence_per_dollar_when_priced():
+    """SC8: int/$ = correct_mean / cost_per_task when cost is available."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.002)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["intelligence_per_dollar"] == pytest.approx(400.0)
+
+
+def test_aggregate_pillars_intelligence_per_dollar_nan_when_unpriced():
+    """SC8: int/$ is NaN when cost is NaN; never divide by zero."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert math.isnan(agg["intelligence_per_dollar"])
+
+
+def test_aggregate_pillars_intelligence_per_token_uses_answer_when_available():
+    """SC8 + PRD gotcha: int/tok prefers answer_tokens (visible work) over total."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.5, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=1000, avg_time=2.0, samples=1)},
+    }
+    # avg_answer_tokens is set on the PillarScores via the new field below.
+    data.matrix["t1"]["m1"].avg_answer_tokens = 100.0
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["intelligence_per_token"] == pytest.approx(0.005)  # 0.5 / 100
+    assert agg["intelligence_per_token_total"] == pytest.approx(0.0005)  # 0.5 / 1000
+
+
+def test_aggregate_pillars_intelligence_per_token_falls_back_to_total():
+    """SC8: when answer_tokens is None, int/tok == int/tok-total (== cap/total)."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.5, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=200, avg_time=2.0, samples=1)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["intelligence_per_token"] == pytest.approx(0.5 / 200)
+    assert agg["intelligence_per_token_total"] == pytest.approx(0.5 / 200)

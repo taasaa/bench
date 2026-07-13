@@ -49,6 +49,9 @@ class PillarScores:
     samples: int
     price_ratio: float = float("nan")  # geometric mean of cost ratios, NaN if unavailable
     avg_cost_usd: float = float("nan")  # mean cost per sample in USD, NaN if unavailable
+    avg_answer_tokens: float | None = None  # visible-only output tokens per sample
+                                            # (None when inspect model_usage dataclass
+                                            # does not carry a per-type split)
     tier_breakdown: dict[str, dict] | None = None  # per-tier info for smart-router models
 
     # Per-sample counts for suppression/bookkeeping
@@ -464,17 +467,29 @@ def _aggregate_model_pillars(
     data: CompareData,
     model: str,
 ) -> dict | None:
-    """Aggregate per-pillar values across all tasks for one model.
+    """Aggregate per-pillar values + raw units + AA sub-measures across all
+    tasks for one model.
 
-    Returns a dict with keys: n (task count), correct_mean, price_ratio_gm,
-    time_ratio_gm, token_ratio_gm. Returns None if the model has no scored
-    tasks. Ratios default to 1.0 (neutral) when no task has a valid value for
-    that pillar.
+    Returns a dict with keys:
+        n, correct_mean, price_ratio_gm, time_ratio_gm, token_ratio_gm
+        cost_per_task, tokens_per_task, answer_tokens_per_task, time_per_task
+        cost_per_suite, tokens_per_suite, answer_tokens_per_suite, time_per_suite
+        intelligence_per_dollar, intelligence_per_token, intelligence_per_token_total
+
+    Returns None if the model has no scored tasks. Ratios default to 1.0
+    (neutral) when no task has a valid value for that pillar. NaN cost tasks
+    are excluded from cost_per_task mean; all tasks contribute to tokens/time.
     """
     c_vals: list[float] = []
     cr_vals: list[float] = []
     lr_vals: list[float] = []
     tr_vals: list[float] = []
+
+    per_task_costs: list[float] = []
+    per_task_tokens: list[float] = []
+    per_task_answer_tokens: list[float | None] = []
+    per_task_times: list[float] = []
+
     for task in data.tasks:
         ps = data.matrix.get(task, {}).get(model)
         if not ps or math.isnan(ps.correctness):
@@ -487,15 +502,81 @@ def _aggregate_model_pillars(
         if ps.token_ratio > 0:
             tr_vals.append(ps.token_ratio)
 
+        # Raw units — values are means per sample, so the per-task mean
+        # IS ps.avg_* (we do NOT divide by samples again).
+        if not math.isnan(ps.avg_cost_usd):
+            per_task_costs.append(ps.avg_cost_usd)
+        per_task_tokens.append(ps.avg_tokens)
+        per_task_answer_tokens.append(ps.avg_answer_tokens)
+        per_task_times.append(ps.avg_time)
+
     if not c_vals:
         return None
 
+    n = len(c_vals)
+    correct_mean = sum(c_vals) / n
+
+    def _mean(xs: list[float]) -> float:
+        return sum(xs) / len(xs) if xs else float("nan")
+
+    cost_per_task = _mean(per_task_costs)
+    tokens_per_task = _mean(per_task_tokens)
+    answer_tokens_per_task_vals = [
+        v for v in per_task_answer_tokens if v is not None
+    ]
+    answer_tokens_per_task = (
+        _mean(answer_tokens_per_task_vals) if answer_tokens_per_task_vals else None
+    )
+    time_per_task = _mean(per_task_times)
+
+    # Suite totals — sums across tasks.
+    cost_per_suite = sum(per_task_costs)
+    tokens_per_suite = sum(per_task_tokens)
+    answer_tokens_per_suite: float | None = (
+        sum(answer_tokens_per_task_vals) if answer_tokens_per_task_vals else None
+    )
+    time_per_suite = sum(per_task_times)
+
+    # AA sub-measures (capability per efficiency unit).
+    if not math.isnan(cost_per_task) and cost_per_task > 0:
+        intelligence_per_dollar = correct_mean / cost_per_task
+    else:
+        intelligence_per_dollar = float("nan")
+
+    # Per PRD gotcha: int/tok prefers answer tokens (visible work).
+    # int/tok-total always uses total tokens for comparability.
+    if (
+        answer_tokens_per_task is not None
+        and answer_tokens_per_task > 0
+    ):
+        intelligence_per_token = correct_mean / answer_tokens_per_task
+    elif tokens_per_task > 0:
+        intelligence_per_token = correct_mean / tokens_per_task
+    else:
+        intelligence_per_token = float("nan")
+
+    if tokens_per_task > 0:
+        intelligence_per_token_total = correct_mean / tokens_per_task
+    else:
+        intelligence_per_token_total = float("nan")
+
     return {
-        "n": len(c_vals),
-        "correct_mean": sum(c_vals) / len(c_vals),
+        "n": n,
+        "correct_mean": correct_mean,
         "price_ratio_gm": geometric_mean(cr_vals) if cr_vals else 1.0,
         "time_ratio_gm": geometric_mean(lr_vals) if lr_vals else 1.0,
         "token_ratio_gm": geometric_mean(tr_vals) if tr_vals else 1.0,
+        "cost_per_task": cost_per_task,
+        "tokens_per_task": tokens_per_task,
+        "answer_tokens_per_task": answer_tokens_per_task,
+        "time_per_task": time_per_task,
+        "cost_per_suite": cost_per_suite,
+        "tokens_per_suite": tokens_per_suite,
+        "answer_tokens_per_suite": answer_tokens_per_suite,
+        "time_per_suite": time_per_suite,
+        "intelligence_per_dollar": intelligence_per_dollar,
+        "intelligence_per_token": intelligence_per_token,
+        "intelligence_per_token_total": intelligence_per_token_total,
     }
 
 
