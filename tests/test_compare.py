@@ -752,3 +752,47 @@ def test_format_json_legacy_includes_weighted_total():
     parsed = _json.loads(out)
     assert "legacy_weighted_total" in parsed[0]
 
+
+# ---- bootstrap CI (Phase 1 Task 1) -----------------------------------------
+from bench_cli.compare.bootstrap import bootstrap_ci
+
+
+def test_bootstrap_ci_reproducible_with_fixed_seed():
+    """SC6: bootstrap_ci returns the same bounds across runs when seed and inputs are identical."""
+    scores = [0.9, 0.85, 0.7, 0.6, 0.55, 0.95, 0.8, 0.75, 0.65, 0.5] * 4  # 40 values
+    a = bootstrap_ci(scores, n_resample=500, seed=42)
+    b = bootstrap_ci(scores, n_resample=500, seed=42)
+    assert a == b, "identical seed + inputs must produce identical CIs"
+    lo, hi = a
+    assert 0 <= lo <= hi <= 1
+
+
+def test_bootstrap_ci_returns_none_when_too_few_tasks():
+    """Edge case: a model with < min_n tasks cannot get a trustworthy CI; return None."""
+    scores = [0.9, 0.85, 0.7, 0.6, 0.55, 0.95, 0.8]  # 7 items < 34
+    assert bootstrap_ci(scores) is None
+
+
+def test_bootstrap_ci_default_min_n_is_full_eval_threshold():
+    """Invariant: default min_n matches MIN_FULL_EVAL_TASKS so a partial-eval model never gets a misleading CI."""
+    from bench_cli.compare.bootstrap import bootstrap_ci as bc
+    from bench_cli.compare.core import MIN_FULL_EVAL_TASKS
+
+    # One item below the threshold — must return None.
+    scores_below = [0.5 + (i % 5) * 0.1 for i in range(MIN_FULL_EVAL_TASKS - 1)]
+    assert bc(scores_below) is None
+
+    # Exactly at the threshold — bootstrap proceeds (returns bounds).
+    scores_at = scores_below + [0.7]
+    result = bc(scores_at)
+    assert result is not None
+    lo, hi = result
+    assert 0 <= lo <= hi <= 1
+
+
+def test_bootstrap_ci_narrow_for_tight_values():
+    """Sanity: when values cluster tightly, CI is narrow."""
+    scores = [0.5] * 50
+    lo, hi = bootstrap_ci(scores, n_resample=500, seed=42)
+    assert (hi - lo) < 0.1
+
