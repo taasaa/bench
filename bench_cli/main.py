@@ -42,16 +42,16 @@ def _show_help(ctx: click.Context) -> None:
 
 # ── Primary surface ───────────────────────────────────────────────────
 from bench_cli.compare import compare
+from bench_cli.rescore.cli import rescore
 from bench_cli.run import run
-from bench_cli.score import score_cmd
 from bench_cli.show import show_cmd
 from bench_cli.tasks_browser import tasks_cmd
 
 cli.add_command(run)
 cli.add_command(show_cmd)
 cli.add_command(compare)
+cli.add_command(rescore)
 cli.add_command(tasks_cmd)
-cli.add_command(score_cmd)
 
 # ── Legacy commands (hidden from help) ────────────────────────────────
 from bench_cli.baseline import baseline

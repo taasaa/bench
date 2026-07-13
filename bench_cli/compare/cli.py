@@ -49,6 +49,13 @@ from bench_cli.compare.core import (
     default=False,
     help="Output results as JSON.",
 )
+@click.option(
+    "--legacy-weighted/--no-legacy-weighted",
+    default=False,
+    show_default=True,
+    help="Use deprecated 0.5/0.2/0.15/0.15 weighted blend. "
+         "Default is capability-only ranking (pass@1 mean).",
+)
 @click.option("-v", "verbosity", count=True, help="Verbosity: -v per-task, -vv full table.")
 def compare(
     log_dir: str,
@@ -57,18 +64,26 @@ def compare(
     show_partial: bool,
     as_json: bool,
     verbosity: int,
+    legacy_weighted: bool,
 ) -> None:
     """Compare evaluation results across models with pillar breakdowns."""
     data = load_compare_data(log_dir, latest)
 
     if as_json:
-        click.echo(format_json(data))
+        click.echo(format_json(data, legacy_weighted=legacy_weighted))
     elif verbosity >= 2:
-        click.echo(format_pillar_table(data, "BENCHMARK RESULTS"))
+        click.echo(format_pillar_table(data, "BENCHMARK RESULTS", legacy_weighted=legacy_weighted))
     elif verbosity >= 1:
-        click.echo(format_compact_table(data, min_tasks=min_tasks))
+        click.echo(format_compact_table(data, min_tasks=min_tasks, legacy_weighted=legacy_weighted))
     else:
-        click.echo(format_summary(data, min_tasks=min_tasks, show_partial=show_partial))
+        click.echo(
+            format_summary(
+                data,
+                min_tasks=min_tasks,
+                show_partial=show_partial,
+                legacy_weighted=legacy_weighted,
+            )
+        )
 
     # Show tier breakdown for smart-router models (all verbosity levels)
     tier_output = format_tier_breakdown(data)

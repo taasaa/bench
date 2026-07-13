@@ -49,6 +49,9 @@ class PillarScores:
     samples: int
     price_ratio: float = float("nan")  # geometric mean of cost ratios, NaN if unavailable
     avg_cost_usd: float = float("nan")  # mean cost per sample in USD, NaN if unavailable
+    avg_answer_tokens: float | None = None  # visible-only output tokens per sample
+                                            # (None when inspect model_usage dataclass
+                                            # does not carry a per-type split)
     tier_breakdown: dict[str, dict] | None = None  # per-tier info for smart-router models
 
     # Per-sample counts for suppression/bookkeeping
@@ -464,17 +467,29 @@ def _aggregate_model_pillars(
     data: CompareData,
     model: str,
 ) -> dict | None:
-    """Aggregate per-pillar values across all tasks for one model.
+    """Aggregate per-pillar values + raw units + AA sub-measures across all
+    tasks for one model.
 
-    Returns a dict with keys: n (task count), correct_mean, price_ratio_gm,
-    time_ratio_gm, token_ratio_gm. Returns None if the model has no scored
-    tasks. Ratios default to 1.0 (neutral) when no task has a valid value for
-    that pillar.
+    Returns a dict with keys:
+        n, correct_mean, price_ratio_gm, time_ratio_gm, token_ratio_gm
+        cost_per_task, tokens_per_task, answer_tokens_per_task, time_per_task
+        cost_per_suite, tokens_per_suite, answer_tokens_per_suite, time_per_suite
+        intelligence_per_dollar, intelligence_per_token, intelligence_per_token_total
+
+    Returns None if the model has no scored tasks. Ratios default to 1.0
+    (neutral) when no task has a valid value for that pillar. NaN cost tasks
+    are excluded from cost_per_task mean; all tasks contribute to tokens/time.
     """
     c_vals: list[float] = []
     cr_vals: list[float] = []
     lr_vals: list[float] = []
     tr_vals: list[float] = []
+
+    per_task_costs: list[float] = []
+    per_task_tokens: list[float] = []
+    per_task_answer_tokens: list[float | None] = []
+    per_task_times: list[float] = []
+
     for task in data.tasks:
         ps = data.matrix.get(task, {}).get(model)
         if not ps or math.isnan(ps.correctness):
@@ -487,15 +502,81 @@ def _aggregate_model_pillars(
         if ps.token_ratio > 0:
             tr_vals.append(ps.token_ratio)
 
+        # Raw units — values are means per sample, so the per-task mean
+        # IS ps.avg_* (we do NOT divide by samples again).
+        if not math.isnan(ps.avg_cost_usd):
+            per_task_costs.append(ps.avg_cost_usd)
+        per_task_tokens.append(ps.avg_tokens)
+        per_task_answer_tokens.append(ps.avg_answer_tokens)
+        per_task_times.append(ps.avg_time)
+
     if not c_vals:
         return None
 
+    n = len(c_vals)
+    correct_mean = sum(c_vals) / n
+
+    def _mean(xs: list[float]) -> float:
+        return sum(xs) / len(xs) if xs else float("nan")
+
+    cost_per_task = _mean(per_task_costs)
+    tokens_per_task = _mean(per_task_tokens)
+    answer_tokens_per_task_vals = [
+        v for v in per_task_answer_tokens if v is not None
+    ]
+    answer_tokens_per_task = (
+        _mean(answer_tokens_per_task_vals) if answer_tokens_per_task_vals else None
+    )
+    time_per_task = _mean(per_task_times)
+
+    # Suite totals — sums across tasks.
+    cost_per_suite = sum(per_task_costs)
+    tokens_per_suite = sum(per_task_tokens)
+    answer_tokens_per_suite: float | None = (
+        sum(answer_tokens_per_task_vals) if answer_tokens_per_task_vals else None
+    )
+    time_per_suite = sum(per_task_times)
+
+    # AA sub-measures (capability per efficiency unit).
+    if not math.isnan(cost_per_task) and cost_per_task > 0:
+        intelligence_per_dollar = correct_mean / cost_per_task
+    else:
+        intelligence_per_dollar = float("nan")
+
+    # Per PRD gotcha: int/tok prefers answer tokens (visible work).
+    # int/tok-total always uses total tokens for comparability.
+    if (
+        answer_tokens_per_task is not None
+        and answer_tokens_per_task > 0
+    ):
+        intelligence_per_token = correct_mean / answer_tokens_per_task
+    elif tokens_per_task > 0:
+        intelligence_per_token = correct_mean / tokens_per_task
+    else:
+        intelligence_per_token = float("nan")
+
+    if tokens_per_task > 0:
+        intelligence_per_token_total = correct_mean / tokens_per_task
+    else:
+        intelligence_per_token_total = float("nan")
+
     return {
-        "n": len(c_vals),
-        "correct_mean": sum(c_vals) / len(c_vals),
+        "n": n,
+        "correct_mean": correct_mean,
         "price_ratio_gm": geometric_mean(cr_vals) if cr_vals else 1.0,
         "time_ratio_gm": geometric_mean(lr_vals) if lr_vals else 1.0,
         "token_ratio_gm": geometric_mean(tr_vals) if tr_vals else 1.0,
+        "cost_per_task": cost_per_task,
+        "tokens_per_task": tokens_per_task,
+        "answer_tokens_per_task": answer_tokens_per_task,
+        "time_per_task": time_per_task,
+        "cost_per_suite": cost_per_suite,
+        "tokens_per_suite": tokens_per_suite,
+        "answer_tokens_per_suite": answer_tokens_per_suite,
+        "time_per_suite": time_per_suite,
+        "intelligence_per_dollar": intelligence_per_dollar,
+        "intelligence_per_token": intelligence_per_token,
+        "intelligence_per_token_total": intelligence_per_token_total,
     }
 
 
@@ -522,6 +603,7 @@ def _format_pillar_breakdown(agg: dict) -> str:
 def format_pillar_table(
     data: CompareData,
     title: str | None = None,
+    legacy_weighted: bool = False,
 ) -> str:
     """Single pillar table with per-model columns.
 
@@ -531,6 +613,8 @@ def format_pillar_table(
       [column headers]
       [task rows]
       [MEAN row]
+      [TOTAL row — legacy_weighted only]
+      [TOTAL = ...×correct + ... footer — legacy_weighted only]
     """
     if not data.tasks or not data.models:
         return "No scored eval logs found."
@@ -661,39 +745,41 @@ def format_pillar_table(
         mean_row += " "
     lines.append(mean_row)
 
-    # TOTAL row (weighted blend 0.5/0.2/0.15/0.15 — matches leaderboard)
-    lines.append("─" * sep_w)
-    total_row = "TOTAL".ljust(task_col_w)
-    for model in data.models:
-        agg = _aggregate_model_pillars(data, model)
-        if agg is None:
-            for col_w in _COL_WIDTHS:
-                total_row += " " + "  --".rjust(col_w)
+    # TOTAL row (weighted blend 0.5/0.2/0.15/0.15 — matches leaderboard).
+    # Gated by legacy_weighted: default view is capability-only (SC2).
+    if legacy_weighted:
+        lines.append("─" * sep_w)
+        total_row = "TOTAL".ljust(task_col_w)
+        for model in data.models:
+            agg = _aggregate_model_pillars(data, model)
+            if agg is None:
+                for col_w in _COL_WIDTHS:
+                    total_row += " " + "  --".rjust(col_w)
+                total_row += " "
+                continue
+            total = _weighted_total(agg)
+            cells = [
+                f"{total * 100:.1f}",
+                "  --",  # ratio columns left blank — the value is in CORRECT of TOTAL row
+                "  --",
+                "  --",
+                "  --",
+                "  --",
+                "  --",
+            ]
+            cells[0] = f"{total:.2f}"
+            for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
+                total_row += " " + cell.rjust(col_w)
             total_row += " "
-            continue
-        total = _weighted_total(agg)
-        cells = [
-            f"{total * 100:.1f}",
-            "  --",  # ratio columns left blank — the value is in CORRECT of TOTAL row
-            "  --",
-            "  --",
-            "  --",
-            "  --",
-            "  --",
-        ]
-        cells[0] = f"{total:.2f}"
-        for cell, col_w in zip(cells, _COL_WIDTHS, strict=True):
-            total_row += " " + cell.rjust(col_w)
-        total_row += " "
-    lines.append(total_row)
+        lines.append(total_row)
 
-    lines.append("")
-    lines.append(
-        f"TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
-        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio_gm "
-        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio_gm "
-        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio_gm"
-    )
+        lines.append("")
+        lines.append(
+            f"TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
+            f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio_gm "
+            f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio_gm "
+            f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio_gm"
+        )
 
     return "\n".join(lines)
 
@@ -702,111 +788,148 @@ def format_summary(
     data: CompareData,
     min_tasks: int = MIN_FULL_EVAL_TASKS,
     show_partial: bool = False,
+    legacy_weighted: bool = False,
 ) -> str:
     """Ranked model summary, full evals only.
 
-    Score formula (per task aggregation, then model blend):
-        0.5 * correctness + 0.2 * price_ratio_gm + 0.15 * time_ratio_gm + 0.15 * token_ratio_gm
+    Default view (legacy_weighted=False): capability-only ranking by pass@1
+    mean (correct_mean), sorted descending. Efficiency metrics (cost/task,
+    tok/task, time/task) and ability-adjusted sub-measures (int/$, int/tok)
+    render as inline columns next to each model. No weighted blend.
 
-    Models with fewer than `min_tasks` scored tasks are EXCLUDED from the ranked
-    list by default. Pass ``show_partial=True`` to render them in a separate
-    "not full eval" block at the bottom (they are never ranked against full
-    evals — they never were apples-to-apples to begin with).
+    Legacy view (legacy_weighted=True): the historical 0.5/0.2/0.15/0.15
+    blend. Use `--legacy-weighted` to opt in. Kept for backward comparison.
 
-    Reference labels shown in the per-row breakdown come from
-    ``_ratio_reference_labels()`` so the legend always names the current
-    ratio reference (e.g. ``minimax-m3`` once registered).
+    Models with fewer than `min_tasks` scored tasks are EXCLUDED from the
+    ranked list by default. Pass ``show_partial=True`` to render them in
+    a separate footer block.
     """
     if not data.tasks or not data.models:
         return "No scored eval logs found."
 
     from bench_cli.resolver import bare_name
 
-    # Aggregate + score per model
-    model_entries: list[tuple[str, dict, float]] = []  # (model, agg, total)
-    for model in data.models:
-        agg = _aggregate_model_pillars(data, model)
+    # Aggregate per model.
+    aggs: dict[str, dict | None] = {m: _aggregate_model_pillars(data, m) for m in data.models}
+
+    def _score(m: str) -> float:
+        agg = aggs.get(m)
         if agg is None:
-            continue
-        model_entries.append((model, agg, _weighted_total(agg)))
+            return float("-inf")
+        if legacy_weighted:
+            return _weighted_total(agg)
+        return agg["correct_mean"]
 
-    full_evals = [(m, a, t) for m, a, t in model_entries if a["n"] >= min_tasks]
-    partial_evals = [(m, a, t) for m, a, t in model_entries if a["n"] < min_tasks]
+    full_evals = [m for m in data.models if aggs.get(m) and aggs[m]["n"] >= min_tasks]
+    partial_evals = [m for m in data.models if aggs.get(m) and aggs[m]["n"] < min_tasks]
 
-    full_evals.sort(key=lambda x: x[2], reverse=True)
-    partial_evals.sort(key=lambda x: x[1]["n"], reverse=True)
+    full_evals_sorted = sorted(full_evals, key=_score, reverse=True)
+    partial_evals_sorted = sorted(partial_evals, key=lambda m: aggs[m]["n"], reverse=True)
 
     n_total_tasks = len(data.tasks)
+    header_score = (
+        f"Score: {WEIGHT_CORRECTNESS:.2f}×correct + ..."
+        if legacy_weighted
+        else "Capability (pass@1 mean)"
+    )
     lines: list[str] = []
     lines.append(
         f"{'━' * 3} BENCHMARK SUMMARY "
         f"({n_total_tasks} tasks, "
-        f"{len(full_evals)} full evals"
-        f"{', ' + str(len(partial_evals)) + ' partial' if partial_evals and show_partial else ''}) "
+        f"{len(full_evals_sorted)} full evals"
+        f"{', ' + str(len(partial_evals_sorted)) + ' partial' if partial_evals_sorted and show_partial else ''}) "
         f"{'━' * 3}"
     )
     lines.append("")
-    lines.append(
-        f"Score: {WEIGHT_CORRECTNESS:.2f}×correct "
-        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
-        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
-        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
-    )
-    lines.append(
-        "Scores can exceed 1.0 — ratios weigh 50% total and many models beat "
-        "the cost/latency/token reference by 3-10×."
-    )
-    labels = _ratio_reference_labels()
-    lines.append(
-        f"Refs: cost={labels['cost']} · eff/latency={labels['efficiency_latency']}"
-    )
+    lines.append(header_score)
     lines.append("")
 
-    if not full_evals:
-        lines.append(
-            f"  (no models with >= {min_tasks} scored tasks — "
-            f"this benchmark has {n_total_tasks} tasks)."
-        )
-    else:
-        for i, (model, agg, total) in enumerate(full_evals, 1):
-            # Cap the bar at 10 dots — score can exceed 1.0 (cheap+fast models
-            # routinely score >100% on the weighted blend). Render scores >1.0 as
-            # a multiplier (`2.34×`) instead of a misleading 234% percent.
-            filled = max(0, min(10, round(total * 10)))
-            bar = "●" * filled + "○" * (10 - filled)
-            score_str = f"{total:>5.1%}" if total < 1.0 else f"{total:>5.2f}×"
-            lines.append(
-                f"  #{i:>2} {bare_name(model):<28s} "
-                f"{score_str}  {bar}  {_format_pillar_breakdown(agg)}"
-            )
+    def _fmt_cost(x: float) -> str:
+        if math.isnan(x):
+            return "n/a (unpriced)"
+        return f"${x:.4f}"
 
-    if partial_evals and show_partial:
+    def _fmt_int(x: float | None) -> str:
+        if x is None or math.isnan(x):
+            return "n/a"
+        return f"{int(round(x)):,}"
+
+    def _fmt_time(x: float) -> str:
+        if math.isnan(x):
+            return "n/a"
+        return f"{x:.1f}s"
+
+    def _fmt_int_metric(x: float) -> str:
+        if math.isnan(x) or x <= 0:
+            return "n/a"
+        return f"{x:,.2f}"
+
+    def _fmt_score(x: float) -> str:
+        return f"{x:.1%}"
+
+    rank = 0
+    prev_score = None
+    for m in full_evals_sorted:
+        agg = aggs[m]
+        # Capability ranking — skip rank increment for ties handled in Phase 1.
+        score = _score(m)
+        if rank == 0 or score != prev_score:
+            rank += 1
+        prev_score = score
+        display = bare_name(m)
+        cols = [
+            f"#{rank} {display}",
+            _fmt_score(score),
+            f"cost={_fmt_cost(agg['cost_per_task'])}",
+            f"tok={_fmt_int(agg['tokens_per_task'])}",
+            (
+                f"tok-ans={_fmt_int(agg['answer_tokens_per_task'])}"
+                if agg["answer_tokens_per_task"] is not None
+                else None
+            ),
+            f"time={_fmt_time(agg['time_per_task'])}",
+            f"int/$={_fmt_int_metric(agg['intelligence_per_dollar'])}",
+            f"int/tok={_fmt_int_metric(agg['intelligence_per_token'])}",
+        ]
+        cols = [c for c in cols if c is not None]
+        lines.append(f"  {'  '.join(cols)}")
+
+    # Legacy footer — only when explicit opt-in.
+    if legacy_weighted:
         lines.append("")
-        lines.append("─" * 78)
         lines.append(
-            f"  Partial evals — EXCLUDED from ranking (need >= {min_tasks} tasks):"
+            f"  TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
+            f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
+            f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
+            f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
         )
-        for model, agg, total in partial_evals:
-            score_str = f"{total:>5.1%}" if total < 1.0 else f"{total:>5.2f}×"
+
+    if show_partial and partial_evals_sorted:
+        lines.append("")
+        lines.append(f"  ── Not full eval (< {min_tasks} tasks) ──")
+        for m in partial_evals_sorted:
+            agg = aggs[m]
             lines.append(
-                f"      {bare_name(model):<28s} "
-                f"{agg['n']:>2} tasks  {score_str}  {_format_pillar_breakdown(agg)}"
+                f"  {bare_name(m):<30}  "
+                f"{agg['n']}/{min_tasks} tasks  "
+                f"correct={_fmt_score(agg['correct_mean'])}"
             )
 
-    lines.append("")
-    lines.append("  Use -v for per-task breakdown, -vv for full table.")
     return "\n".join(lines)
 
 
 def format_compact_table(
     data: CompareData,
     min_tasks: int = MIN_FULL_EVAL_TASKS,
+    legacy_weighted: bool = False,
 ) -> str:
     """Per-task correctness grid for -v output, full evals only.
 
-    Includes a TOTAL row at the bottom computed via the weighted formula
-    (0.5/0.2/0.15/0.15) instead of a correctness-only mean, so the compact
-    view matches the leaderboard.
+    Default view (legacy_weighted=False): capability-only — MEAN row only.
+    No weighted TOTAL row, no TOTAL = ... footer (SC2).
+
+    Legacy view (legacy_weighted=True): adds the TOTAL row + footer using the
+    historical 0.5/0.2/0.15/0.15 weighted blend.
     """
     if not data.tasks or not data.models:
         return "No scored eval logs found."
@@ -866,55 +989,104 @@ def format_compact_table(
         mean_row += f"  {avg:.0%}".rjust(model_col_w + 2)
     lines.append(mean_row)
 
-    # TOTAL row (weighted blend, matches leaderboard)
-    lines.append("─" * (task_col_w + (model_col_w + 2) * len(model_models := full_models)))
-    total_row = "TOTAL".ljust(task_col_w)
-    for model in full_models:
-        agg = _aggregate_model_pillars(data, model)
-        total = _weighted_total(agg) if agg else 0.0
-        total_row += f"  {total:>5.1%}".rjust(model_col_w + 2)
-    lines.append(total_row)
+    # TOTAL row + footer — gated by legacy_weighted (SC2: no weighted score
+    # in the default compact view).
+    if legacy_weighted:
+        lines.append("─" * (task_col_w + (model_col_w + 2) * len(full_models)))
+        total_row = "TOTAL".ljust(task_col_w)
+        for model in full_models:
+            agg = _aggregate_model_pillars(data, model)
+            total = _weighted_total(agg) if agg else 0.0
+            total_row += f"  {total:>5.1%}".rjust(model_col_w + 2)
+        lines.append(total_row)
 
-    lines.append(
-        f"  TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
-        f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
-        f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
-        f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
-    )
+        lines.append(
+            f"  TOTAL = {WEIGHT_CORRECTNESS:.2f}×correct "
+            f"+ {WEIGHT_PRICE_RATIO:.2f}×price_ratio "
+            f"+ {WEIGHT_TIME_RATIO:.2f}×time_ratio "
+            f"+ {WEIGHT_TOKEN_RATIO:.2f}×token_ratio"
+        )
 
     return "\n".join(lines)
 
 
-def format_json(data: CompareData) -> str:
-    """Machine-readable JSON output."""
+def format_json(data: CompareData, legacy_weighted: bool = False) -> str:
+    """Machine-readable JSON output.
+
+    Each row carries the existing per-(task, model) breakdown plus aggregated
+    efficiency + AA sub-measures from the model view, key names match the
+    aggregator's dict keys for callers that bridge both:
+
+      cost_per_task, tokens_per_task, answer_tokens_per_task, time_per_task,
+      cost_per_suite, tokens_per_suite, answer_tokens_per_suite, time_per_suite,
+      intelligence_per_dollar, intelligence_per_token, intelligence_per_token_total.
+
+    When ``legacy_weighted=True``, a top-level ``legacy_weighted_total`` field
+    is added per row for backward compat. Default omits it.
+    """
     import json
 
     rows = []
     for task in data.tasks:
         for model in data.models:
             ps = data.matrix.get(task, {}).get(model)
-            if ps:
-                rows.append(
-                    {
-                        "task": task,
-                        "model": model,
-                        "correctness": round(ps.correctness, 4),
-                        "token_ratio": round(ps.token_ratio, 4),
-                        "time_ratio": round(ps.time_ratio, 4),
-                        "avg_tokens": round(ps.avg_tokens, 1),
-                        "avg_time": round(ps.avg_time, 2),
-                        "samples": ps.samples,
-                        "token_suppressed": ps.token_suppressed,
-                        "time_suppressed": ps.time_suppressed,
-                        "price_ratio": (
-                            round(ps.price_ratio, 4) if not math.isnan(ps.price_ratio) else None
-                        ),
-                        "avg_cost_usd": (
-                            round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None
-                        ),
-                        "tier_breakdown": ps.tier_breakdown,
-                    }
+            if not ps:
+                continue
+            row = {
+                "task": task,
+                "model": model,
+                "correctness": round(ps.correctness, 4),
+                "token_ratio": round(ps.token_ratio, 4),
+                "time_ratio": round(ps.time_ratio, 4),
+                "avg_tokens": round(ps.avg_tokens, 1),
+                "avg_answer_tokens": (
+                    round(ps.avg_answer_tokens, 1)
+                    if ps.avg_answer_tokens is not None
+                    else None
+                ),
+                "avg_time": round(ps.avg_time, 2),
+                "samples": ps.samples,
+                "token_suppressed": ps.token_suppressed,
+                "time_suppressed": ps.time_suppressed,
+                "price_ratio": (
+                    round(ps.price_ratio, 4) if not math.isnan(ps.price_ratio) else None
+                ),
+                "avg_cost_usd": (
+                    round(ps.avg_cost_usd, 6) if not math.isnan(ps.avg_cost_usd) else None
+                ),
+                "tier_breakdown": ps.tier_breakdown,
+            }
+            # Aggregated efficiency + AA sub-measures (per-row copy from
+            # the model aggregator — JSON consumers typically aggregate
+            # themselves, but pre-providing the values keeps the schema
+            # discoverable).
+            agg = _aggregate_model_pillars(data, model)
+            if agg is not None:
+                for k in (
+                    "cost_per_task", "tokens_per_task", "time_per_task",
+                    "cost_per_suite", "tokens_per_suite", "time_per_suite",
+                    "intelligence_per_dollar",
+                    "intelligence_per_token",
+                    "intelligence_per_token_total",
+                ):
+                    v = agg[k]
+                    if isinstance(v, float) and math.isnan(v):
+                        v = None
+                    row[k] = round(v, 6) if isinstance(v, float) else v
+                ans_t = agg.get("answer_tokens_per_task")
+                row["answer_tokens_per_task"] = (
+                    round(ans_t, 1) if ans_t is not None else None
                 )
+                ans_s = agg.get("answer_tokens_per_suite")
+                row["answer_tokens_per_suite"] = (
+                    round(ans_s, 1) if ans_s is not None else None
+                )
+
+            if legacy_weighted:
+                row["legacy_weighted_total"] = (
+                    round(_weighted_total(agg), 6) if agg is not None else None
+                )
+            rows.append(row)
     return json.dumps(rows, indent=2)
 
 

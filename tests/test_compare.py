@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from bench_cli.compare import (
@@ -379,9 +381,9 @@ def test_format_summary_show_partial_renders_footer_block():
     for t in partial_data.tasks:
         data.matrix.setdefault(t, {})["m_partial"] = partial_data.matrix[t]["m_partial"]
 
-    out = format_summary(data, min_tasks=34, show_partial=True)
+    out = format_summary(data, min_tasks=34, show_partial=True, legacy_weighted=True)
     assert "m_partial" in out
-    assert "EXCLUDED" in out  # partial footer present
+    assert "Not full eval" in out  # partial footer present (legacy view)
 
 
 def test_format_summary_ranking_uses_weighted_score():
@@ -399,15 +401,16 @@ def test_format_summary_ranking_uses_weighted_score():
             "expensive": expensive.matrix[t]["expensive"],
         }
 
-    out = format_summary(data)
+    out = format_summary(data, legacy_weighted=True)
     lines = [l for l in out.split("\n") if l.strip().startswith("#")]
     assert "cheap" in lines[0], f"cheaper model should rank first, got: {lines}"
     assert "expensive" in lines[1]
 
 
 def test_format_summary_uses_0_5_0_2_0_15_0_15_formula_in_header():
+    """Legacy weighted view shows the historical 0.5/0.2/0.15/0.15 header formula."""
     data = _make_full_eval_model(correctness=0.8)
-    out = format_summary(data)
+    out = format_summary(data, legacy_weighted=True)
     assert "0.50×correct" in out
     assert "0.20×price_ratio" in out
     assert "0.15×time_ratio" in out
@@ -415,11 +418,12 @@ def test_format_summary_uses_0_5_0_2_0_15_0_15_formula_in_header():
 
 
 def test_format_summary_min_tasks_respected():
-    """A 34-task model is excluded when min_tasks=40."""
+    """A 34-task model is excluded when min_tasks=40 (legacy view shows exclusion block)."""
     data = _make_full_eval_model(correctness=0.8)
-    out = format_summary(data, min_tasks=40)
+    out = format_summary(data, min_tasks=40, legacy_weighted=True)
     assert "m_full" not in out  # 34 < 40 → excluded
-    assert "no models with >= 40" in out
+    # Header announces 0 full evals when the only model is below min_tasks.
+    assert "0 full evals" in out
 
 
 # ---- format_compact_table ---------------------------------------------
@@ -437,7 +441,7 @@ def test_format_compact_table_excludes_partial():
     for t in partial_data.tasks:
         data.matrix.setdefault(t, {})["m_partial"] = partial_data.matrix[t]["m_partial"]
 
-    out = format_compact_table(data)
+    out = format_compact_table(data, legacy_weighted=True)
     assert "m_full" in out
     assert "m_partial" not in out
     assert "TOTAL" in out  # weighted TOTAL row present
@@ -448,9 +452,9 @@ def test_format_compact_table_excludes_partial():
 
 
 def test_format_pillar_table_total_row_present():
-    """The full table renders a TOTAL row with the weighted blend."""
+    """Legacy view: the full table renders a TOTAL row with the weighted blend."""
     data = _make_full_eval_model(correctness=0.8)
-    out = format_pillar_table(data, "BENCHMARK RESULTS")
+    out = format_pillar_table(data, "BENCHMARK RESULTS", legacy_weighted=True)
     assert "TOTAL" in out
     # TOTAL row should show one nonzero value (~0.9 for correct=0.8, ratios=1.0)
     total_idx = [i for i, l in enumerate(out.split("\n")) if l.startswith("TOTAL")][0]
@@ -460,8 +464,286 @@ def test_format_pillar_table_total_row_present():
 
 
 def test_format_pillar_table_total_handles_missing_ratios():
-    """Total falls back to defaults (1.0) when ratios are absent."""
+    """Legacy view: total falls back to defaults (1.0) when ratios are absent."""
     data = _make_full_eval_model(correctness=0.5, price=float("nan"))
-    out = format_pillar_table(data, "BENCHMARK RESULTS")
+    out = format_pillar_table(data, "BENCHMARK RESULTS", legacy_weighted=True)
     # total = 0.5*0.5 + 0.5*1.0 (no valid ratios → default to 1.0) = 0.75
     assert "0.75" in out
+
+
+def test_aggregate_pillars_includes_cost_per_task():
+    """SC3 partial: cost_per_task is the arithmetic mean of per-task avg_cost_usd
+    values across scored tasks, ignoring nan entries."""
+    data = CompareData()
+    data.tasks = ["t1", "t2"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.001)},
+        "t2": {"m1": PillarScores(correctness=0.6, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=200, avg_time=4.0, samples=1, avg_cost_usd=0.003)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["cost_per_task"] == pytest.approx(0.002)
+    assert agg["tokens_per_task"] == pytest.approx(150.0)
+    assert agg["time_per_task"] == pytest.approx(3.0)
+
+
+def test_aggregate_pillars_drops_nan_cost_in_mean():
+    """SC3: avg_cost_usd=nan tasks do NOT pollute cost_per_task mean."""
+    data = CompareData()
+    data.tasks = ["t1", "t2"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=float("nan"))},
+        "t2": {"m1": PillarScores(correctness=0.6, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=200, avg_time=4.0, samples=1, avg_cost_usd=0.002)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["cost_per_task"] == pytest.approx(0.002)
+
+
+def test_aggregate_pillars_intelligence_per_dollar_when_priced():
+    """SC8: int/$ = correct_mean / cost_per_task when cost is available."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.002)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["intelligence_per_dollar"] == pytest.approx(400.0)
+
+
+def test_aggregate_pillars_intelligence_per_dollar_nan_when_unpriced():
+    """SC8: int/$ is NaN when cost is NaN; never divide by zero."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert math.isnan(agg["intelligence_per_dollar"])
+
+
+def test_aggregate_pillars_intelligence_per_token_uses_answer_when_available():
+    """SC8 + PRD gotcha: int/tok prefers answer_tokens (visible work) over total."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.5, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=1000, avg_time=2.0, samples=1)},
+    }
+    # avg_answer_tokens is set on the PillarScores via the new field below.
+    data.matrix["t1"]["m1"].avg_answer_tokens = 100.0
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["intelligence_per_token"] == pytest.approx(0.005)  # 0.5 / 100
+    assert agg["intelligence_per_token_total"] == pytest.approx(0.0005)  # 0.5 / 1000
+
+
+def test_aggregate_pillars_intelligence_per_token_falls_back_to_total():
+    """SC8: when answer_tokens is None, int/tok == int/tok-total (== cap/total)."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.5, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=200, avg_time=2.0, samples=1)},
+    }
+    agg = _aggregate_model_pillars(data, "m1")
+    assert agg["intelligence_per_token"] == pytest.approx(0.5 / 200)
+    assert agg["intelligence_per_token_total"] == pytest.approx(0.5 / 200)
+
+
+def test_format_summary_default_uses_capability_ranking():
+    """SC1 + SC2: default view ranks by correct_mean; no weighted TOTAL line."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["best", "worst"]
+    data.matrix = {
+        "t1": {
+            "best": PillarScores(correctness=0.9, token_ratio=1.0, time_ratio=1.0,
+                                 avg_tokens=100, avg_time=1.0, samples=1),
+            "worst": PillarScores(correctness=0.5, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=200, avg_time=2.0, samples=1),
+        }
+    }
+    out = format_summary(data, min_tasks=1)
+    # best must appear before worst in the output
+    assert out.index("best") < out.index("worst")
+    # No weighted blend footer line in default (capability-only) view
+    assert "0.50×correct" not in out
+    # Header announces capability (pass@1 mean)
+    assert "Capability" in out or "pass@1" in out or "capability" in out.lower()
+
+
+def test_format_summary_shows_capability_percentage():
+    """SC1 partial: correct_mean renders as a percentage per model row."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.83, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=1.0, samples=1)}
+    }
+    out = format_summary(data, min_tasks=1)
+    assert "83" in out  # 0.83 → 83.0%
+
+
+def test_format_summary_renders_efficiency_columns():
+    """SC3: cost/task, tok/task, time/task render in default output."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=2619, avg_time=40.6, samples=1,
+                                  avg_cost_usd=0.002418)}
+    }
+    out = format_summary(data, min_tasks=1)
+    assert "cost=$" in out or "cost/task" in out
+    assert "2,619" in out  # tok/task with thousands separator
+    assert "40.6s" in out or "40.6" in out  # time/task
+
+
+def test_format_summary_renders_nan_cost_as_unpriced():
+    """SC3 + cross-cutting: NaN cost renders as 'n/a (unpriced)', never 'nan'/'inf'."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_summary(data, min_tasks=1)
+    assert "n/a (unpriced)" in out
+    assert "nan" not in out
+    assert "inf" not in out
+
+
+def test_format_summary_renders_intelligence_per_dollar():
+    """SC8: int/$ renders in default output when cost is priced."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1,
+                                  avg_cost_usd=0.002)}
+    }
+    out = format_summary(data, min_tasks=1)
+    assert "int/$" in out
+    # 0.8 / 0.002 = 400.0
+    assert "400" in out
+
+
+def test_format_summary_renders_intelligence_per_token_answer_preferred():
+    """SC8 + PRD gotcha: int/tok uses answer tokens when available."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.5, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=1000, avg_time=2.0, samples=1,
+                                  avg_answer_tokens=100.0)}
+    }
+    out = format_summary(data, min_tasks=1)
+    assert "int/tok" in out
+    # 0.5 / 100 = 0.005 — the answer-only value must appear (the total-tokens
+    # alternative would be 0.5 / 1000 = 0.0005, which the 2-decimal formatter
+    # rounds to 0.00 and would be missing from the row). We assert the
+    # answer-tokens value is rendered — `0.005` rounds to `0.01` at 2dp and
+    # `0.0005` rounds to `0.00`, so the presence of `int/tok=0.01` confirms
+    # answer tokens were used (the total-token path would have produced
+    # `int/tok=0.00`).
+    assert "int/tok=0.01" in out
+
+
+def test_format_pillar_table_default_shows_capability_only():
+    """SC1 + SC2 (pillar table): default pillar table is capability-only;
+    weighted TOTAL footer appears only with legacy_weighted=True."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1,
+                                  avg_cost_usd=0.002)}
+    }
+    out = format_pillar_table(data)
+    assert "0.50×correct" not in out  # no weighted footer
+
+
+def test_format_compact_table_default_no_total_row():
+    """SC2 (compact table): default compact view omits TOTAL row entirely;
+    MEAN is kept as the trend row. Stricter than `not in or not in`: the body
+    TOTAL row alone (without the `TOTAL = ...` footer) MUST be hidden too."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_compact_table(data, min_tasks=1)
+    # MEAN row is preserved (gives trend visibility).
+    assert "MEAN" in out
+    # The string "TOTAL" must NOT appear at all in the default view — body row
+    # OR footer formula would both be a SC2 violation.
+    assert "TOTAL" not in out
+
+
+def test_format_compact_table_legacy_includes_total_row():
+    """SC2 (legacy opt-in): legacy_weighted=True shows TOTAL row + formula footer."""
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_compact_table(data, min_tasks=1, legacy_weighted=True)
+    assert "TOTAL" in out
+    assert "0.50×correct" in out or "0.5×correct" in out
+
+
+def test_format_json_default_no_weighted_total():
+    """SC2 (JSON): default JSON omits the legacy weighted blend."""
+    import json as _json
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_json(data)
+    parsed = _json.loads(out)
+    assert all("legacy_weighted_total" not in row for row in parsed)
+    # New efficiency columns present.
+    row = parsed[0]
+    for key in ("cost_per_task", "tokens_per_task", "time_per_task",
+                "intelligence_per_dollar", "intelligence_per_token",
+                "intelligence_per_token_total"):
+        assert key in row, f"missing {key} in default JSON output"
+
+
+def test_format_json_legacy_includes_weighted_total():
+    """SC2 (JSON legacy opt-in): --legacy-weighted adds legacy_weighted_total."""
+    import json as _json
+    data = CompareData()
+    data.tasks = ["t1"]
+    data.models = ["m1"]
+    data.matrix = {
+        "t1": {"m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                                  avg_tokens=100, avg_time=2.0, samples=1)}
+    }
+    out = format_json(data, legacy_weighted=True)
+    parsed = _json.loads(out)
+    assert "legacy_weighted_total" in parsed[0]
+
