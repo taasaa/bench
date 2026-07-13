@@ -872,3 +872,85 @@ def test_detect_ties_skips_models_with_none_ci():
     assert ("a", "c") in pair_set
     assert all("b" not in g for g in pair_set)
 
+
+# ---- capability rendering + tie badge (Phase 1 Task 3) --------------------
+import re as _re
+
+
+def test_capability_with_ci_renders_correctly():
+    """SC6 (full): format_summary shows capability [CI_low, CI_high] when CI
+    is available (>= 34 tasks)."""
+    data = CompareData()
+    data.tasks = [f"t{i}" for i in range(34)]
+    data.models = ["m1"]
+    # m1 correctness oscillates between 0.7 and 0.9 — bootstrap CI is well-defined.
+    scores = [0.7 + (0.2 if i % 2 == 0 else 0.0) for i in range(34)]
+    data.matrix = {
+        f"t{i}": {
+            "m1": PillarScores(
+                correctness=scores[i],
+                token_ratio=1.0,
+                time_ratio=1.0,
+                avg_tokens=100,
+                avg_time=1.0,
+                samples=1,
+            )
+        }
+        for i in range(34)
+    }
+    out = format_summary(data, include_ci=True)
+    # Bracket form '[lo, hi]' with one decimal place.
+    assert _re.search(r"\[\d+\.\d, \d+\.\d\]", out), f"expected CI bracket in:\n{out}"
+
+
+def test_capability_insufficient_data_for_partial_eval():
+    """Edge case: a model with < MIN_FULL_EVAL_TASKS scored tasks renders
+    '[insufficient data]' instead of [CI_low, CI_high]."""
+    data = CompareData()
+    data.tasks = ["t1", "t2"]
+    data.models = ["m1", "m2"]
+    data.matrix = {
+        "t1": {
+            "m1": PillarScores(correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+                               avg_tokens=100, avg_time=1.0, samples=1),
+        },
+        "t2": {
+            "m1": PillarScores(correctness=0.7, token_ratio=1.0, time_ratio=1.0,
+                               avg_tokens=100, avg_time=1.0, samples=1),
+        },
+    }
+    out = format_summary(data, show_partial=True)
+    assert "insufficient data" in out
+    # No raw CI bracket for partial-eval models.
+    assert not _re.search(r"\[0\.\d, 0\.\d\]", out), \
+        "partial-eval models must not render numeric CI brackets"
+
+
+def test_tie_badge_in_renderer():
+    """SC7 (full): two models with identical CIs cause the renderer to emit
+    the '≈' badge with an annotation pointing to the highest-ranked partner.
+    Identical correctness → identical bootstrap CIs → overlap is guaranteed."""
+    data = CompareData()
+    data.tasks = [f"t{i}" for i in range(34)]
+    data.models = ["a", "b"]
+    data.matrix = {
+        f"t{i}": {
+            "a": PillarScores(
+                correctness=0.80,
+                token_ratio=1.0, time_ratio=1.0,
+                avg_tokens=100, avg_time=1.0, samples=1,
+            ),
+            "b": PillarScores(
+                correctness=0.80,
+                token_ratio=1.0, time_ratio=1.0,
+                avg_tokens=100, avg_time=1.0, samples=1,
+            ),
+        }
+        for i in range(34)
+    }
+    out = format_summary(data, include_ci=True)
+    assert "≈" in out
+    # Annotation must reference #1 (highest-ranked partner, the only other
+    # model in this fixture).
+    assert "tied with #1" in out
+

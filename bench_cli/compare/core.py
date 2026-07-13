@@ -36,6 +36,9 @@ from scorers.ratio_recompute import (
 # source of truth for proxied models, and `resolve_market_price` reads from
 # it directly. See scorers/price_ratio.py for the new contract.
 
+# Bootstrap CI on capability mean (Phase 1 Task 1). Pure stdlib; no numpy.
+from bench_cli.compare.bootstrap import bootstrap_ci  # noqa: E402
+
 
 @dataclass
 class PillarScores:
@@ -516,6 +519,10 @@ def _aggregate_model_pillars(
     n = len(c_vals)
     correct_mean = sum(c_vals) / n
 
+    # Bootstrap CI on capability mean. Suppressed for partial evals (< min_n).
+    ci = bootstrap_ci(c_vals)
+    ci_low, ci_high = (None, None) if ci is None else ci
+
     def _mean(xs: list[float]) -> float:
         return sum(xs) / len(xs) if xs else float("nan")
 
@@ -563,6 +570,8 @@ def _aggregate_model_pillars(
     return {
         "n": n,
         "correct_mean": correct_mean,
+        "ci_low": ci_low,
+        "ci_high": ci_high,
         "price_ratio_gm": geometric_mean(cr_vals) if cr_vals else 1.0,
         "time_ratio_gm": geometric_mean(lr_vals) if lr_vals else 1.0,
         "token_ratio_gm": geometric_mean(tr_vals) if tr_vals else 1.0,
@@ -789,6 +798,7 @@ def format_summary(
     min_tasks: int = MIN_FULL_EVAL_TASKS,
     show_partial: bool = False,
     legacy_weighted: bool = False,
+    include_ci: bool = True,
 ) -> str:
     """Ranked model summary, full evals only.
 
@@ -867,19 +877,40 @@ def format_summary(
     def _fmt_score(x: float) -> str:
         return f"{x:.1%}"
 
-    rank = 0
-    prev_score = None
+    # Phase 1 Task 3: rank + tie badge via annotate_with_ties. Rank is ordinal
+    # (1, 2, 3, ...) by capability descending — never non-advancing on tie. The
+    # badge is "≈" only when this model's CI overlaps with at least one
+    # higher-ranked model's CI; the annotation is "#X" pointing to the
+    # highest-ranked such partner, or None.
+    from bench_cli.compare.ties import annotate_with_ties
+
+    sorted_for_ties = []
     for m in full_evals_sorted:
+        ci_lo = aggs[m].get("ci_low")
+        ci_hi = aggs[m].get("ci_high")
+        # Normalize (None, None) -> None so annotate_with_ties's `ci is None`
+        # branch handles partial-evals correctly.
+        ci = (ci_lo, ci_hi) if (ci_lo is not None and ci_hi is not None) else None
+        sorted_for_ties.append((m, _score(m), ci))
+    ranked = annotate_with_ties(sorted_for_ties)
+
+    for m, rank, badge, annotation in ranked:
         agg = aggs[m]
-        # Capability ranking — skip rank increment for ties handled in Phase 1.
         score = _score(m)
-        if rank == 0 or score != prev_score:
-            rank += 1
-        prev_score = score
+        cap_str = _fmt_score(score)
+        ci_lo = agg.get("ci_low")
+        ci_hi = agg.get("ci_high")
+        if include_ci:
+            if ci_lo is None or ci_hi is None:
+                ci_str = " [insufficient data]"
+            else:
+                ci_str = f" [{ci_lo:.1f}, {ci_hi:.1f}]"
+        else:
+            ci_str = ""
         display = bare_name(m)
         cols = [
-            f"#{rank} {display}",
-            _fmt_score(score),
+            f"#{rank}{('  ' + badge) if badge else ''} {display}",
+            cap_str + ci_str,
             f"cost={_fmt_cost(agg['cost_per_task'])}",
             f"tok={_fmt_int(agg['tokens_per_task'])}",
             (
@@ -892,7 +923,8 @@ def format_summary(
             f"int/tok={_fmt_int_metric(agg['intelligence_per_token'])}",
         ]
         cols = [c for c in cols if c is not None]
-        lines.append(f"  {'  '.join(cols)}")
+        suffix = f"  (tied with {annotation})" if annotation else ""
+        lines.append(f"  {'  '.join(cols)}{suffix}")
 
     # Legacy footer — only when explicit opt-in.
     if legacy_weighted:
@@ -909,10 +941,12 @@ def format_summary(
         lines.append(f"  ── Not full eval (< {min_tasks} tasks) ──")
         for m in partial_evals_sorted:
             agg = aggs[m]
+            ci_str = " [insufficient data]" if include_ci else ""
             lines.append(
                 f"  {bare_name(m):<30}  "
                 f"{agg['n']}/{min_tasks} tasks  "
                 f"correct={_fmt_score(agg['correct_mean'])}"
+                f"{ci_str}"
             )
 
     return "\n".join(lines)
@@ -922,6 +956,7 @@ def format_compact_table(
     data: CompareData,
     min_tasks: int = MIN_FULL_EVAL_TASKS,
     legacy_weighted: bool = False,
+    include_ci: bool = True,
 ) -> str:
     """Per-task correctness grid for -v output, full evals only.
 
@@ -988,6 +1023,25 @@ def format_compact_table(
         avg = sum(vals) / len(vals) if vals else 0.0
         mean_row += f"  {avg:.0%}".rjust(model_col_w + 2)
     lines.append(mean_row)
+
+    # CI row (Phase 1 Task 3). Between MEAN and TOTAL (or alone if no TOTAL).
+    # Skip entirely when include_ci=False so `--no-ci` produces a clean table.
+    if include_ci:
+        lines.append("─" * (task_col_w + (model_col_w + 2) * len(full_models)))
+        ci_row = "CI".ljust(task_col_w)
+        for model in full_models:
+            agg = _aggregate_model_pillars(data, model)
+            if agg is None:
+                cell = "[insufficient data]"
+            else:
+                ci_lo = agg.get("ci_low")
+                ci_hi = agg.get("ci_high")
+                if ci_lo is None or ci_hi is None:
+                    cell = "[insufficient data]"
+                else:
+                    cell = f"[{ci_lo:.1f}, {ci_hi:.1f}]"
+            ci_row += "  " + cell.rjust(model_col_w + 2)
+        lines.append(ci_row)
 
     # TOTAL row + footer — gated by legacy_weighted (SC2: no weighted score
     # in the default compact view).
