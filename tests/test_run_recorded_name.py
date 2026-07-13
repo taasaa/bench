@@ -64,14 +64,14 @@ def test_as_flag_records_custom_name_and_routes_through_model(monkeypatch, tmp_p
 
 
 def test_no_as_flag_records_openrouter_id(monkeypatch, tmp_path):
-    # Without --as, the recorded name must equal the live-resolved backing
-    # model for the routing alias. The expected recorded value is whatever
-    # resolve_recorded_name returns AT TEST TIME — the test follows the proxy
-    # by design (a proxy rebind to a different backing model changes the
-    # expected value but does not break the invariant being tested).
-    expected_recorded = resolve_recorded_name("openai/thinking", None)
-    assert expected_recorded != "openai/thinking", (
-        "test premise broken: openai/thinking must resolve to a backing model"
+    """Without --as, the recorded name equals the resolved backing model.
+
+    Mocks resolve_backing_model_id so the test is independent of proxy state.
+    """
+    expected_recorded = "fake/test-recorded-or-id"
+    monkeypatch.setattr(
+        "bench_cli.pricing.litellm_config.resolve_backing_model_id",
+        lambda alias: expected_recorded if alias == "openai/thinking" else None,
     )
 
     received = {}

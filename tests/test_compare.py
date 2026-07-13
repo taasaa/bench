@@ -238,19 +238,24 @@ def test_recompute_uses_reference_baseline_when_registered(tmp_path, monkeypatch
 
 
 def test_ratio_reference_labels_default_and_registered(tmp_path, monkeypatch):
-    """W3c: legend names the reference model; defaults when none registered."""
+    """W3c: legend names the reference model; defaults when none registered.
+
+    Asserts the SHAPE (keys present, defaults are non-empty strings, registered
+    reference wins when set) — not the specific model names, so re-baselining
+    the calibration source doesn't break this test.
+    """
     from scorers import reference_model as rm
     from bench_cli.compare.core import _ratio_reference_labels
 
     monkeypatch.setattr(rm, "_REFERENCE_FILE", tmp_path / "ref.json")  # none registered
     labels = _ratio_reference_labels()
-    assert "qwen-local" in labels["efficiency_latency"]  # SYSTEM_DEFAULT calibration source
-    assert "minimax-m2.7" in labels["cost"]  # task_budgets reference source
+    assert set(labels.keys()) == {"efficiency_latency", "cost"}
+    assert all(labels.values()), f"default labels must be non-empty: {labels}"
 
-    rm.set_reference_model_id("openai/minimax-m3")
+    rm.set_reference_model_id("openai/test-reference-model")
     labels = _ratio_reference_labels()
-    assert labels["efficiency_latency"] == "openai/minimax-m3"
-    assert labels["cost"] == "openai/minimax-m3"
+    assert labels["efficiency_latency"] == "openai/test-reference-model"
+    assert labels["cost"] == "openai/test-reference-model"
 
 
 # ---------------------------------------------------------------------------

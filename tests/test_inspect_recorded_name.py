@@ -87,13 +87,17 @@ def test_stats_cli_finds_recorded_or_id_from_recognizable_bare_alias(tmp_path, m
     assert "f18_direct_answer_first" in result.output
 
 
-def test_resolve_query_name_passes_recorded_through():
-    # Invariant: query-side resolution mirrors record-side resolution. The two
-    # functions must agree so a user querying by routing alias finds logs
-    # recorded by routing alias. Tested live (whatever the proxy resolves) so
-    # the invariant holds across proxy rebinds.
-    alias = "openai/thinking"
-    assert _resolve_query_name(alias) == resolve_recorded_name(alias, None)
+def test_resolve_query_name_passes_recorded_through(monkeypatch):
+    """Invariant: query-side resolution mirrors record-side resolution.
+
+    Mocks the resolver so the test asserts the invariant directly, not via
+    whatever happens to resolve today.
+    """
+    monkeypatch.setattr(
+        "bench_cli.pricing.litellm_config.resolve_backing_model_id",
+        lambda alias: "fake/test-or-id" if alias in ("openai/test-alias", "test-alias") else None,
+    )
+    assert _resolve_query_name("openai/test-alias") == resolve_recorded_name("openai/test-alias", None)
 
 
 def test_resolve_query_name_passes_or_id_through():

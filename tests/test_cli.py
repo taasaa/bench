@@ -407,24 +407,28 @@ class TestPricesAdd:
         assert "managed" in result.output.lower()
 
     def test_prices_add_success(self, tmp_path):
-        """Adding a price succeeds and confirms the entry."""
+        """Adding a price succeeds and confirms the entry. Mocks the resolver
+        so the test is independent of proxy state."""
+        from unittest.mock import patch
+
         from bench_cli.pricing.price_cache import OpenRouterCache
 
         isolated_cache = OpenRouterCache(cache_path=tmp_path / "openrouter-models.json")
         runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["prices", "add", "openai/nvidia-mistral-small4", "0.15", "0.60"],
-            obj={"cache": isolated_cache},
-        )
+        with patch(
+            "bench_cli.prices.resolve_openrouter_id",
+            return_value="vendor/test-or-id",
+        ):
+            result = runner.invoke(
+                cli,
+                ["prices", "add", "openai/test-priced-alias", "0.15", "0.60"],
+                obj={"cache": isolated_cache},
+            )
         assert result.exit_code == 0, result.output
         assert "Added:" in result.output
-        assert "openai/nvidia-mistral-small4" in result.output
+        assert "openai/test-priced-alias" in result.output
         # Verify the price was actually written to the isolated cache
-        from bench_cli.pricing.litellm_config import resolve_openrouter_id
-
-        resolved_id = resolve_openrouter_id("openai/nvidia-mistral-small4")
-        info = isolated_cache.get_price(resolved_id)
+        info = isolated_cache.get_price("vendor/test-or-id")
         assert info.input_price == 0.15
         assert info.output_price == 0.6
 
