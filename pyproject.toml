@@ -37,6 +37,9 @@ agent = [
     "inspect-swe>=0.2.65",
     "anthropic>=0.30",
 ]
+irt = [
+    "pymc>=5.10",
+]
 dev = [
     "ruff>=0.15",
 ]
