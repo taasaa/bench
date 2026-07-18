@@ -58,3 +58,21 @@ def test_irt_fit_dataclass():
     )
     assert fit.converged
     assert len(fit.theta) == 2
+
+
+def test_reconcile_identities_basic():
+    """Reconcile identities maps aliases to canonical names."""
+    from bench_cli.identity import reconcile_identities
+    from unittest.mock import patch
+
+    def _mock_resolve(routed, as_name):
+        if routed == "openai/thinking":
+            return "openai/claude-3-5-sonnet"
+        return routed
+
+    with patch("bench_cli.identity.resolve_recorded_name", side_effect=_mock_resolve):
+        # When model list is passed, it should reconcile instantly without file scan
+        res = reconcile_identities("dummy_dir", models=["openai/thinking", "openai/default"])
+        assert res["openai/thinking"] == "openai/claude-3-5-sonnet"
+        assert res["openai/default"] == "openai/default"
+
