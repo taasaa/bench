@@ -180,5 +180,73 @@ def test_recommend_preset_cli():
         mock_rec.assert_any_call(mock_load.return_value, "balanced", use_irt=False)
 
 
+def test_recommend_preset_nan_inf():
+    from click.testing import CliRunner
+    from unittest.mock import patch
+    from bench_cli.main import cli
+    from bench_cli.recommend.presets import RecommendResult, RankedModel
+
+    runner = CliRunner()
+
+    with patch("bench_cli.compare.core.load_compare_data") as mock_load, \
+         patch("bench_cli.recommend.presets.recommend_preset") as mock_rec:
+        
+        mock_load.return_value = _make_cohort()
+        mock_rec.return_value = RecommendResult(
+            preset="best",
+            used_irt=True,
+            models=[
+                RankedModel(
+                    model="model-alpha", rank=1, capability=float("nan"), ci=None,
+                    cost_per_task=float("nan"), time_per_task=float("nan"), on_pareto=True,
+                    dominated_by=[]
+                ),
+                RankedModel(
+                    model="model-beta", rank=2, capability=float("inf"), ci=None,
+                    cost_per_task=float("inf"), time_per_task=float("inf"), on_pareto=False,
+                    dominated_by=[]
+                )
+            ]
+        )
+
+        # 1. Run recommend-preset and verify tabular stdout outputs "n/a" for nan and inf values
+        result = runner.invoke(cli, ["recommend-preset", "--preset", "best"])
+        assert result.exit_code == 0
+        output = result.output
+        
+        assert "model-alpha" in output
+        assert "model-beta" in output
+        assert output.count("n/a") >= 6
+        assert "nan" not in output.lower()
+        assert "inf" not in output.lower()
+
+        # 2. Check non-IRT rendering (capability as percentages)
+        mock_rec.return_value = RecommendResult(
+            preset="balanced",
+            used_irt=False,
+            models=[
+                RankedModel(
+                    model="model-alpha", rank=1, capability=float("nan"), ci=None,
+                    cost_per_task=float("nan"), time_per_task=float("nan"), on_pareto=True,
+                    dominated_by=[]
+                ),
+                RankedModel(
+                    model="model-beta", rank=2, capability=float("inf"), ci=None,
+                    cost_per_task=float("inf"), time_per_task=float("inf"), on_pareto=False,
+                    dominated_by=[]
+                )
+            ]
+        )
+        result_no_irt = runner.invoke(cli, ["recommend-preset", "--preset", "balanced", "--no-use-irt"])
+        assert result_no_irt.exit_code == 0
+        output_no_irt = result_no_irt.output
+        assert "model-alpha" in output_no_irt
+        assert "model-beta" in output_no_irt
+        assert output_no_irt.count("n/a") >= 6
+        assert "nan" not in output_no_irt.lower()
+        assert "inf" not in output_no_irt.lower()
+
+
+
 
 

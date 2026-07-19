@@ -8,13 +8,13 @@ import click
 
 
 def _fmt_cost(cost: float) -> str:
-    if math.isnan(cost):
+    if math.isnan(cost) or math.isinf(cost):
         return "n/a"
     return f"${cost:.4f}"
 
 
 def _fmt_time(t: float) -> str:
-    if math.isnan(t):
+    if math.isnan(t) or math.isinf(t):
         return "n/a"
     if t < 60:
         return f"{t:.1f}s"
@@ -77,7 +77,10 @@ def recommend_preset_cmd(preset: str, log_dir: str, use_irt: bool, as_json: bool
         click.echo(f"{'---':>3}  {'-' * 35} {'-' * 6} {'-' * 10} {'-' * 10} {'-' * 7}")
         for m in result.models:
             pareto_mark = "  ★" if m.on_pareto else ""
-            cap_val = f"{m.capability:.3f}" if result.used_irt else f"{m.capability:.1%}"
+            if math.isnan(m.capability) or math.isinf(m.capability):
+                cap_val = "n/a"
+            else:
+                cap_val = f"{m.capability:.3f}" if result.used_irt else f"{m.capability:.1%}"
             click.echo(
                 f"{m.rank:>3}  {m.model:<35} {cap_val:>6} "
                 f"{_fmt_cost(m.cost_per_task):>10} {_fmt_time(m.time_per_task):>10}"
