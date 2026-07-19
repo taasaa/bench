@@ -55,12 +55,12 @@ def is_moniker_alias(bench_alias: str) -> bool:
     (OpenRouter ids never contain '__'), so agent-eval cards of monikers like
     'openai/default__claude__docker' are correctly excluded.
     """
-    from bench_cli.resolver import bare_model_name
-
     # Agent-eval composite key: model is everything before the first '__'
     # (OR ids use '-', never '__').
     model_part = bench_alias.split("__", 1)[0] if "__" in bench_alias else bench_alias
-    return bare_model_name(model_part) in _ROUTER_MONIKERS
+    bare = model_part.split("/", 1)[1] if "/" in model_part else model_part
+    return bare.lower() in _ROUTER_MONIKERS
+
 
 
 def _build_pillar_map() -> dict[str, str]:

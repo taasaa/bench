@@ -40,8 +40,14 @@ def _find_template_log() -> Path:
     )
     for p in candidates:
         if p.stat().st_size > 1000:  # skip truncated/corrupt ones
-            return p
+            try:
+                with zipfile.ZipFile(p) as zf:
+                    if "header.json" in zf.namelist():
+                        return p
+            except Exception:
+                continue
     raise RuntimeError("No real eval log available to use as template")
+
 
 
 def _clone_eval_log(
