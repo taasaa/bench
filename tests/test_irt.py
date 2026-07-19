@@ -318,3 +318,19 @@ def test_2pl_recovers_synthetic_params():
     assert corr_theta > 0.8, f"Theta correlation too low: {corr_theta:.4f}"
     assert corr_b > 0.8, f"b correlation too low: {corr_b:.4f}"
 
+
+def test_item_analysis_extracts_ci():
+    """Item analysis maps estimated a_ci and b_ci from IRTFit."""
+    from bench_cli.irt.items import item_analysis
+    from bench_cli.irt.types import IRTFit
+
+    fit = IRTFit(
+        theta=[0.0], theta_ci=[(-0.1, 0.1)],
+        a=[1.5], a_ci=[(1.2, 1.8)],
+        b=[0.5], b_ci=[(0.2, 0.8)],
+        models=["m1"], tasks=["t1"],
+        pillar=None, converged=True, n_divergences=0
+    )
+    items = item_analysis(fit)
+    assert items[0].a_ci == (1.2, 1.8)
+    assert items[0].b_ci == (0.2, 0.8)
