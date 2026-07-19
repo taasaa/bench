@@ -286,3 +286,35 @@ def test_fit_all_pillars_skips_small_pillars():
         assert fits["small"] is None
         assert mock_fit.call_count == 1
         mock_fit.assert_called_once_with(outcome, pillar="large")
+
+
+@pytest.mark.slow
+def test_2pl_recovers_synthetic_params():
+    """SC4 recovery: 2PL recovers true parameters (theta and b) with high correlation."""
+    pytest.importorskip("pymc")
+    import numpy as np
+    from bench_cli.irt.fit import fit_2pl
+    from bench_cli.irt.types import OutcomeMatrix
+
+    n_models = 15
+    n_tasks = 20
+    matrix, true_theta, _, true_b = _generate_synthetic_2pl(
+        n_models=n_models, n_tasks=n_tasks, seed=42
+    )
+    tasks = [f"t{i}" for i in range(n_tasks)]
+    models = [f"m{i}" for i in range(n_models)]
+    outcome = OutcomeMatrix(
+        matrix=matrix,
+        models=models,
+        tasks=tasks,
+        pillars={t: "analysis" for t in tasks},
+    )
+
+    fit = fit_2pl(outcome, n_samples=1000, n_chains=2, seed=42)
+
+    corr_theta = float(np.corrcoef(true_theta, fit.theta)[0, 1])
+    corr_b = float(np.corrcoef(true_b, fit.b)[0, 1])
+
+    assert corr_theta > 0.8, f"Theta correlation too low: {corr_theta:.4f}"
+    assert corr_b > 0.8, f"b correlation too low: {corr_b:.4f}"
+

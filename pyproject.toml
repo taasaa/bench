@@ -57,7 +57,7 @@ bench_cli = ["py.typed"]
 # ---------------------------------------------------------------------------
 # Ruff — modern Python linter
 # ---------------------------------------------------------------------------
-[tool.pytest]
+[tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
 markers = [

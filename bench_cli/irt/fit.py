@@ -130,7 +130,7 @@ def fit_all_pillars(
     If any pillar fit fails to converge (converged=False), fall back to
     fitting a single general θ on all tasks.
     """
-    all_pillars = sorted({p for p in outcome.pillars.values()})
+    all_pillars = sorted({p for p in outcome.pillars.values() if p is not None})
     fits: dict[str, IRTFit | None] = {}
     any_convergence_failed = False
 
