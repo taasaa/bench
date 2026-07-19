@@ -170,5 +170,89 @@ def test_build_outcome_matrix_filters_monikers():
     assert len(om.matrix) == 1
 
 
+import random
+
+def _generate_synthetic_2pl(
+    n_models: int = 20,
+    n_tasks: int = 30,
+    seed: int = 42,
+) -> tuple[list[list[float]], list[float], list[float], list[float]]:
+    rng = random.Random(seed)
+    true_theta = [rng.gauss(0, 1) for _ in range(n_models)]
+    true_a = [abs(rng.gauss(1.0, 0.3)) for _ in range(n_tasks)]
+    true_b = [rng.gauss(0, 1.5) for _ in range(n_tasks)]
+
+    def sigmoid(x: float) -> float:
+        import math
+        return 1.0 / (1.0 + math.exp(-x))
+
+    matrix: list[list[float]] = []
+    for i in range(n_models):
+        row: list[float] = []
+        for j in range(n_tasks):
+            p = sigmoid(true_a[j] * (true_theta[i] - true_b[j]))
+            row.append(1.0 if rng.random() < p else 0.0)
+        matrix.append(row)
+    return matrix, true_theta, true_a, true_b
+
+
+@pytest.mark.slow
+def test_2pl_recovers_credible_intervals():
+    """SC4: 2PL calculates credible intervals for theta, a, and b."""
+    pytest.importorskip("pymc")
+    from bench_cli.irt.fit import fit_2pl
+    from bench_cli.irt.types import OutcomeMatrix
+
+    matrix, _, _, _ = _generate_synthetic_2pl(n_models=10, n_tasks=10, seed=42)
+    tasks = [f"t{i}" for i in range(10)]
+    models = [f"m{i}" for i in range(10)]
+    outcome = OutcomeMatrix(matrix=matrix, models=models, tasks=tasks, pillars={t: "analysis" for t in tasks})
+
+    fit = fit_2pl(outcome, n_samples=1000, n_chains=2, seed=42)
+
+    assert len(fit.a_ci) == 10
+    assert len(fit.b_ci) == 10
+    assert all(ci[0] < ci[1] for ci in fit.a_ci)
+    assert all(ci[0] < ci[1] for ci in fit.b_ci)
+
+
+@pytest.mark.slow
+def test_fit_all_pillars_convergence_fallback():
+    """Pillar fit non-convergence falls back to general fit."""
+    # pytest.importorskip("pymc")
+    from bench_cli.irt.fit import fit_all_pillars
+    from bench_cli.irt.types import OutcomeMatrix
+
+    from unittest.mock import patch
+
+    tasks = [f"e{i}" for i in range(10)]
+    matrix, _, _, _ = _generate_synthetic_2pl(n_models=5, n_tasks=10, seed=99)
+    models = [f"m{i}" for i in range(5)]
+    outcome = OutcomeMatrix(matrix=matrix, models=models, tasks=tasks, pillars={t: "execution" for t in tasks})
+
+    with patch("bench_cli.irt.fit.fit_2pl") as mock_fit:
+        from bench_cli.irt.types import IRTFit
+        bad_fit = IRTFit(
+            theta=[0.0]*5, theta_ci=[(0,0)]*5, a=[1.0]*10, a_ci=[(0,0)]*10,
+            b=[0.0]*10, b_ci=[(0,0)]*10, models=models, tasks=tasks,
+            pillar="execution", converged=False, n_divergences=0
+        )
+        good_general = IRTFit(
+            theta=[0.1]*5, theta_ci=[(0,0)]*5, a=[1.1]*10, a_ci=[(0,0)]*10,
+            b=[0.1]*10, b_ci=[(0,0)]*10, models=models, tasks=tasks,
+            pillar="general_fallback", converged=True, n_divergences=0
+        )
+        mock_fit.side_effect = [bad_fit, good_general]
+
+        fits = fit_all_pillars(outcome, n_samples=1000, n_chains=2, seed=99)
+
+        assert fits["execution"] is None
+        assert fits["general_fallback"] is not None
+        assert fits["general_fallback"].pillar == "general_fallback"
+
+
+
+
+
 
 

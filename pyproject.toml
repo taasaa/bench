@@ -60,6 +60,9 @@ bench_cli = ["py.typed"]
 [tool.pytest]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+]
 
 # ---------------------------------------------------------------------------
 # Ruff — modern Python linter
