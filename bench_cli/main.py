@@ -55,6 +55,11 @@ cli.add_command(rescore)
 cli.add_command(tasks_cmd)
 cli.add_command(irt_group)
 
+from bench_cli.recommend.cli import recommend_preset_cmd
+cli.add_command(recommend_preset_cmd, name="recommend-preset")
+cli.add_command(recommend_preset_cmd, name="rp")
+
+
 
 # ── Legacy commands (hidden from help) ────────────────────────────────
 from bench_cli.baseline import baseline

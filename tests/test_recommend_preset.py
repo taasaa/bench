@@ -125,3 +125,60 @@ def test_pareto_front_basic():
     assert 1 in pareto_idx  # b is Pareto-optimal
     assert 2 not in pareto_idx  # c is dominated by a (better cap, lower cost, lower time)
 
+
+def test_recommend_preset_cli():
+    from click.testing import CliRunner
+    from unittest.mock import patch
+    from bench_cli.main import cli
+
+    runner = CliRunner()
+
+    # We mock load_compare_data and recommend_preset
+    with patch("bench_cli.compare.core.load_compare_data") as mock_load, \
+         patch("bench_cli.recommend.presets.recommend_preset") as mock_rec:
+        
+        # Setup mocks
+        mock_load.return_value = _make_cohort()
+        # Let's import RecommendResult and RankedModel from bench_cli.recommend.presets
+        from bench_cli.recommend.presets import RecommendResult, RankedModel
+        mock_rec.return_value = RecommendResult(
+            preset="balanced",
+            used_irt=False,
+            models=[
+                RankedModel(
+                    model="balanced-a", rank=1, capability=0.75, ci=None,
+                    cost_per_task=0.01, time_per_task=4.0, on_pareto=True,
+                    dominated_by=[]
+                )
+            ]
+        )
+
+        # 1. Run recommend-preset with --preset balanced
+        result = runner.invoke(cli, ["recommend-preset", "--preset", "balanced"])
+        assert result.exit_code == 0
+        assert "balanced-a" in result.output
+
+        # 2. Run with rp alias
+        result_alias = runner.invoke(cli, ["rp", "--preset", "balanced"])
+        assert result_alias.exit_code == 0
+        assert "balanced-a" in result_alias.output
+
+        # 3. Run with --json flag
+        result_json = runner.invoke(cli, ["recommend-preset", "--preset", "balanced", "--json"])
+        assert result_json.exit_code == 0
+        import json
+        data = json.loads(result_json.output)
+        assert data["preset"] == "balanced"
+        assert data["models"][0]["model"] == "balanced-a"
+
+        # Verify arguments passed to recommend_preset
+        mock_rec.assert_any_call(mock_load.return_value, "balanced", use_irt=True)
+
+        # 4. Run with --no-use-irt flag
+        result_no_irt = runner.invoke(cli, ["recommend-preset", "--preset", "balanced", "--no-use-irt"])
+        assert result_no_irt.exit_code == 0
+        mock_rec.assert_any_call(mock_load.return_value, "balanced", use_irt=False)
+
+
+
+
