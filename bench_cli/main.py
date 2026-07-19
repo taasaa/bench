@@ -46,12 +46,15 @@ from bench_cli.rescore.cli import rescore
 from bench_cli.run import run
 from bench_cli.show import show_cmd
 from bench_cli.tasks_browser import tasks_cmd
+from bench_cli.irt.cli import irt_group
 
 cli.add_command(run)
 cli.add_command(show_cmd)
 cli.add_command(compare)
 cli.add_command(rescore)
 cli.add_command(tasks_cmd)
+cli.add_command(irt_group)
+
 
 # ── Legacy commands (hidden from help) ────────────────────────────────
 from bench_cli.baseline import baseline

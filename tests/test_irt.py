@@ -334,3 +334,27 @@ def test_item_analysis_extracts_ci():
     items = item_analysis(fit)
     assert items[0].a_ci == (1.2, 1.8)
     assert items[0].b_ci == (0.2, 0.8)
+
+
+def test_irt_fit_cli_requires_pymc(monkeypatch):
+    """bench irt fit fails with clean message when PyMC is missing."""
+    import builtins
+    real_import = builtins.__import__
+
+    def _block_pymc(name, *args, **kwargs):
+        if name == "pymc" or name.startswith("pymc."):
+            raise ImportError("no pymc")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _block_pymc)
+
+    from click.testing import CliRunner
+    from bench_cli.main import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["irt", "fit"])
+    assert result.exit_code != 0
+    assert result.exception is not None
+    assert "PyMC is required" in str(result.exception)
+
+
