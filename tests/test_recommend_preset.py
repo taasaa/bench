@@ -48,7 +48,7 @@ def _make_cohort() -> CompareData:
 def test_best_preset_ranks_by_capability():
     from bench_cli.recommend.presets import recommend_preset
     data = _make_cohort()
-    result = recommend_preset(data, "best")
+    result = recommend_preset(data, "best", use_irt=False)
     assert result.preset == "best"
     assert result.models[0].model == "slow-expensive"
 
@@ -56,7 +56,7 @@ def test_best_preset_ranks_by_capability():
 def test_cheap_fast_filters_below_median_cost():
     from bench_cli.recommend.presets import recommend_preset
     data = _make_cohort()
-    result = recommend_preset(data, "cheap-fast")
+    result = recommend_preset(data, "cheap-fast", use_irt=False)
     model_names = [m.model for m in result.models]
     assert "slow-expensive" not in model_names
     assert result.models[0].model == "fast-cheap"
@@ -65,16 +65,16 @@ def test_cheap_fast_filters_below_median_cost():
 def test_preset_rankings_deterministic():
     from bench_cli.recommend.presets import recommend_preset
     data = _make_cohort()
-    r1 = recommend_preset(data, "best")
-    r2 = recommend_preset(data, "best")
+    r1 = recommend_preset(data, "best", use_irt=False)
+    r2 = recommend_preset(data, "best", use_irt=False)
     assert [m.model for m in r1.models] == [m.model for m in r2.models]
 
 
 def test_different_presets_different_top3():
     from bench_cli.recommend.presets import recommend_preset
     data = _make_cohort()
-    best = recommend_preset(data, "best")
-    cheap = recommend_preset(data, "cheap-fast")
+    best = recommend_preset(data, "best", use_irt=False)
+    cheap = recommend_preset(data, "cheap-fast", use_irt=False)
     assert best.models[0].model != cheap.models[0].model
 
 
