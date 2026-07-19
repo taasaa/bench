@@ -93,7 +93,8 @@ def fit_2pl(
         for j in range(n_tasks)
     ]
 
-    rhat = pm.stats.rhat(trace)
+    import arviz as az
+    rhat = az.rhat(trace)
     max_rhat = max(
         float(rhat["theta"].max()),
         float(rhat["a"].max()),
