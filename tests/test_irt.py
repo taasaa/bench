@@ -210,8 +210,10 @@ def test_2pl_recovers_credible_intervals():
 
     fit = fit_2pl(outcome, n_samples=1000, n_chains=2, seed=42)
 
+    assert len(fit.theta_ci) == 10
     assert len(fit.a_ci) == 10
     assert len(fit.b_ci) == 10
+    assert all(ci[0] < ci[1] for ci in fit.theta_ci)
     assert all(ci[0] < ci[1] for ci in fit.a_ci)
     assert all(ci[0] < ci[1] for ci in fit.b_ci)
 
@@ -251,8 +253,36 @@ def test_fit_all_pillars_convergence_fallback():
         assert fits["general_fallback"].pillar == "general_fallback"
 
 
+def test_fit_all_pillars_skips_small_pillars():
+    """fit_all_pillars skips pillars with < 8 tasks (setting their entry in the returned dict to None)."""
+    from bench_cli.irt.fit import fit_all_pillars
+    from bench_cli.irt.types import OutcomeMatrix, IRTFit
+    from unittest.mock import patch
 
+    # 9 tasks for "large", 5 tasks for "small"
+    tasks = [f"t{i}" for i in range(14)]
+    pillars = {}
+    for i in range(9):
+        pillars[f"t{i}"] = "large"
+    for i in range(9, 14):
+        pillars[f"t{i}"] = "small"
 
+    matrix = [[1.0] * 14]
+    models = ["m1"]
+    outcome = OutcomeMatrix(matrix=matrix, models=models, tasks=tasks, pillars=pillars)
 
+    with patch("bench_cli.irt.fit.fit_2pl") as mock_fit:
+        mock_fit.return_value = IRTFit(
+            theta=[0.0], theta_ci=[(0, 0)], a=[1.0] * 9, a_ci=[(0, 0)] * 9,
+            b=[0.0] * 9, b_ci=[(0, 0)] * 9, models=models, tasks=tasks[:9],
+            pillar="large", converged=True, n_divergences=0
+        )
 
+        fits = fit_all_pillars(outcome)
 
+        assert fits["large"] is not None
+        assert fits["large"].pillar == "large"
+        assert "small" in fits
+        assert fits["small"] is None
+        assert mock_fit.call_count == 1
+        mock_fit.assert_called_once_with(outcome, pillar="large")
