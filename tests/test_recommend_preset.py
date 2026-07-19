@@ -110,3 +110,18 @@ def test_balanced_preset_populates_dominated_by():
         # dominated-worst is dominated by slow-expensive, balanced-a, balanced-b
         assert len(dominated[0].dominated_by) >= 1
         assert "slow-expensive" in dominated[0].dominated_by
+
+
+def test_pareto_front_basic():
+    from bench_cli.recommend.pareto import compute_pareto_front
+
+    pareto_idx, dominated_by = compute_pareto_front(
+        models=["a", "b", "c"],
+        capability=[0.9, 0.5, 0.4],
+        cost=[0.05, 0.001, 0.06],
+        time=[10.0, 1.0, 12.0],
+    )
+    assert 0 in pareto_idx  # a is Pareto-optimal
+    assert 1 in pareto_idx  # b is Pareto-optimal
+    assert 2 not in pareto_idx  # c is dominated by a (better cap, lower cost, lower time)
+
