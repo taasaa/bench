@@ -379,14 +379,19 @@ def test_irt_item_analysis_cli_requires_pymc(monkeypatch):
 
 
 def test_fmt_val_helper():
-    """_fmt_val formats float or returns n/a for nan/inf."""
-    from bench_cli.irt.cli import _fmt_val
+    """_fmt_val and _fmt_json_val format float or return n/a for nan/inf."""
+    from bench_cli.irt.cli import _fmt_val, _fmt_json_val
     import math
 
     assert _fmt_val(1.2346) == "1.235"
     assert _fmt_val(math.nan) == "n/a"
     assert _fmt_val(math.inf) == "n/a"
     assert _fmt_val(-math.inf) == "n/a"
+
+    assert _fmt_json_val(1.2346) == 1.2346
+    assert _fmt_json_val(math.nan) == "n/a"
+    assert _fmt_json_val(math.inf) == "n/a"
+    assert _fmt_json_val(-math.inf) == "n/a"
 
 
 def test_irt_cli_renders_nan_inf_as_na(monkeypatch):
@@ -451,6 +456,78 @@ def test_irt_cli_renders_nan_inf_as_na(monkeypatch):
         assert result.exit_code == 0
         assert "t1" in result.output
         assert "n/a" in result.output
+
+
+def test_irt_cli_renders_nan_inf_as_na_json(monkeypatch):
+    """Ensure that nan/inf theta/a/b are serialized as 'n/a' in JSON output."""
+    import json
+    from unittest.mock import patch, MagicMock
+    from click.testing import CliRunner
+    from bench_cli.main import cli
+    from bench_cli.irt.types import IRTFit
+    import math
+
+    # Mock pymc check so we don't need pymc installed
+    monkeypatch.setattr("bench_cli.irt._check_pymc", lambda: None)
+
+    # 1. Test irt fit --json
+    mock_outcome = MagicMock()
+    mock_outcome.models = ["m1"]
+
+    mock_fit = IRTFit(
+        theta=[math.nan],
+        theta_ci=[(math.nan, math.inf)],
+        a=[1.0],
+        a_ci=[(1.0, 1.0)],
+        b=[1.0],
+        b_ci=[(1.0, 1.0)],
+        models=["m1"],
+        tasks=["t1"],
+        pillar="general",
+        converged=True,
+        n_divergences=0,
+    )
+
+    with (
+        patch("bench_cli.irt.utils.build_outcome_matrix", return_value=mock_outcome),
+        patch("bench_cli.irt.fit.fit_2pl", return_value=mock_fit),
+        patch("bench_cli.irt.fit.fit_all_pillars", return_value={"general": mock_fit}),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["irt", "fit", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["general"]["models"][0]["theta"] == "n/a"
+        assert data["general"]["models"][0]["ci_low"] == "n/a"
+        assert data["general"]["models"][0]["ci_high"] == "n/a"
+
+    # 2. Test irt item-analysis --json
+    from bench_cli.irt.items import ItemAnalysis
+    mock_item = ItemAnalysis(
+        task="t1",
+        pillar="analysis",
+        a=math.nan,
+        a_ci=(math.nan, math.nan),
+        b=math.inf,
+        b_ci=(math.inf, math.inf),
+        band="low"
+    )
+
+    with (
+        patch("bench_cli.irt.utils.build_outcome_matrix", return_value=mock_outcome),
+        patch("bench_cli.irt.fit.fit_2pl", return_value=mock_fit),
+        patch("bench_cli.irt.items.item_analysis", return_value=[mock_item]),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["irt", "item-analysis", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data[0]["a"] == "n/a"
+        assert data[0]["a_ci_low"] == "n/a"
+        assert data[0]["a_ci_high"] == "n/a"
+        assert data[0]["b"] == "n/a"
+        assert data[0]["b_ci_low"] == "n/a"
+        assert data[0]["b_ci_high"] == "n/a"
 
 
 

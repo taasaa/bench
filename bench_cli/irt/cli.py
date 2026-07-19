@@ -14,6 +14,13 @@ def _fmt_val(val: float, fmt: str = ".3f") -> str:
     return f"{val:{fmt}}"
 
 
+def _fmt_json_val(val: float) -> float | str:
+    """Format val as float for JSON, or return 'n/a' if nan or inf."""
+    if math.isnan(val) or math.isinf(val):
+        return "n/a"
+    return float(val)
+
+
 @click.group("irt")
 def irt_group():
     """IRT discrimination analysis (requires PyMC)."""
@@ -60,8 +67,8 @@ def irt_fit(log_dir: str, pillar: str | None, n_samples: int, as_json: bool) -> 
                 "converged": fit.converged,
                 "n_divergences": fit.n_divergences,
                 "models": [
-                    {"name": m, "theta": fit.theta[i],
-                     "ci_low": fit.theta_ci[i][0], "ci_high": fit.theta_ci[i][1]}
+                    {"name": m, "theta": _fmt_json_val(fit.theta[i]),
+                     "ci_low": _fmt_json_val(fit.theta_ci[i][0]), "ci_high": _fmt_json_val(fit.theta_ci[i][1])}
                     for i, m in enumerate(fit.models)
                 ],
             }
@@ -111,8 +118,12 @@ def irt_item_analysis(log_dir: str, as_json: bool) -> None:
     if as_json:
         out = [
             {"task": ia.task, "pillar": ia.pillar,
-             "a": ia.a, "a_ci_low": ia.a_ci[0], "a_ci_high": ia.a_ci[1],
-             "b": ia.b, "b_ci_low": ia.b_ci[0], "b_ci_high": ia.b_ci[1],
+             "a": _fmt_json_val(ia.a),
+             "a_ci_low": _fmt_json_val(ia.a_ci[0]),
+             "a_ci_high": _fmt_json_val(ia.a_ci[1]),
+             "b": _fmt_json_val(ia.b),
+             "b_ci_low": _fmt_json_val(ia.b_ci[0]),
+             "b_ci_high": _fmt_json_val(ia.b_ci[1]),
              "band": ia.band}
             for ia in items
         ]
