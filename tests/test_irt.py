@@ -354,7 +354,104 @@ def test_irt_fit_cli_requires_pymc(monkeypatch):
     runner = CliRunner()
     result = runner.invoke(cli, ["irt", "fit"])
     assert result.exit_code != 0
-    assert result.exception is not None
-    assert "PyMC is required" in str(result.exception)
+    assert "PyMC is required" in result.output
+
+
+def test_irt_item_analysis_cli_requires_pymc(monkeypatch):
+    """bench irt item-analysis fails with clean message when PyMC is missing."""
+    import builtins
+    real_import = builtins.__import__
+
+    def _block_pymc(name, *args, **kwargs):
+        if name == "pymc" or name.startswith("pymc."):
+            raise ImportError("no pymc")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _block_pymc)
+
+    from click.testing import CliRunner
+    from bench_cli.main import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["irt", "item-analysis"])
+    assert result.exit_code != 0
+    assert "PyMC is required" in result.output
+
+
+def test_fmt_val_helper():
+    """_fmt_val formats float or returns n/a for nan/inf."""
+    from bench_cli.irt.cli import _fmt_val
+    import math
+
+    assert _fmt_val(1.2346) == "1.235"
+    assert _fmt_val(math.nan) == "n/a"
+    assert _fmt_val(math.inf) == "n/a"
+    assert _fmt_val(-math.inf) == "n/a"
+
+
+def test_irt_cli_renders_nan_inf_as_na(monkeypatch):
+    """Ensure that nan/inf theta/a/b are rendered as n/a in terminal output."""
+    from unittest.mock import patch, MagicMock
+    from click.testing import CliRunner
+    from bench_cli.main import cli
+    from bench_cli.irt.types import IRTFit
+    import math
+
+    # Mock pymc check so we don't need pymc installed
+    monkeypatch.setattr("bench_cli.irt._check_pymc", lambda: None)
+
+    # 1. Test irt fit
+    mock_outcome = MagicMock()
+    mock_outcome.models = ["m1"]
+
+    mock_fit = IRTFit(
+        theta=[math.nan],
+        theta_ci=[(math.nan, math.inf)],
+        a=[1.0],
+        a_ci=[(1.0, 1.0)],
+        b=[1.0],
+        b_ci=[(1.0, 1.0)],
+        models=["m1"],
+        tasks=["t1"],
+        pillar="general",
+        converged=True,
+        n_divergences=0,
+    )
+
+    with (
+        patch("bench_cli.irt.utils.build_outcome_matrix", return_value=mock_outcome),
+        patch("bench_cli.irt.fit.fit_2pl", return_value=mock_fit),
+        patch("bench_cli.irt.fit.fit_all_pillars", return_value={"general": mock_fit}),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["irt", "fit"])
+        assert result.exit_code == 0
+        assert "m1" in result.output
+        assert "n/a" in result.output
+
+    # 2. Test irt item-analysis
+    from bench_cli.irt.items import ItemAnalysis
+    mock_item = ItemAnalysis(
+        task="t1",
+        pillar="analysis",
+        a=math.nan,
+        a_ci=(math.nan, math.nan),
+        b=math.inf,
+        b_ci=(math.inf, math.inf),
+        band="low"
+    )
+
+    with (
+        patch("bench_cli.irt.utils.build_outcome_matrix", return_value=mock_outcome),
+        patch("bench_cli.irt.fit.fit_2pl", return_value=mock_fit),
+        patch("bench_cli.irt.items.item_analysis", return_value=[mock_item]),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["irt", "item-analysis"])
+        assert result.exit_code == 0
+        assert "t1" in result.output
+        assert "n/a" in result.output
+
+
 
 

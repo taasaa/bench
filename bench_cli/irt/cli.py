@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import json
+import math
 import click
+
+
+def _fmt_val(val: float, fmt: str = ".3f") -> str:
+    """Format val as float representation, or return 'n/a' if nan or inf."""
+    if math.isnan(val) or math.isinf(val):
+        return "n/a"
+    return f"{val:{fmt}}"
 
 
 @click.group("irt")
@@ -20,7 +28,10 @@ def irt_group():
 def irt_fit(log_dir: str, pillar: str | None, n_samples: int, as_json: bool) -> None:
     """Fit Bayesian 2PL IRT model on eval logs."""
     from bench_cli.irt import _check_pymc
-    _check_pymc()
+    try:
+        _check_pymc()
+    except ImportError as e:
+        raise click.ClickException(str(e))
 
     from bench_cli.irt.fit import fit_2pl, fit_all_pillars
     from bench_cli.irt.utils import build_outcome_matrix
@@ -68,9 +79,10 @@ def irt_fit(log_dir: str, pillar: str | None, n_samples: int, as_json: bool) -> 
             ranked = sorted(range(len(fit.models)), key=lambda i: fit.theta[i], reverse=True)
             for i in ranked:
                 m = fit.models[i]
-                t = fit.theta[i]
-                lo, hi = fit.theta_ci[i]
-                click.echo(f"  {m:<35} {t:>8.3f} [{lo:>7.3f}, {hi:>7.3f}]")
+                t_str = _fmt_val(fit.theta[i], ".3f")
+                lo_str = _fmt_val(fit.theta_ci[i][0], ".3f")
+                hi_str = _fmt_val(fit.theta_ci[i][1], ".3f")
+                click.echo(f"  {m:<35} {t_str:>8} [{lo_str:>7}, {hi_str:>7}]")
 
 
 @irt_group.command("item-analysis")
@@ -79,7 +91,10 @@ def irt_fit(log_dir: str, pillar: str | None, n_samples: int, as_json: bool) -> 
 def irt_item_analysis(log_dir: str, as_json: bool) -> None:
     """Report per-task difficulty and discrimination parameters."""
     from bench_cli.irt import _check_pymc
-    _check_pymc()
+    try:
+        _check_pymc()
+    except ImportError as e:
+        raise click.ClickException(str(e))
 
     from bench_cli.irt.fit import fit_2pl
     from bench_cli.irt.items import item_analysis
@@ -106,8 +121,10 @@ def irt_item_analysis(log_dir: str, as_json: bool) -> None:
         click.echo(f"\n{'Task':<35} {'Pillar':<12} {'a (disc)':>10} {'b (diff)':>10} {'Band':<8}")
         click.echo(f"{'-' * 35} {'-' * 12} {'-' * 10} {'-' * 10} {'-' * 8}")
         for ia in sorted(items, key=lambda x: x.a, reverse=True):
+            a_str = _fmt_val(ia.a, ".3f")
+            b_str = _fmt_val(ia.b, ".3f")
             click.echo(
-                f"{ia.task:<35} {ia.pillar:<12} {ia.a:>10.3f} {ia.b:>10.3f} {ia.band:<8}"
+                f"{ia.task:<35} {ia.pillar:<12} {a_str:>10} {b_str:>10} {ia.band:<8}"
             )
 
         high = sum(1 for ia in items if ia.band == "high")
