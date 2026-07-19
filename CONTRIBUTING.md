@@ -23,8 +23,14 @@ cd bench
 python -m venv .venv
 source .venv/bin/activate
 
-# Install in dev mode
+# Install core and dev dependencies
 pip install -e ".[dev]"
+
+# (Optional) Install Bayesian IRT support dependencies
+# Note: On macOS, this requires Homebrew LLVM 20.x to compile llvmlite:
+#   brew install llvm@20
+# Then pass the config and prefix paths to pip:
+CMAKE_PREFIX_PATH=$(brew --prefix llvm@20) LLVM_CONFIG=$(brew --prefix llvm@20)/bin/llvm-config pip install -e ".[irt]"
 
 # Run tests
 pytest
