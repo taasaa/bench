@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 
 from bench_cli.compare.core import CompareData, _aggregate_model_pillars
 from bench_cli.results.core import is_moniker_alias
-from bench_cli.irt.fit import fit_2pl
 
 
 @dataclass
@@ -64,6 +63,7 @@ def _gather_model_stats(
 
     if use_irt and _has_pymc():
         try:
+            from bench_cli.irt.fit import fit_2pl
             from bench_cli.irt.types import OutcomeMatrix
             
             tasks = data.tasks
@@ -160,7 +160,7 @@ def recommend_preset(
     elif preset == "cheap-fast":
         costs = [s["cost_per_task"] for s in stats if not math.isnan(s["cost_per_task"])]
         median_cost = statistics.median(costs) if costs else float("inf")
-        filtered = [s for s in stats if not math.isnan(s["cost_per_task"]) and s["cost_per_task"] < median_cost]
+        filtered = [s for s in stats if not math.isnan(s["cost_per_task"]) and s["cost_per_task"] <= median_cost]
         ranked = sorted(filtered, key=lambda s: (s["time_per_task"], -s["capability"]))
         models = [
             RankedModel(
@@ -176,7 +176,7 @@ def recommend_preset(
         model_names = [s["model"] for s in stats]
         capabilities = [s["capability"] for s in stats]
         costs = [s["cost_per_task"] if not math.isnan(s["cost_per_task"]) else float("inf") for s in stats]
-        times = [s["time_per_task"] for s in stats]
+        times = [s["time_per_task"] if not math.isnan(s["time_per_task"]) else float("inf") for s in stats]
         pareto_indices, dominated_by_indices = compute_pareto_front(model_names, capabilities, costs, times)
         pareto_set = set(pareto_indices)
         pareto_models = sorted([i for i in range(len(stats)) if i in pareto_set], key=lambda i: stats[i]["capability"], reverse=True)

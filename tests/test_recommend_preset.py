@@ -92,7 +92,7 @@ def test_preset_router_uses_theta_when_pymc_available():
         tasks=["t1"], pillar=None, converged=True, n_divergences=0
     )
 
-    with patch("bench_cli.recommend.presets.fit_2pl", return_value=mock_fit), \
+    with patch("bench_cli.irt.fit.fit_2pl", return_value=mock_fit), \
          patch("bench_cli.recommend.presets._has_pymc", return_value=True):
         result = recommend_preset(data, "best", use_irt=True)
         assert result.models[0].model == "fast-cheap"
