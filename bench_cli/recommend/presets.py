@@ -42,6 +42,7 @@ def _gather_model_stats(
     log_dir: str,
     *,
     use_irt: bool = True,
+    fully_evaluated_only: bool = False,
 ) -> tuple[list[dict], bool]:
     from bench_cli.identity import reconcile_identities
     # Reconcile identities to ensure consistent model cohort mapping
@@ -59,14 +60,65 @@ def _gather_model_stats(
         if not is_moniker_alias(canonical):
             canonical_models_set.add(canonical)
 
+    # If fully_evaluated_only is True, filter canonical_models_set to those with tasks_completed >= max_completed in the cohort
+    if fully_evaluated_only and canonical_models_set:
+        model_task_counts = {}
+        for model in canonical_models_set:
+            tasks_completed = 0
+            for task in data.tasks:
+                has_score = False
+                for raw_model in data.models:
+                    if identity_map.get(raw_model, raw_model) == model:
+                        ps = data.matrix.get(task, {}).get(raw_model)
+                        if ps is not None and not math.isnan(ps.correctness):
+                            has_score = True
+                            break
+                if has_score:
+                    tasks_completed += 1
+            model_task_counts[model] = tasks_completed
+        
+        max_completed = max(model_task_counts.values()) if model_task_counts else 0
+        if max_completed > 10:
+            threshold = max_completed - 3
+        else:
+            threshold = max_completed
+        
+        filtered_canonical = {
+            model for model, count in model_task_counts.items()
+            if count >= threshold
+        }
+        canonical_models_set = filtered_canonical
+
     models_to_fit = sorted(list(canonical_models_set))
+
+    # Find intersection of tasks for the selected models
+    tasks_to_use = data.tasks
+    if fully_evaluated_only and models_to_fit:
+        common_tasks = []
+        for task in data.tasks:
+            all_have_task = True
+            for model in models_to_fit:
+                has_score = False
+                for raw_model in data.models:
+                    if identity_map.get(raw_model, raw_model) == model:
+                        ps = data.matrix.get(task, {}).get(raw_model)
+                        if ps is not None and not math.isnan(ps.correctness):
+                            has_score = True
+                            break
+                if not has_score:
+                    all_have_task = False
+                    break
+            if all_have_task:
+                common_tasks.append(task)
+        if common_tasks:
+            tasks_to_use = common_tasks
 
     if use_irt and _has_pymc():
         try:
             from bench_cli.irt.fit import fit_2pl
             from bench_cli.irt.types import OutcomeMatrix
             
-            tasks = data.tasks
+            tasks = tasks_to_use
             matrix: list[list[float]] = []
             for model in models_to_fit:
                 row = []
@@ -102,8 +154,19 @@ def _gather_model_stats(
         agg = _aggregate_model_pillars(data, raw_model)
         if agg is None:
             continue
+
+        # If fully_evaluated_only is True, recalculate correctness mean using only tasks_to_use
+        correct_mean = agg["correct_mean"]
+        if fully_evaluated_only:
+            scores = []
+            for task in tasks_to_use:
+                ps = data.matrix.get(task, {}).get(raw_model)
+                if ps is not None and not math.isnan(ps.correctness):
+                    scores.append(ps.correctness)
+            correct_mean = sum(scores) / len(scores) if scores else float("nan")
+
         canonical_stats.setdefault(canonical, []).append({
-            "correct_mean": agg["correct_mean"],
+            "correct_mean": correct_mean,
             "cost_per_task": agg["cost_per_task"],
             "time_per_task": agg["time_per_task"],
             "ci_low": agg["ci_low"],
@@ -125,12 +188,26 @@ def _gather_model_stats(
         cap = theta_map.get(model, mean_cap)
         ci = theta_ci_map.get(model, (entries[0]["ci_low"], entries[0]["ci_high"]) if entries[0]["ci_low"] is not None else None)
 
+        # Count how many tasks have at least one valid score for this canonical model
+        tasks_completed = 0
+        for task in data.tasks:
+            has_score = False
+            for raw_model in data.models:
+                if identity_map.get(raw_model, raw_model) == model:
+                    ps = data.matrix.get(task, {}).get(raw_model)
+                    if ps is not None and not math.isnan(ps.correctness):
+                        has_score = True
+                        break
+            if has_score:
+                tasks_completed += 1
+
         stats.append({
             "model": model,
             "capability": cap,
             "ci": ci,
             "cost_per_task": mean_cost,
             "time_per_task": mean_time,
+            "tasks_completed": tasks_completed,
         })
 
     return stats, actually_used_irt
@@ -142,9 +219,12 @@ def recommend_preset(
     *,
     log_dir: str = "logs",
     use_irt: bool = True,
+    fully_evaluated_only: bool = False,
 ) -> RecommendResult:
     """Rank models by preset logic."""
-    stats, actually_used_irt = _gather_model_stats(data, log_dir, use_irt=use_irt)
+    stats, actually_used_irt = _gather_model_stats(
+        data, log_dir, use_irt=use_irt, fully_evaluated_only=fully_evaluated_only
+    )
 
     if preset == "best":
         ranked = sorted(stats, key=lambda s: s["capability"], reverse=True)

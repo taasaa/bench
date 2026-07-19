@@ -172,12 +172,12 @@ def test_recommend_preset_cli():
         assert data["models"][0]["model"] == "balanced-a"
 
         # Verify arguments passed to recommend_preset
-        mock_rec.assert_any_call(mock_load.return_value, "balanced", use_irt=True)
+        mock_rec.assert_any_call(mock_load.return_value, "balanced", use_irt=True, fully_evaluated_only=False)
 
         # 4. Run with --no-use-irt flag
         result_no_irt = runner.invoke(cli, ["recommend-preset", "--preset", "balanced", "--no-use-irt"])
         assert result_no_irt.exit_code == 0
-        mock_rec.assert_any_call(mock_load.return_value, "balanced", use_irt=False)
+        mock_rec.assert_any_call(mock_load.return_value, "balanced", use_irt=False, fully_evaluated_only=False)
 
 
 def test_recommend_preset_nan_inf():
@@ -245,6 +245,58 @@ def test_recommend_preset_nan_inf():
         assert output_no_irt.count("n/a") >= 6
         assert "nan" not in output_no_irt.lower()
         assert "inf" not in output_no_irt.lower()
+
+
+def test_recommend_preset_fully_evaluated():
+    """Test that fully_evaluated_only parameter excludes models with missing task scores."""
+    from bench_cli.recommend.presets import recommend_preset
+    from click.testing import CliRunner
+    from unittest.mock import patch
+    from bench_cli.main import cli
+
+    # Create cohort where 'partially-tested' model has a NaN score for task t2
+    models = ["fully-tested", "partially-tested"]
+    tasks = ["t1", "t2"]
+    matrix: dict[str, dict[str, PillarScores]] = {"t1": {}, "t2": {}}
+
+    matrix["t1"]["fully-tested"] = PillarScores(
+        correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+        avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.002,
+    )
+    matrix["t2"]["fully-tested"] = PillarScores(
+        correctness=0.8, token_ratio=1.0, time_ratio=1.0,
+        avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.002,
+    )
+
+    matrix["t1"]["partially-tested"] = PillarScores(
+        correctness=0.9, token_ratio=1.0, time_ratio=1.0,
+        avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.002,
+    )
+    matrix["t2"]["partially-tested"] = PillarScores(
+        correctness=float("nan"), token_ratio=1.0, time_ratio=1.0,
+        avg_tokens=100, avg_time=2.0, samples=1, avg_cost_usd=0.002,
+    )
+
+    data = CompareData(matrix=matrix, tasks=tasks, models=models)
+
+    # 1. Without fully_evaluated_only, both models should be present
+    res_all = recommend_preset(data, "best", use_irt=False, fully_evaluated_only=False)
+    assert len(res_all.models) == 2
+    assert res_all.models[0].model == "partially-tested"
+
+    # 2. With fully_evaluated_only, 'partially-tested' should be filtered out
+    res_filtered = recommend_preset(data, "best", use_irt=False, fully_evaluated_only=True)
+    assert len(res_filtered.models) == 1
+    assert res_filtered.models[0].model == "fully-tested"
+
+    # 3. Test CLI flag --fully-evaluated
+    runner = CliRunner()
+    with patch("bench_cli.compare.core.load_compare_data", return_value=data):
+        result = runner.invoke(cli, ["recommend-preset", "--preset", "best", "--fully-evaluated"])
+        assert result.exit_code == 0
+        assert "fully-tested" in result.output
+        assert "partially-tested" not in result.output
+
 
 
 

@@ -35,7 +35,14 @@ def _fmt_time(t: float) -> str:
     help="Use θ from IRT fit as capability measure if PyMC is available; else pass@1.",
 )
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
-def recommend_preset_cmd(preset: str, log_dir: str, use_irt: bool, as_json: bool) -> None:
+@click.option(
+    "--fully-evaluated/--no-fully-evaluated",
+    default=False,
+    help="Only include models that have successfully completed all tasks in the cohort.",
+)
+def recommend_preset_cmd(
+    preset: str, log_dir: str, use_irt: bool, as_json: bool, fully_evaluated: bool
+) -> None:
     """Rank models by use-case preset."""
     from bench_cli.compare.core import load_compare_data
     from bench_cli.recommend.presets import recommend_preset
@@ -45,7 +52,9 @@ def recommend_preset_cmd(preset: str, log_dir: str, use_irt: bool, as_json: bool
         click.echo("No model data found in logs.")
         return
 
-    result = recommend_preset(data, preset, use_irt=use_irt)
+    result = recommend_preset(
+        data, preset, use_irt=use_irt, fully_evaluated_only=fully_evaluated
+    )
 
     if not result.models:
         click.echo(f"No models match the '{preset}' preset criteria.")
