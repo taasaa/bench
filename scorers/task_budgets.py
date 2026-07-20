@@ -121,6 +121,22 @@ TASK_BUDGETS: dict[str, TaskBudget] = {
     "u18_resume_after_bad_attempt": TaskBudget(
         output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.003001
     ),
+    "f25_tenant_leakage": TaskBudget(
+        output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000
+    ),
+    "f28_ghost_rename": TaskBudget(
+        output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000
+    ),
+    "f29_infra_protocol_bypass": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f30_forward_compatibility": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f31_run_at_load_carveout": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f32_latency_budget": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f33_circular_ui": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f34_lexical_sort": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f35_per_session_scope": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f36_enum_mismatch": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f37_test_baseline": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
+    "f38_ambiguity_trap": TaskBudget(output_tokens=1500, latency_seconds=60.0, reference_cost_usd=0.002000),
 }
 
 
