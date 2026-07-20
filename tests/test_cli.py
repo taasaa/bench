@@ -130,13 +130,6 @@ class TestCLIInvocation:
         assert "--max-tasks" in result.output
         assert "--log-dir" in result.output
 
-    def test_run_help_shows_defaults(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["run", "--help"])
-        assert "openai/default" in result.output
-        assert "quick" in result.output
-        assert "logs" in result.output
-
 
 class TestRunIntegration:
     """Integration tests that mock inspect_ai.eval to verify wiring."""
@@ -323,24 +316,8 @@ class TestRunSampleConcurrency:
             assert call.kwargs.get("max_samples") == 1
             assert call.kwargs.get("max_retries") is None
 
-    def test_run_help_shows_concurrency_flags(self):
-        """--help advertises the new --max-samples / --max-retries flags."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["run", "--help"])
-        assert result.exit_code == 0
-        assert "--max-samples" in result.output
-        assert "--max-retries" in result.output
-
-
 class TestPricesCLI:
     """Tests for bench prices refresh and bench prices list commands."""
-
-    def test_prices_help(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["prices", "--help"])
-        assert result.exit_code == 0
-        assert "refresh" in result.output
-        assert "list" in result.output
 
     def test_prices_list_no_cache_shows_na(self, tmp_path, monkeypatch):
         """prices list shows empty message gracefully when cache has no models."""

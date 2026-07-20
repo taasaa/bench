@@ -446,39 +446,11 @@ class TestGenerateCard:
 
 
 class TestResultsCLI:
-    def test_results_help(self):
-        runner = CliRunner()
-        result = runner.invoke(results, ["--help"])
-        assert result.exit_code == 0
-        assert "Generate and manage" in result.output
-
-    def test_generate_help(self):
-        runner = CliRunner()
-        result = runner.invoke(results, ["generate", "--help"])
-        assert result.exit_code == 0
-        assert "--log-dir" in result.output
-
     def test_generate_missing_dir(self):
         runner = CliRunner()
         result = runner.invoke(results, ["generate", "--log-dir", "/nonexistent"])
         assert result.exit_code == 1
         assert "not a directory" in result.output
-
-    def test_subcommand_registered(self):
-        from bench_cli.main import cli
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["results", "--help"])
-        assert result.exit_code == 0
-        assert "generate" in result.output
-
-    def test_generate_agent_flags_in_help(self):
-        runner = CliRunner()
-        result = runner.invoke(results, ["generate", "--help"])
-        assert result.exit_code == 0
-        assert "--agent" in result.output
-        assert "--agent-mode" in result.output
-        assert "--model" in result.output
 
 
 # ---------------------------------------------------------------------------

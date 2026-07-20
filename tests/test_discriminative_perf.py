@@ -25,6 +25,9 @@ from pathlib import Path
 
 import pytest
 
+from click.testing import CliRunner
+from bench_cli.main import cli
+
 LOG_DIR = Path("logs")
 
 
@@ -120,11 +123,9 @@ def test_bench_compare_matrix_perf() -> None:
 
     top4 = sorted(counts, key=counts.get, reverse=True)[:4]
     t0 = time.perf_counter()
-    result = subprocess.run(
-        ["python", "-m", "bench_cli", "compare-matrix", *top4],
-        capture_output=True, timeout=120, cwd=".",
-    )
+    runner = CliRunner()
+    result = runner.invoke(cli, ["compare-matrix", *top4])
     elapsed = time.perf_counter() - t0
 
-    assert result.returncode == 0, f"compare-matrix failed: {result.stderr.decode()[:500]}"
-    assert elapsed < 60, f"compare-matrix took {elapsed:.1f}s, expected <60s (regression!)"
+    assert result.exit_code == 0, f"compare-matrix failed: {result.output[:500]}"
+    assert elapsed < 10.0, f"compare-matrix took {elapsed:.1f}s, expected <10s (regression!)"
