@@ -196,27 +196,6 @@ def _generate_synthetic_2pl(
     return matrix, true_theta, true_a, true_b
 
 
-@pytest.mark.slow
-def test_2pl_recovers_credible_intervals():
-    """SC4: 2PL calculates credible intervals for theta, a, and b."""
-    pytest.importorskip("pymc")
-    from bench_cli.irt.fit import fit_2pl
-    from bench_cli.irt.types import OutcomeMatrix
-
-    matrix, _, _, _ = _generate_synthetic_2pl(n_models=10, n_tasks=10, seed=42)
-    tasks = [f"t{i}" for i in range(10)]
-    models = [f"m{i}" for i in range(10)]
-    outcome = OutcomeMatrix(matrix=matrix, models=models, tasks=tasks, pillars={t: "analysis" for t in tasks})
-
-    fit = fit_2pl(outcome, n_samples=200, n_chains=2, seed=42)
-
-    assert len(fit.theta_ci) == 10
-    assert len(fit.a_ci) == 10
-    assert len(fit.b_ci) == 10
-    assert all(ci[0] < ci[1] for ci in fit.theta_ci)
-    assert all(ci[0] < ci[1] for ci in fit.a_ci)
-    assert all(ci[0] < ci[1] for ci in fit.b_ci)
-
 
 @pytest.mark.slow
 def test_fit_all_pillars_convergence_fallback():
@@ -310,13 +289,21 @@ def test_2pl_recovers_synthetic_params():
         pillars={t: "analysis" for t in tasks},
     )
 
-    fit = fit_2pl(outcome, n_samples=400, n_chains=2, seed=42)
+    fit = fit_2pl(outcome, n_samples=300, n_chains=2, seed=42)
 
     corr_theta = float(np.corrcoef(true_theta, fit.theta)[0, 1])
     corr_b = float(np.corrcoef(true_b, fit.b)[0, 1])
 
     assert corr_theta > 0.6, f"Theta correlation too low: {corr_theta:.4f}"
     assert corr_b > 0.8, f"b correlation too low: {corr_b:.4f}"
+
+    # Verify credible intervals are populated and valid
+    assert len(fit.theta_ci) == n_models
+    assert len(fit.a_ci) == n_tasks
+    assert len(fit.b_ci) == n_tasks
+    assert all(ci[0] < ci[1] for ci in fit.theta_ci)
+    assert all(ci[0] < ci[1] for ci in fit.a_ci)
+    assert all(ci[0] < ci[1] for ci in fit.b_ci)
 
 
 def test_item_analysis_extracts_ci():
