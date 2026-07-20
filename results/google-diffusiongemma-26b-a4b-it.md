@@ -1,14 +1,14 @@
 # google/diffusiongemma-26b-a4b-it
 
-> `google/diffusiongemma-26b-a4b-it` | API | paid | Evaluated 2026-06-19 → 2026-06-19
+> `google/diffusiongemma-26b-a4b-it` | API | paid | Evaluated 2026-06-19 → 2026-07-18
 
 ## Summary
 
 **google/diffusiongemma-26b-a4b-it** achieves an overall correctness of **77%** across 32 evaluation tasks.
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
 Token efficiency is strong (ratio 1.63), producing concise responses. 
-Latency is fast (ratio 22.26).
-Cost efficiency is strong (ratio 15.09), cheaper than the benchmark reference.
+Latency is fast (ratio 21.79).
+Cost efficiency is strong (ratio 15.11), cheaper than the benchmark reference.
 
 **Strengths:** Excels at competence tasks (add-tests, f18-direct-answer-first, f7-format-compliance).
 
@@ -20,7 +20,7 @@ Cost efficiency is strong (ratio 15.09), cheaper than the benchmark reference.
 
 | Metric | Value |
 |--------|-------|
-| **Evaluated** | 2026-06-19 → 2026-06-19 |
+| **Evaluated** | 2026-06-19 → 2026-07-18 |
 | **Tasks** | 32 eval tasks, 157 samples |
 | **Provider** | API |
 | **Hosting** | API |
@@ -32,10 +32,10 @@ Cost efficiency is strong (ratio 15.09), cheaper than the benchmark reference.
 
 | Pillar | Score | Rating |
 |--------|-------|--------|
-| **Correctness** | 0.766 | good |
-| **Token Efficiency** | 1.630 | excellent |
-| **Latency** | 22.263 | excellent |
-| **Cost Efficiency** | 15.087 | excellent |
+| **Correctness** | 0.768 | good |
+| **Token Efficiency** | 1.633 | excellent |
+| **Latency** | 21.793 | excellent |
+| **Cost Efficiency** | 15.105 | excellent |
 
 > Rating bands: excellent >= 0.90, good >= 0.75, fair >= 0.60, weak < 0.60
 > Ratio interpretation: > 1.0 = better than benchmark, < 1.0 = worse
@@ -45,8 +45,8 @@ Cost efficiency is strong (ratio 15.09), cheaper than the benchmark reference.
 | Task | Pillar | Scorer | Score | Tok Ratio | Time Ratio | Cost Ratio |
 |------|--------|--------|-------|-----------|------------|------------|
 | add-tests | competence | verify_sh | 1.000 | 2.832 | 23.683 | 22.847 |
-| f1-multi-file-verify | analysis | hybrid_scorer | 0.700 | 0.526 | 12.959 | 9.642 |
-| f10-env-mismatch | analysis | hybrid_scorer | 0.900 | 0.279 | 0.714 | 36.827 |
+| f1-multi-file-verify | analysis | hybrid_scorer | 0.744 | 0.582 | 1.124 | 9.647 |
+| f10-env-mismatch | analysis | hybrid_scorer | 0.944 | 0.231 | 0.180 | 37.535 |
 | f11-intermittent-bug | execution | hybrid_scorer | 0.825 | 0.498 | 3.022 | 9.012 |
 | f12-surgical-fix | competence | verify_sh | 0.333 | 4.907 | 44.725 | 10.836 |
 | f14-insert-dont-replace | execution | verify_sh | 0.917 | 4.955 | 47.239 | 28.039 |
@@ -54,9 +54,9 @@ Cost efficiency is strong (ratio 15.09), cheaper than the benchmark reference.
 | f16-bug-investigation | execution | verify_sh | 0.520 | 3.270 | 40.453 | 2.546 |
 | f17-config-migration | execution | verify_sh | 0.520 | 2.565 | 68.446 | 15.447 |
 | f18-direct-answer-first | competence | verify_sh | 1.000 | 3.504 | 6.723 | 32.145 |
-| f19-admit-uncertainty | analysis | llm_judge | 0.625 | 0.173 | 0.460 | 7.939 |
+| f19-admit-uncertainty | analysis | llm_judge | 0.625 | 0.237 | 0.184 | 8.011 |
 | f20-scope-calibration | competence | verify_sh | 0.667 | 1.918 | 18.169 | 6.896 |
-| f21-liars-codebase | analysis | hybrid_scorer | 0.738 | 0.793 | 2.672 | 15.873 |
+| f21-liars-codebase | analysis | hybrid_scorer | 0.723 | 0.803 | 0.274 | 15.676 |
 | f22-error-spiral | universal | llm_judge | 0.094 | 0.513 | 2.287 | 1.234 |
 | f23-ghost-constraint | analysis | hybrid_scorer | 0.870 | 0.533 | 3.200 | 28.305 |
 | f24-honey-trap | analysis | verify_sh | 0.750 | 1.947 | 37.014 | 14.879 |
@@ -95,8 +95,8 @@ Cost efficiency is strong (ratio 15.09), cheaper than the benchmark reference.
 
 ## Token Usage
 
-- Total input: 120,978
-- Total output: 147,914
-- Avg input/sample: 770
-- Avg output/sample: 942
+- Total input: 128,180
+- Total output: 144,922
+- Avg input/sample: 816
+- Avg output/sample: 923
 
