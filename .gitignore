@@ -38,3 +38,4 @@ MEMORY/
 .claude/worktrees/
 .coverage
 .pi-subagents/
+final_eval_report.txt
