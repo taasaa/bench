@@ -1,0 +1,20 @@
+━━━ BENCHMARK SUMMARY (52 tasks, 16 full evals) ━━━
+
+Capability (pass@1 mean)
+
+  #1 kimi-k2.7-code  84.0% [0.8, 0.9]  cost=$0.0043  tok=2,794  time=37.8s  int/$=195.75  int/tok=0.00
+  #2  ≈ glm-5-turbo  81.6% [0.7, 0.9]  cost=$0.0043  tok=2,617  time=35.7s  int/$=189.30  int/tok=0.00  (tied with #1)
+  #3  ≈ mimo-v2.5-pro  81.6% [0.7, 0.9]  cost=$0.0009  tok=3,105  time=35.7s  int/$=880.15  int/tok=0.00  (tied with #1)
+  #4  ≈ thinking  80.9% [0.7, 0.9]  cost=$0.0039  tok=2,575  time=55.7s  int/$=209.82  int/tok=0.00  (tied with #1)
+  #5  ≈ qwen3.7-plus  80.8% [0.7, 0.9]  cost=$0.0029  tok=3,866  time=47.4s  int/$=280.61  int/tok=0.00  (tied with #1)
+  #6  ≈ nemotron-3-super-120b-a12b  80.3% [0.7, 0.9]  cost=$0.0005  tok=3,029  time=46.8s  int/$=1,563.38  int/tok=0.00  (tied with #1)
+  #7  ≈ minimax-m3  79.6% [0.7, 0.9]  cost=$0.0016  tok=3,591  time=48.0s  int/$=502.62  int/tok=0.00  (tied with #1)
+  #8  ≈ deepseek-v4-pro  79.6% [0.7, 0.9]  cost=$0.0020  tok=4,247  time=49.3s  int/$=393.31  int/tok=0.00  (tied with #1)
+  #9  ≈ qwen3-next-80b-a3b-instruct  79.3% [0.7, 0.9]  cost=$0.0006  tok=2,480  time=27.8s  int/$=1,284.64  int/tok=0.00  (tied with #1)
+  #10  ≈ default  78.7% [0.7, 0.9]  cost=$0.0018  tok=8,244  time=46.8s  int/$=448.03  int/tok=0.00  (tied with #1)
+  #11  ≈ devstral-2512  78.3% [0.7, 0.8]  cost=$0.0007  tok=1,878  time=13.3s  int/$=1,092.73  int/tok=0.00  (tied with #1)
+  #12  ≈ mistral-small-2603  77.7% [0.7, 0.9]  cost=$0.0002  tok=2,901  time=17.8s  int/$=3,134.54  int/tok=0.00  (tied with #1)
+  #13  ≈ glm-5.2  74.1% [0.7, 0.8]  cost=$0.0053  tok=2,781  time=49.2s  int/$=140.50  int/tok=0.00  (tied with #1)
+  #14  ≈ nemotron-3-nano-30b-a3b  69.4% [0.6, 0.8]  cost=$0.0014  tok=106,734  time=93.9s  int/$=492.25  int/tok=0.00  (tied with #1)
+  #15  ≈ gemma-4-26-local  66.0% [0.5, 0.8]  cost=n/a (unpriced)  tok=2,737  time=82.4s  int/$=n/a  int/tok=0.00  (tied with #1)
+  #16  ≈ qwen-local  59.8% [0.5, 0.7]  cost=n/a (unpriced)  tok=2,103  time=62.1s  int/$=n/a  int/tok=0.00  (tied with #10)

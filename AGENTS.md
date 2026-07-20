@@ -1,6 +1,6 @@
 # Bench
 
-Standalone LLM/agent eval harness — Python + Inspect AI + inspect-swe, 36 tasks, 4-pillar scoring.
+Standalone LLM/agent eval harness — Python + Inspect AI + inspect-swe, 4-pillar scoring. Full eval task count, pillars, and runtime contracts live in Second Brain `[[bench]]`.
 
 This project is tracked in the Second Brain as `[[bench]]`.
 
@@ -41,8 +41,6 @@ Restated so they hold even if an agent skips the `second-brain` skill:
 .venv/bin/pytest -q
 .venv/bin/pytest --co -q
 .venv/bin/python -m bench_cli run --tier viability --list-tasks
-brain-ctl health
-git -C ~/dev/bench status
 ```
 
 ## Pointer
