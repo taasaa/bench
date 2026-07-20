@@ -31,7 +31,7 @@ from bench_cli.compare.core import (
 @click.option(
     "--min-tasks",
     type=int,
-    default=34,
+    default=46,
     show_default=True,
     help="Models with fewer than N scored tasks are excluded from the ranked "
          "leaderboard (partial evals never rank against full evals).",
@@ -89,7 +89,6 @@ def compare(
                 data,
                 "BENCHMARK RESULTS",
                 legacy_weighted=legacy_weighted,
-                include_ci=include_ci,
             )
         )
     elif verbosity >= 1:
