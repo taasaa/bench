@@ -309,31 +309,29 @@ _CORRECTNESS_SCORERS = ("verify_sh", "llm_judge", "hybrid_scorer")
 def _compute_pillar_scores(tasks: dict[str, dict]) -> dict[str, float]:
     """Compute 4-pillar averages across tasks."""
     correct_scores = []
-    tok_ratios = []
-    time_ratios = []
-    price_ratios = []
+    ratios: dict[str, list[float]] = {
+        "token_ratio_scorer": [],
+        "time_ratio_scorer": [],
+        "price_ratio_scorer": [],
+    }
 
     for task_data in tasks.values():
         s = task_data["scores"]
         correct_scores.extend(s[k] for k in _CORRECTNESS_SCORERS if k in s)
-        if "token_ratio_scorer" in s:
-            v = s["token_ratio_scorer"]
-            if not math.isnan(v) and not math.isinf(v):
-                tok_ratios.append(v)
-        if "time_ratio_scorer" in s:
-            v = s["time_ratio_scorer"]
-            if not math.isnan(v) and not math.isinf(v):
-                time_ratios.append(v)
-        if "price_ratio_scorer" in s:
-            v = s["price_ratio_scorer"]
-            if not math.isnan(v) and not math.isinf(v):
-                price_ratios.append(v)
+        for key, target_list in ratios.items():
+            if key in s:
+                v = s[key]
+                if not math.isnan(v) and not math.isinf(v):
+                    target_list.append(v)
+
+    def _avg(vals: list[float]) -> float:
+        return round(sum(vals) / len(vals), 3) if vals else 0.0
 
     return {
-        "correctness": round(sum(correct_scores) / len(correct_scores), 3) if correct_scores else 0,
-        "token_ratio": round(sum(tok_ratios) / len(tok_ratios), 3) if tok_ratios else 0,
-        "time_ratio": round(sum(time_ratios) / len(time_ratios), 3) if time_ratios else 0,
-        "price_ratio": round(sum(price_ratios) / len(price_ratios), 3) if price_ratios else 0,
+        "correctness": _avg(correct_scores),
+        "token_ratio": _avg(ratios["token_ratio_scorer"]),
+        "time_ratio": _avg(ratios["time_ratio_scorer"]),
+        "price_ratio": _avg(ratios["price_ratio_scorer"]),
     }
 
 

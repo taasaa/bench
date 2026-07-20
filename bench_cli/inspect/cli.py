@@ -30,6 +30,21 @@ def inspect() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _load_inspect_samples(
+    model_alias: str, log_dir: str
+) -> tuple[str, str, Path, dict]:
+    raw_model = model_alias
+    canonical = _resolve_alias(model_alias)
+    log_path = Path(log_dir)
+    task_samples = _load_samples(
+        canonical, log_path, latest_only=True, raw_model_alias=raw_model
+    )
+    if not task_samples:
+        click.echo(f"No eval logs found for {canonical}.", err=True)
+        raise SystemExit(1)
+    return canonical, raw_model, log_path, task_samples
+
+
 @inspect.command("stats")
 @click.option(
     "--model",
@@ -46,18 +61,9 @@ def inspect() -> None:
 )
 def stats(model_alias: str, log_dir: str) -> None:
     """Print per-task pillar averages for a model."""
-    raw_model_alias = model_alias
-    model_alias = _resolve_alias(model_alias)
-    log_path = Path(log_dir)
-    task_samples = _load_samples(
-        model_alias, log_path, latest_only=True, raw_model_alias=raw_model_alias
-    )
+    model_alias, raw_model_alias, log_path, task_samples = _load_inspect_samples(model_alias, log_dir)
     _load_pillar_map()
     pillar_map_norm = _PILLAR_MAP_NORMALIZED
-
-    if not task_samples:
-        click.echo(f"No eval logs found for {model_alias}.", err=True)
-        raise SystemExit(1)
 
     click.echo(f"{'─' * 100}")
     click.echo(f" MODEL: {_short_model(model_alias)}")
@@ -143,18 +149,7 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
     Today's run is excluded from the baseline. Tasks with correctness delta
     > --delta-threshold are flagged as SIGNIFICANT.
     """
-    raw_model_alias = model_alias
-    model_alias = _resolve_alias(model_alias)
-    log_path = Path(log_dir)
-
-    # Load current run samples (today only)
-    task_samples = _load_samples(
-        model_alias, log_path, latest_only=True, raw_model_alias=raw_model_alias
-    )
-
-    if not task_samples:
-        click.echo(f"No eval logs found for {model_alias}.", err=True)
-        raise SystemExit(1)
+    model_alias, raw_model_alias, log_path, task_samples = _load_inspect_samples(model_alias, log_dir)
 
     # Load baseline (all runs except today)
     baseline = _load_baseline(model_alias, log_path, raw_model_alias=raw_model_alias)
@@ -245,18 +240,9 @@ def compare_cmd(model_alias: str, log_dir: str, delta_threshold: float) -> None:
 )
 def deep_check(model_alias: str, log_dir: str, output: str | None) -> None:
     """Full QA pass — read every sample output and judge explanation for a model."""
-    raw_model_alias = model_alias
-    model_alias = _resolve_alias(model_alias)
-    log_path = Path(log_dir)
-    task_samples = _load_samples(
-        model_alias, log_path, latest_only=True, raw_model_alias=raw_model_alias
-    )
+    model_alias, raw_model_alias, log_path, task_samples = _load_inspect_samples(model_alias, log_dir)
     _load_pillar_map()
     pillar_map_norm = _PILLAR_MAP_NORMALIZED
-
-    if not task_samples:
-        click.echo(f"No eval logs found for {model_alias}.", err=True)
-        raise SystemExit(1)
 
     lines: list[str] = []
     lines.append(f"# Deep QA Report — {model_alias}")

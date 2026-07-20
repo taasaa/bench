@@ -336,12 +336,14 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
     tasks = sorted({t for t, _ in best})
     models = sorted({m for _, m in best})
 
-    matrix: dict[str, dict[str, PillarScores]] = {}
-    for task in tasks:
-        matrix[task] = {}
-        for model in models:
-            if (task, model) in best:
-                matrix[task][model] = best[(task, model)]
+    matrix = {
+        task: {
+            model: best[(task, model)]
+            for model in models
+            if (task, model) in best
+        }
+        for task in tasks
+    }
 
     return CompareData(matrix=matrix, tasks=tasks, models=models)
 
@@ -451,7 +453,7 @@ _COL_WIDTHS = [7, 9, 10, 7, 7, 9, 9]
 # pillars bench scores). When a ratio is missing (NaN/suppressed) for ALL
 # tasks, it defaults to 1.0 (neutral) so a model can't tank its score by
 # having no cost data.
-MIN_FULL_EVAL_TASKS = 34  # `--tier full` task count; partial evals are excluded from ranking
+MIN_FULL_EVAL_TASKS = 46  # `--tier full` task count; partial evals are excluded from ranking
 
 WEIGHT_CORRECTNESS = 0.50
 WEIGHT_PRICE_RATIO = 0.20
