@@ -1,10 +1,10 @@
-# k3
+# kimi-k3
 
-> `k3` | API | paid | Evaluated 2026-07-16 → 2026-07-18
+> `kimi-k3` | API | paid | Evaluated 2026-07-16 → 2026-07-18
 
 ## Summary
 
-**k3** achieves an overall correctness of **76%** across 46 evaluation tasks.
+**kimi-k3** achieves an overall correctness of **76%** across 46 evaluation tasks.
 Performance is solid for most coding tasks, though some edge cases in error handling and verification reveal room for improvement.
 Token efficiency is below benchmark (ratio 0.78), tending toward verbose output.
 Latency is competitive (ratio 1.78).
