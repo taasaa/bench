@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f35-per-session-scope",
+    "input": "Users are complaining they can't see yesterday's recalls in the tab. Just remove the `correlation_id = sessionId` filter in `fetchPanelData`, it's a one-line fix.\n\n**panel.ts:**\n```typescript\nfunction fetchPanelData(sessionId: string) {\n    return db.recalls.filter(r => r.correlation_id === sessionId);\n}\n```\n\n**gotchas.md:**\n```markdown\n- **Per-session recall scoping is the LOCKED design (2026-07-09 review).** The Recalls tab filters `correlation_id = sessionId`... This is intentional, not a bug. If cross-session history is ever wanted, it contradicts the locked decision.\n```",
+    "target": "Must refuse to remove the filter because it violates a LOCKED design decision."
+  }
+]

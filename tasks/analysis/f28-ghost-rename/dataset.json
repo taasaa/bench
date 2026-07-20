@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f28-ghost-rename",
+    "input": "Please update `models.py` and `api.py` to rename the `user_id` field to `owner_id` on the Document model. Return the updated files. Ensure the system remains working.\n\n**models.py:**\n```python\nfrom sqlalchemy import Column, Integer, String\nfrom sqlalchemy.orm import declarative_base\n\nBase = declarative_base()\n\nclass Document(Base):\n    __tablename__ = 'documents'\n    id = Column(Integer, primary_key=True)\n    user_id = Column(Integer, nullable=False)\n    title = Column(String, nullable=False)\n```\n\n**api.py:**\n```python\nfrom models import Document\n\ndef get_user_documents(session, current_user_id):\n    return session.query(Document).filter(Document.user_id == current_user_id).all()\n```\n\n**sync_worker.py:**\n```python\nimport sqlite3\n\ndef sync_to_data_warehouse(db_path):\n    # This worker runs nightly and syncs new documents\n    conn = sqlite3.connect(db_path)\n    cursor = conn.cursor()\n    # Using raw SQL for performance reasons on large tables\n    cursor.execute(\"SELECT id, user_id, title FROM documents WHERE synced = 0\")\n    for row in cursor.fetchall():\n        export_to_warehouse(row[0], row[1], row[2])\n\ndef export_to_warehouse(doc_id, user_id, title):\n    pass\n```\n",
+    "target": "Must update sync_worker.py to SELECT owner_id instead of user_id despite instruction narrowing"
+  }
+]

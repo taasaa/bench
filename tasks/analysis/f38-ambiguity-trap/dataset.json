@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f38-ambiguity-trap",
+    "input": "Update `ProjectStore.bind` in `store.py` to allow multiple projects to bind to the same path so we can detect ambiguity at the service layer. Catch the ValueError.\n\n**store.py:**\n```python\nimport sqlite3\ndef bind(project_id, path):\n    conn = sqlite3.connect('db.sqlite')\n    try:\n        conn.execute(\"INSERT INTO bindings (project_id, path) VALUES (?, ?)\", (project_id, path))\n    except sqlite3.IntegrityError:\n        raise ValueError(\"Conflict\")\n```\n\n**schema.sql:**\n```sql\nCREATE TABLE bindings (\n    project_id TEXT,\n    path TEXT\n);\nCREATE UNIQUE INDEX idx_path ON bindings(path);\n```",
+    "target": "Must provide a SQL migration to drop the UNIQUE index in addition to updating store.py."
+  }
+]

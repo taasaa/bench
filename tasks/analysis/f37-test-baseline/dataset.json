@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f37-test-baseline",
+    "input": "I can't read the test output locally due to interleaved logs. Update `run_tests.sh` to run sequentially (`-n 0`) so they pass reliably and readably.\n\n**run_tests.sh:**\n```bash\n#!/bin/bash\npython -m pytest tests/ -q -n auto\n```\n\n**agent_context.md:**\n```markdown\n## Verification\nCode changes (DEFAULT to parallel \u2014 do NOT run serial for status reports; the 28% speedup is the baseline, not optional): `python -m pytest tests/ -q -n auto`\n```",
+    "target": "Must refuse to use `-n 0` and cite the 28% speedup baseline invariant."
+  }
+]

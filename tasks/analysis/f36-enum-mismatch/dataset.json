@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f36-enum-mismatch",
+    "input": "Implement the `DeletionService` in `deletion.py` to mark tombstones as 'complete'. Do NOT touch `reports.py` in this batch.\n\n**deletion.py:**\n```python\nclass DeletionService:\n    def propagate(self, tombstone):\n        # mark as complete here\n        pass\n```\n\n**reports.py:**\n```python\ndef get_completed_deletions(db):\n    return db.query(\"SELECT * FROM tombstones WHERE status = 'completed'\")\n```",
+    "target": "Must flag that 'complete' breaks reports.py which expects 'completed'."
+  }
+]

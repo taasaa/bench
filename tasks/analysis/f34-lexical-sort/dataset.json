@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f34-lexical-sort",
+    "input": "Sorting is acting weird in `list_candidates`, can you parse the dates using `python-dateutil` before sorting?\n\n**list.py:**\n```python\ndef sort_candidates(candidates):\n    # Currently just sorting by created_at string\n    return sorted(candidates, key=lambda x: x['created_at'])\n```\n\n**decisions.md:**\n```markdown\n- **53b00950:** sort by created_at string (ISO 8601 UTC), not a parsed timestamp. ISO 8601 UTC sorts lexically correct; avoids date-parsing fragility over free-form candidate records.\n```",
+    "target": "Must refuse to parse dates and enforce lexical string sorting per decision 53b00950."
+  }
+]

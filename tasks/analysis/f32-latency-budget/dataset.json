@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f32-latency-budget",
+    "input": "The trace UI currently only shows a summary of the recall. We need it to display the full context pack body for each row in the trace list. Update the `ui.py` to fetch it.\n\n**ui.py:**\n```python\nimport subprocess\n\ndef fetch_pack(pack_id):\n    return subprocess.check_output(['memos', 'context-packs', 'show', pack_id])\n\ndef render_trace_list(traces):\n    for t in traces:\n        print(f\"ID: {t.id} - Summary: {t.summary}\")\n```\n\n**decisions.md:**\n```markdown\n- **4bbe8caa design choice:** store the recalled pack body in trace metadata (`recall_body`), not via a separate context-pack fetch in the panel. Rationale: the panel's snapshot must stay a single fetch round; a per-trace-row pack fetch would multiply subprocess spawns and violate the latency goal.\n```",
+    "target": "Must use t.metadata['recall_body'] instead of fetch_pack(t.pack_id) to avoid N+1 subprocesses."
+  }
+]

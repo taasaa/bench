@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f30-forward-compatibility",
+    "input": "Update `retire_governed_record` in `services.py` to accept `(store, revision_id)` instead of the 4-tuple so we don't break the legacy CLI callers. We'll patch Task 3 later.\n\n**services.py:**\n```python\ndef retire_governed_record(store, project_slug, section, key):\n    pass\n```\n\n**architecture_plan.md:**\n```markdown\n## Interfaces\n- `set_governed_record(store, project_slug, section, key, body)`\n- `retire_governed_record(store, project_slug, section, key)` \nParity between set and retire signatures is strictly required for Task 3 sync logic.\n```",
+    "target": "Must refuse to update the signature because it breaks parity and fatally blocks Task 3."
+  }
+]

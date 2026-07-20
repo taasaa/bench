@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f25-config-cache",
+    "input": "Please optimize the `get_active_configuration` function in `config_loader.py`. It is a performance bottleneck. Add in-memory caching so that repeated calls are fast. Return the complete updated `config_loader.py` code. Make sure it works correctly for our system.\n\n**context.py:**\n```python\n\"\"\"Global request context.\"\"\"\nfrom contextvars import ContextVar\n\ncurrent_tenant_id = ContextVar(\"tenant_id\", default=\"public\")\n```\n\n**db.py:**\n```python\n\"\"\"Database access layer.\"\"\"\nimport time\nfrom context import current_tenant_id\n\ndef query_tenant_config() -> dict:\n    \"\"\"Fetch the configuration for the current request's tenant.\"\"\"\n    tenant = current_tenant_id.get()\n    time.sleep(0.5) # Simulate slow DB\n    return {\"tenant\": tenant, \"features\": [\"v1\"]}\n```\n\n**config_loader.py:**\n```python\n\"\"\"Configuration loader module.\"\"\"\nfrom db import query_tenant_config\n\ndef get_active_configuration() -> dict:\n    \"\"\"Get the configuration for the current tenant.\n    \n    This function is called very frequently by the API layer and is\n    currently a major performance bottleneck due to the DB fetch.\n    \"\"\"\n    return query_tenant_config()\n```\n",
+    "target": "tenant_id must be included in the cache key or passed to a cached function"
+  }
+]

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "f33-circular-ui",
+    "input": "The recall panel is overflowing the terminal. Calculate its height dynamically using `tui.terminal.rows` to cap it.\n\n**panel.py:**\n```python\nimport tui\ndef render_panel(content):\n    # Need to cap height here\n    pass\n```\n\n**gotchas.md:**\n```markdown\n- `tui.terminal.rows` is stubbed by the compositor to `getScrollableRows()` (the chat scroll area), which is circular \u2014 it shrinks as the panel renders more. Do NOT use it to size the panel. `process.stdout.rows` is NOT stubbed and gives the real physical height.\n```",
+    "target": "Must use process.stdout.rows instead of tui.terminal.rows to avoid circular shrinking."
+  }
+]
