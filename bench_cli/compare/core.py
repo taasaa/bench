@@ -66,7 +66,7 @@ class PillarScores:
 class CompareData:
     """All comparison data extracted from logs."""
 
-    # task_name -> model_name -> PillarScores (best run per pair)
+    # task_name -> model_name -> PillarScores (latest run per pair)
     matrix: dict[str, dict[str, PillarScores]] = field(default_factory=dict)
     tasks: list[str] = field(default_factory=list)
     models: list[str] = field(default_factory=list)
@@ -182,8 +182,10 @@ def _is_suppressed(score: object) -> bool:
 def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
     """Read eval logs and extract pillar-scored data.
 
-    For each (task, model) pair, keeps the run with the highest mean
-    correctness. Reads ALL scorers per sample — not just scores[0].
+    For each (task, model) pair, keeps the LATEST (most recent) run: logs are
+    loaded newest-first (``descending=True``) and the first run encountered per
+    pair wins — earlier runs are discarded, never averaged or best-of-N selected.
+    Reads ALL scorers per sample — not just scores[0].
     """
     from inspect_ai.log import list_eval_logs, read_eval_log
 
@@ -277,14 +279,16 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         if samples_list:
             run_samples[run_key] = samples_list
 
-    # For each (task, model), keep the latest run (logs are loaded newest-first)
-    best: dict[tuple[str, str], PillarScores] = {}
+    # For each (task, model), keep the latest run (logs are loaded newest-first,
+    # so the first run encountered per pair is the most recent). Load-bearing on
+    # list_eval_logs(descending=True); locked by tests/test_compare_latest_dedup.py.
+    latest_per_pair: dict[tuple[str, str], PillarScores] = {}
     # W3a/W3b: one BaselineStore for reference-driven ratio recomputation.
     baseline_store = BaselineStore()
 
     for (task, model, _log_name), samples_list in run_samples.items():
         key = (task, model)
-        if key in best:
+        if key in latest_per_pair:
             continue
 
         n = len(samples_list)
@@ -318,7 +322,7 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         # Tier breakdown: use first non-None from samples
         tier_bd = next((s[8] for s in samples_list if s[8] is not None), None)
 
-        best[key] = PillarScores(
+        latest_per_pair[key] = PillarScores(
             correctness=avg_correctness,
             token_ratio=avg_token_ratio,
             time_ratio=avg_time_ratio,
@@ -333,14 +337,14 @@ def load_compare_data(log_dir: str, latest: int | None = None) -> CompareData:
         )
 
     # Build ordered task and model lists
-    tasks = sorted({t for t, _ in best})
-    models = sorted({m for _, m in best})
+    tasks = sorted({t for t, _ in latest_per_pair})
+    models = sorted({m for _, m in latest_per_pair})
 
     matrix = {
         task: {
-            model: best[(task, model)]
+            model: latest_per_pair[(task, model)]
             for model in models
-            if (task, model) in best
+            if (task, model) in latest_per_pair
         }
         for task in tasks
     }
