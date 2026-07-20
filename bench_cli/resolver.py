@@ -43,7 +43,17 @@ def bare_model_name(model: str) -> str:
     OpenRouter ids ('minimaxai/minimax-m3' -> 'minimax-m3'). This is the single
     source of truth for display/moniker-check/slug derivation.
     """
-    return model.split("/", 1)[1] if "/" in model else model
+    bare = model.split("/", 1)[1] if "/" in model else model
+    
+    # Dynamically resolve to the "real" underlying model name if this is an alias
+    from bench_cli.pricing.litellm_config import _load_litellm_alias_map
+    litellm_map = _load_litellm_alias_map()
+    
+    if bare in litellm_map:
+        orid = litellm_map[bare]
+        return orid.split("/")[-1]
+        
+    return bare
 
 
 def _build_suffix_map() -> dict[str, str]:
