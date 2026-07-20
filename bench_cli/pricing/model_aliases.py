@@ -54,17 +54,6 @@ MODEL_ALIAS_MAP: dict[str, str] = {
 }
 
 
-def resolve_alias(bench_alias: str) -> str | None:
-    """Resolve a bench model alias to a KiloCode model ID.
-
-    Args:
-        bench_alias: Bench LiteLLM model name, e.g. "openai/qwen-local"
-
-    Returns:
-        KiloCode model ID string, or None if alias is unknown.
-    """
-    return MODEL_ALIAS_MAP.get(bench_alias)
-
 
 def is_free_model(bench_alias: str, price_info: PriceInfo) -> bool:
     """Detect whether a model is free based on its price.

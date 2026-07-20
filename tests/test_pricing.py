@@ -17,7 +17,6 @@ from bench_cli.pricing.model_aliases import (
     MODEL_ALIAS_MAP,
     PriceInfo,
     is_free_model,
-    resolve_alias,
 )
 from bench_cli.pricing.price_cache import CacheMiss, OpenRouterCache
 
@@ -47,22 +46,6 @@ def _synth_cache(monkeypatch, tmp_path, models: dict) -> None:
 
 
 class TestModelAliases:
-    def test_resolve_alias_known(self):
-        # MAP is empty by design (catch-all only). Live proxy + overrides drive
-        # actual resolution. resolve_alias() against an empty MAP returns None.
-        assert resolve_alias("openai/qwen-local") is None
-        assert resolve_alias("openai/gpt-4o") is None
-        assert resolve_alias("openai/opus") is None
-        assert resolve_alias("openai/sonnet") is None
-        assert resolve_alias("openai/gemini-2-5-pro") is None
-
-    def test_resolve_alias_unknown(self):
-        assert resolve_alias("openai/nonexistent-model") is None
-        assert resolve_alias("unknown/thing") is None
-
-    def test_resolve_alias_exact_match_required(self):
-        assert resolve_alias("qwen-local") is None
-        assert resolve_alias("gpt-4o") is None
 
     def test_alias_map_only_contains_proxy_unresolvable_aliases(self):
         """MODEL_ALIAS_MAP is a catch-all for aliases the live proxy can't

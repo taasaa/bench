@@ -10,7 +10,6 @@ from bench_cli.pricing.model_aliases import (
     MODEL_ALIAS_MAP,
     PriceInfo,
     is_free_model,
-    resolve_alias,
 )
 from bench_cli.pricing.price_cache import (
     CacheMiss,
@@ -91,7 +90,6 @@ __all__ = [
     "is_free_model",
     "is_managed_model",
     "reconstruct_cost_from_usage",
-    "resolve_alias",
     "resolve_market_price",
     "resolve_openrouter_id",
 ]

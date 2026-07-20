@@ -12,28 +12,7 @@ from __future__ import annotations
 from typing import Iterable
 
 
-def detect_ties(
-    model_cis: dict[str, tuple[float, float] | None],
-) -> list[set[str]]:
-    """Detect pairwise overlapping CIs.
 
-    Two models are tied if their CIs overlap on any point. Returns a flat
-    list of 2-element groups (one per overlapping pair). Non-transitive —
-    a model can appear in multiple groups.
-
-    Models with CI=None (partial evals) are skipped.
-    """
-    groups: list[set[str]] = []
-    valid = {k: v for k, v in model_cis.items() if v is not None}
-    models = list(valid.keys())
-    for i, a in enumerate(models):
-        a_lo, a_hi = valid[a]
-        for b in models[i + 1 :]:
-            b_lo, b_hi = valid[b]
-            # Overlap iff NOT (a_hi < b_lo OR b_hi < a_lo).
-            if not (a_hi < b_lo or b_hi < a_lo):
-                groups.append({a, b})
-    return groups
 
 
 def annotate_with_ties(
