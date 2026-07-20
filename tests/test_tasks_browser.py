@@ -38,7 +38,7 @@ class TestTasksBrowser:
         assert result.exit_code == 0
         assert "Unknown pillar" in result.output
 
-    def test_scores_flag(self, runner):
-        result = runner.invoke(tasks_cmd, ["--scores"])
+    def test_scores_flag(self, runner, tmp_path):
+        result = runner.invoke(tasks_cmd, ["--scores", "--log-dir", str(tmp_path)])
         # May or may not have score data, but should not crash
         assert result.exit_code == 0

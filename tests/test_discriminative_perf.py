@@ -87,15 +87,10 @@ def test_get_all_log_paths_per_subject_filter_stable() -> None:
 
     # Pick the subject with the most logs; per-subject filtering for it
     # must return <= all_paths and > 0.
-    from inspect_ai.log import list_eval_logs, read_eval_log
+    from bench_cli.discriminative.subject import _scan_log_dir
     counts: dict[str, int] = {}
-    for info in list_eval_logs(str(LOG_DIR)):
-        try:
-            el = read_eval_log(info.name.replace("file://", ""), header_only=True)
-            if el.eval and el.eval.model:
-                counts[el.eval.model] = counts.get(el.eval.model, 0) + 1
-        except Exception:
-            continue
+    for task, m, p in _scan_log_dir(str(LOG_DIR)):
+        counts[m] = counts.get(m, 0) + 1
     top_model = max(counts, key=counts.get)
     sub = SubjectID(model=top_model)
     paths = get_all_log_paths(LOG_DIR, sub)
@@ -115,14 +110,10 @@ def test_bench_compare_matrix_perf() -> None:
     if not LOG_DIR.exists() or not list(LOG_DIR.glob("*.eval")):
         pytest.skip("logs/ has no .eval files (fresh checkout)")
 
+    from bench_cli.discriminative.subject import _scan_log_dir
     counts: dict[str, int] = {}
-    for info in list_eval_logs(str(LOG_DIR)):
-        try:
-            el = read_eval_log(info.name.replace("file://", ""), header_only=True)
-            if el.eval and el.eval.model:
-                counts[el.eval.model] = counts.get(el.eval.model, 0) + 1
-        except Exception:
-            continue
+    for task, m, p in _scan_log_dir(str(LOG_DIR)):
+        counts[m] = counts.get(m, 0) + 1
 
     if len(counts) < 4:
         pytest.skip(f"need >=4 distinct subjects in logs/, found {len(counts)}")

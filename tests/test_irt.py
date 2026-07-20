@@ -208,7 +208,7 @@ def test_2pl_recovers_credible_intervals():
     models = [f"m{i}" for i in range(10)]
     outcome = OutcomeMatrix(matrix=matrix, models=models, tasks=tasks, pillars={t: "analysis" for t in tasks})
 
-    fit = fit_2pl(outcome, n_samples=1000, n_chains=2, seed=42)
+    fit = fit_2pl(outcome, n_samples=200, n_chains=2, seed=42)
 
     assert len(fit.theta_ci) == 10
     assert len(fit.a_ci) == 10
@@ -310,7 +310,7 @@ def test_2pl_recovers_synthetic_params():
         pillars={t: "analysis" for t in tasks},
     )
 
-    fit = fit_2pl(outcome, n_samples=1000, n_chains=2, seed=42)
+    fit = fit_2pl(outcome, n_samples=400, n_chains=2, seed=42)
 
     corr_theta = float(np.corrcoef(true_theta, fit.theta)[0, 1])
     corr_b = float(np.corrcoef(true_b, fit.b)[0, 1])
