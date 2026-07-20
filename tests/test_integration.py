@@ -144,7 +144,7 @@ class TestTaskCoverage:
         "tasks/execution/q4-root-cause",  # test_tier2_tasks.py
         # NOTE: verification/smoke has coverage (test_smoke_task_scorer_behavior)
         # NOTE: verification/agent_smoke has skip + no verify.sh (uses includes() scorer)
-        # Session 11 new tasks (2026-04-16)
+        # New competence and execution tasks
         "tasks/competence/q3-answer-the-question",  # quick tier
         "tasks/competence/q5-safe-git-operations",  # quick tier
         "tasks/competence/f18-direct-answer-first",  # quick tier
@@ -154,11 +154,11 @@ class TestTaskCoverage:
         "tasks/execution/f17-config-migration",  # agent-mode task
         # NOTE: f4-dependency-version-audit is llm_judge, no verify.sh
         # NOTE: f19-admit-uncertainty is llm_judge, no verify.sh
-        # New hybrid-scored tasks (PRD phases 5-7)
+        # New hybrid-scored tasks
         "tasks/analysis/f21-liars-codebase",  # hybrid scorer, verify.sh added
         "tasks/universal/u17-dirty-workspace-triage",  # new task, hybrid scorer
         "tasks/universal/u18-resume-after-bad-attempt",  # new task, hybrid scorer
-        # Phase 1 & 2 analysis tasks
+        # Analysis tasks
         "tasks/analysis/f31-run-at-load-carveout",
         "tasks/analysis/f36-enum-mismatch",
         "tasks/analysis/f28-ghost-rename",

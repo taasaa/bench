@@ -2,7 +2,7 @@
 
 Provider = the brand the user pays for service from, derived strictly
 from ~/dev/litellm/config.yaml. The resolver MUST hard-stop on anything
-unresolvable — no silent defaults (Tasa's rule, 2026-07-07).
+unresolvable — no silent defaults.
 
 Each test patches the proxy-config loader with a tmp YAML so the resolver
 runs against a known fixture config, not the live proxy.

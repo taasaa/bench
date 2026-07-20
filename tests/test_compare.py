@@ -259,7 +259,7 @@ def test_ratio_reference_labels_default_and_registered(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Weighted leaderboard (2026-07-10)
+# Weighted leaderboard
 # ---------------------------------------------------------------------------
 
 
@@ -753,7 +753,7 @@ def test_format_json_legacy_includes_weighted_total():
     assert "legacy_weighted_total" in parsed[0]
 
 
-# ---- bootstrap CI (Phase 1 Task 1) -----------------------------------------
+# ---- bootstrap CI ----------------------------------------------------------
 from bench_cli.compare.bootstrap import bootstrap_ci
 
 
@@ -797,7 +797,7 @@ def test_bootstrap_ci_narrow_for_tight_values():
     assert (hi - lo) < 0.1
 
 
-# ---- tie detection (Phase 1 Task 2) ---------------------------------------
+# ---- tie detection ---------------------------------------------------------
 from bench_cli.compare.ties import annotate_with_ties, detect_ties
 
 
@@ -873,7 +873,7 @@ def test_detect_ties_skips_models_with_none_ci():
     assert all("b" not in g for g in pair_set)
 
 
-# ---- capability rendering + tie badge (Phase 1 Task 3) --------------------
+# ---- capability rendering + tie badge --------------------------------------
 import re as _re
 
 
@@ -955,7 +955,7 @@ def test_tie_badge_in_renderer():
     assert "tied with #1" in out
 
 
-# ---- --no-ci regression guard (Phase 1 Task 4) --------------------------
+# ---- --no-ci regression guard --------------------------------------------
 def test_format_summary_no_ci_omits_brackets():
     """--no-ci path: include_ci=False drops the numeric CI bracket entirely
     (insufficient-data fallback may stay, since it carries no numeric value)."""

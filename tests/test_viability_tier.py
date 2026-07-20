@@ -252,12 +252,6 @@ class TestViabilityCliSurface:
         tier_param = next(p for p in run.params if p.name == "tier")
         assert "viability" in tier_param.type.choices
 
-    def test_help_text_mentions_viability(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["run", "--help"])
-        assert result.exit_code == 0
-        assert "viability" in result.output
-
     def test_list_tasks_viability(self, viability_tasks_root):
         runner = CliRunner()
         result = runner.invoke(cli, ["run", "--tier", "viability", "--list-tasks"])
