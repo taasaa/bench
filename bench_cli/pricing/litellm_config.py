@@ -279,9 +279,8 @@ def is_managed_model(alias: str) -> bool:
     """Return True if alias is a local/proxy model not in OpenRouter catalog."""
     if alias.endswith("-local"):
         return True
-    if alias in ("openai/glm-local", "openai/qwen3-coder-plus", "openai/qwen3-max"):
-        return True
-    return False
+    from bench_cli.resolver import LOCAL_ONLY_ALIASES
+    return alias in LOCAL_ONLY_ALIASES
 
 
 # ---------------------------------------------------------------------------
