@@ -20,9 +20,10 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 
+import os
 import yaml
 
-_LITELLM_CONFIG_PATH = Path.home() / "dev" / "litellm" / "config.yaml"
+_LITELLM_CONFIG_PATH = Path(os.environ.get("LITELLM_CONFIG_PATH", Path.home() / "dev" / "litellm" / "config.yaml"))
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _OVERRIDES_PATH = _PROJECT_ROOT / "logs" / "pricing" / "model_overrides.json"
 _OPENAI_PREFIX = "openai/"

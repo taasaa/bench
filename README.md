@@ -56,4 +56,4 @@ pytest
 - **Bayesian IRT Capability Estimation**: Fits a 2-Parameter Logistic (2PL) model using PyMC MCMC sampling to estimate model latent capability ($\theta$) while accounting for individual task difficulties and discrimination power.
 - **Multi-Objective Preset Router**: Computes the multi-objective Pareto frontier across capability, speed, and cost, filtering out dominated models and highlighting Pareto-optimal ones.
 - **Model Routing**: Integrates with a local LiteLLM proxy (`~/dev/litellm/config.yaml`) for rate-limiting, retries, and dynamic mapping of moniker tiers.
-- **Storage**: Standardized on Inspect's binary `.eval` format alongside a SQLite index for performance diagnostics.
+- **Storage**: Standardized on Inspect's binary `.eval` format for evaluation run history.

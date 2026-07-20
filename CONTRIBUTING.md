@@ -32,6 +32,10 @@ pip install -e ".[dev]"
 # Then pass the config and prefix paths to pip:
 CMAKE_PREFIX_PATH=$(brew --prefix llvm@20) LLVM_CONFIG=$(brew --prefix llvm@20)/bin/llvm-config pip install -e ".[irt]"
 
+# (Optional) Populate baseline reference data (needed for token/latency/cost ratio calculations)
+# Note: the baselines/ directory is gitignored; run the baseline command to populate it from cache:
+python -m bench_cli baseline
+
 # Run tests
 pytest
 ```

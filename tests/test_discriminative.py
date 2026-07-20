@@ -9,9 +9,10 @@ import pytest
 from bench_cli.discriminative import ci, diagnostics, filters, pipeline, profiles, types
 from bench_cli.discriminative.types import ClusterScore, SubjectID, SubjectProfile
 
-# ---------------------------------------------------------------------------
-# ci.py -- Agresti-Coull confidence intervals
-# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def mock_litellm_alias_map(monkeypatch):
+    monkeypatch.setattr("bench_cli.resolver._load_litellm_alias_map", lambda: {})
+    monkeypatch.setattr("bench_cli.pricing.litellm_config._load_litellm_alias_map", lambda: {})
 
 
 class TestAgrestiCoull:

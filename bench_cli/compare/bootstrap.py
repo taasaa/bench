@@ -16,7 +16,7 @@ def bootstrap_ci(
     n_resample: int = 1000,
     confidence: float = 0.95,
     seed: int = 42,
-    min_n: int = 34,
+    min_n: int = 46,
 ) -> tuple[float, float] | None:
     """Bootstrap 95% CI on the mean of per-task correctness scores.
 

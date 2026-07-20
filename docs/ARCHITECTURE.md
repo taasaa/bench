@@ -16,8 +16,7 @@ graph TD
     Inspect --> ModelRoute[Model Router / LiteLLM Proxy]
     ModelRoute --> API[LLM Providers: OpenAI, Anthropic, OpenRouter]
     Sandbox --> Outcome[Outcome Data logs/*.eval]
-    Outcome --> Index[SQLite Index / Registry]
-    Index --> Analytics[IRT Engine & Compare CLI]
+    Outcome --> Analytics[IRT Engine & Compare CLI]
 ```
 
 ---
@@ -38,7 +37,7 @@ Tasks are packaged with reproducible file fixtures (in `tasks/`), which are moun
 
 All LLM calls are routed through a local **LiteLLM proxy** to manage API credentials, enforce rate limits, handle retries, and map model aliases.
 
-*   **Proxy Configuration**: Defined in `~/dev/litellm/config.yaml`.
+*   **Proxy Configuration**: Defined in the configuration file pointed to by the `LITELLM_CONFIG_PATH` environment variable (defaulting to `~/dev/litellm/config.yaml`).
 *   **Virtual Tiers (Monikers)**: The proxy exposes moniker endpoints (`openai/default`, `openai/thinking`, `openai/heavy`, `openai/smart-router`) which route dynamically to appropriate backing APIs.
 *   **Reconciliation**: The evaluation system intercepts moniker routing during data collection and reconciles the log's recorded identity to the actual concrete model (e.g. `minimax/minimax-m3`), preventing moniker alias collision in statistical reports.
 
@@ -57,7 +56,7 @@ Every task produces four independent scores, representing performance and execut
 
 ### Correctness Scorers
 *   `verify_sh`: Runs a lightweight shell verification script (`verify.sh`) inside the task sandbox to check deterministic outcomes (e.g., file contents, compilation flags, test passing rates).
-*   `llm_judge`: Employs a separate judge model (`openai/judge`) with task-specific rubrics. It uses a **discrete 5-point scale** (`0`, `2.5`, `5`, `7.5`, `10`) to reduce inter-run variance.
+*   `llm_judge`: Employs a separate judge model (`openai/judge`) with task-specific rubrics. It uses a **discrete 5-point scale** (`0`, `2.5`, `5`, `7.5`, `10`) to reduce inter-run variance. The raw score is normalized to `0.0 - 1.0` by dividing the rubric score by 10.
 *   `hybrid_scorer`: A weighted combination of `verify_sh` (typically 70%) and `llm_judge` (typically 30%).
 
 ---
@@ -69,7 +68,7 @@ Bench implements advanced mathematical ranking systems to group, score, and sele
 1.  **Bayesian Item Response Theory (IRT)**:
     *   Estimates model latent capabilities ($\theta$) along with 95% Bayesian credible intervals (CIs).
     *   Estimates task difficulties ($b$) and discriminations ($a$) to identify low-value tasks that should be culled.
-    *   For mathematical details, see [STATISTICAL-SCORING-AND-IRT.md](file:///Users/rut/dev/bench/docs/STATISTICAL-SCORING-AND-IRT.md).
+    *   For mathematical details, see [STATISTICAL-SCORING-AND-IRT.md](STATISTICAL-SCORING-AND-IRT.md).
 2.  **Pareto Frontier Selection**:
     *   Identifies optimal models based on the trade-offs between latent capability ($\theta$), token cost, and execution speed.
     *   Filters out dominated models and highlights Pareto-optimal choices.

@@ -6,6 +6,12 @@ import pytest
 from bench_cli.resolver import bare_name, resolve_model
 
 
+@pytest.fixture(autouse=True)
+def mock_litellm_alias_map(monkeypatch):
+    monkeypatch.setattr("bench_cli.resolver._load_litellm_alias_map", lambda: {})
+    monkeypatch.setattr("bench_cli.pricing.litellm_config._load_litellm_alias_map", lambda: {})
+
+
 class TestResolveModel:
     def test_passthrough_with_slash(self):
         assert resolve_model("openai/qwen-local") == "openai/qwen-local"

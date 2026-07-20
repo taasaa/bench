@@ -32,20 +32,20 @@ def test_stats_cli_finds_recorded_or_id_query_after_alias_normalization(tmp_path
 
 
 def test_stats_cli_finds_recorded_name_from_routing_alias(tmp_path):
-    # Round-trip invariant: querying by routing alias `openai/thinking` finds
+    # Round-trip invariant: querying by routing alias `openai/default` finds
     # logs recorded with that alias's live-resolved backing model. The expected
     # recorded name is whatever the proxy currently resolves — the test follows
     # the proxy by design, so a proxy rebind does not break it.
-    recorded = resolve_recorded_name("openai/thinking", None)
-    assert recorded != "openai/thinking", (
-        "test premise broken: openai/thinking must resolve to a backing model "
+    recorded = resolve_recorded_name("openai/default", None)
+    assert recorded != "openai/default", (
+        "test premise broken: openai/default must resolve to a backing model "
         "(not the routing alias itself) for the round-trip to be meaningful"
     )
     _copy_rewritten_log(tmp_path, recorded)
 
     result = CliRunner().invoke(
         inspect,
-        ["stats", "--model", "openai/thinking", "--log-dir", str(tmp_path)],
+        ["stats", "--model", "openai/default", "--log-dir", str(tmp_path)],
     )
 
     assert result.exit_code == 0, result.output

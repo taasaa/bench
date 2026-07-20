@@ -158,6 +158,19 @@ class TestTaskCoverage:
         "tasks/analysis/f21-liars-codebase",  # hybrid scorer, verify.sh added
         "tasks/universal/u17-dirty-workspace-triage",  # new task, hybrid scorer
         "tasks/universal/u18-resume-after-bad-attempt",  # new task, hybrid scorer
+        # Phase 1 & 2 analysis tasks
+        "tasks/analysis/f31-run-at-load-carveout",
+        "tasks/analysis/f36-enum-mismatch",
+        "tasks/analysis/f28-ghost-rename",
+        "tasks/analysis/f33-circular-ui",
+        "tasks/analysis/f30-forward-compatibility",
+        "tasks/analysis/f29-infra-protocol-bypass",
+        "tasks/analysis/f38-ambiguity-trap",
+        "tasks/analysis/f34-lexical-sort",
+        "tasks/analysis/f35-per-session-scope",
+        "tasks/analysis/f25-tenant-leakage",
+        "tasks/analysis/f37-test-baseline",
+        "tasks/analysis/f32-latency-budget",
     }
 
     @staticmethod

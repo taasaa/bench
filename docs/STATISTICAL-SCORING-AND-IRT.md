@@ -56,7 +56,7 @@ To resolve scaling and rotation indeterminacy (standard for IRT models), we impo
 
 $$\theta_i \sim \mathcal{N}(0, 1)$$
 $$b_j \sim \mathcal{N}(0, 2)$$
-$$a_j \sim \text{LogNormal}(0.5, 0.5)$$
+$$a_j \sim \text{LogNormal}(0, 0.5)$$
 
 *   The prior on $\theta_i$ centers the latent trait distribution around $0.0$ with standard deviation $1.0$, defining the capability scale.
 *   The LogNormal prior on $a_j$ constrains task discrimination to be strictly positive ($a_j > 0$), ensuring that higher capability $\theta$ always increases the probability of success.
@@ -72,25 +72,30 @@ The posterior is sampled using the **No-U-Turn Sampler (NUTS)**, a state-of-the-
 ```python
 import pymc as pm
 
-with pm.Model() as irt_model:
-    # Coordinate definitions
-    irt_model.add_coord("models", models, mutable=False)
-    irt_model.add_coord("tasks", tasks, mutable=False)
-    
+with pm.Model() as model:
     # Priors
-    theta = pm.Normal("theta", mu=0, sigma=1, dims="models")
-    b = pm.Normal("b", mu=0, sigma=2, dims="tasks")
-    a = pm.LogNormal("a", mu=0.5, sigma=0.5, dims="tasks")
+    theta = pm.Normal("theta", mu=0, sigma=1, shape=n_models)
+    a = pm.LogNormal("a", mu=0, sigma=0.5, shape=n_tasks)
+    b = pm.Normal("b", mu=0, sigma=2, shape=n_tasks)
     
     # Linear predictor mapping observed indices
-    eta = a[task_idx] * (theta[model_idx] - b[task_idx])
-    p = pm.math.sigmoid(eta)
+    logit_p = a[task_indices_1d] * (theta[model_indices] - b[task_indices_1d])
     
     # Likelihood
-    obs = pm.Bernoulli("obs", p=p, observed=matrix_flat)
+    pm.Bernoulli(
+        "y_obs",
+        logit_p=logit_p,
+        observed=observed_y,
+    )
     
     # MCMC sampling
-    idata = pm.sample(draws=1000, tune=1000, chains=2, random_seed=seed)
+    trace = pm.sample(
+        draws=n_samples,
+        chains=n_chains,
+        random_seed=seed,
+        progressbar=False,
+        return_inferencedata=True,
+    )
 ```
 
 ### Scientific References:
@@ -117,8 +122,8 @@ After fitting, tasks are classified into quality bands based on their posterior 
 | :--- | :--- | :--- |
 | **High** | $a \ge 1.0$ | Highly predictive task. Excellent signaling power. |
 | **Medium** | $0.5 \le a < 1.0$ | Moderate predictive power. Useful context. |
-| **Low** | $0.0 < a < 0.5$ | Poor predictive power. Weak signal. |
-| **Cull** | $a \le 0.0$ | No predictive signal (often tasks that *every* model passes or fails). Candidates for removal to minimize run times. |
+| **Low** | $0.2 \le a < 0.5$ | Poor predictive power. Weak signal. |
+| **Cull** | $a < 0.2$ | Low predictive signal (candidates for removal to minimize run times). |
 
 ---
 

@@ -264,7 +264,7 @@ def test_ratio_reference_labels_default_and_registered(tmp_path, monkeypatch):
 
 
 def _make_full_eval_model(
-    correctness=0.8, price=1.0, time=1.0, token=1.0, n=34, model_name="m_full"
+    correctness=0.8, price=1.0, time=1.0, token=1.0, n=46, model_name="m_full"
 ):
     """Build a CompareData matrix holding one model with `n` identically-scored tasks."""
     data = CompareData()
@@ -297,8 +297,8 @@ def test_weights_sum_to_one():
     assert WEIGHT_CORRECTNESS + WEIGHT_PRICE_RATIO + WEIGHT_TIME_RATIO + WEIGHT_TOKEN_RATIO == 1.0
 
 
-def test_min_full_eval_tasks_is_34():
-    assert MIN_FULL_EVAL_TASKS == 34
+def test_min_full_eval_tasks_is_46():
+    assert MIN_FULL_EVAL_TASKS == 46
 
 
 def test_aggregate_model_pillars_returns_none_when_no_scored_tasks():
@@ -359,7 +359,7 @@ def test_weighted_total_handles_default_ratios():
 
 def test_format_summary_excludes_partial_by_default():
     """A model with only 4 tasks must NOT appear in the ranked summary by default."""
-    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=34)
+    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=46)
     partial = _make_partial_model(n=4, model_name="m_partial")
 
     data = CompareData()
@@ -376,7 +376,7 @@ def test_format_summary_excludes_partial_by_default():
 
 
 def test_format_summary_show_partial_renders_footer_block():
-    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=34)
+    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=46)
     partial_data = _make_full_eval_model(correctness=0.5, model_name="m_partial", n=4)
 
     data = CompareData()
@@ -386,15 +386,15 @@ def test_format_summary_show_partial_renders_footer_block():
     for t in partial_data.tasks:
         data.matrix.setdefault(t, {})["m_partial"] = partial_data.matrix[t]["m_partial"]
 
-    out = format_summary(data, min_tasks=34, show_partial=True, legacy_weighted=True)
+    out = format_summary(data, min_tasks=46, show_partial=True, legacy_weighted=True)
     assert "m_partial" in out
     assert "Not full eval" in out  # partial footer present (legacy view)
 
 
 def test_format_summary_ranking_uses_weighted_score():
     """Two models with same correctness but different cost ratios should rank differently."""
-    cheap = _make_full_eval_model(correctness=0.7, price=2.0, model_name="cheap", n=34)
-    expensive = _make_full_eval_model(correctness=0.7, price=0.5, model_name="expensive", n=34)
+    cheap = _make_full_eval_model(correctness=0.7, price=2.0, model_name="cheap", n=46)
+    expensive = _make_full_eval_model(correctness=0.7, price=0.5, model_name="expensive", n=46)
 
     data = CompareData()
     data.tasks = cheap.tasks
@@ -423,10 +423,10 @@ def test_format_summary_uses_0_5_0_2_0_15_0_15_formula_in_header():
 
 
 def test_format_summary_min_tasks_respected():
-    """A 34-task model is excluded when min_tasks=40 (legacy view shows exclusion block)."""
+    """A 46-task model is excluded when min_tasks=48."""
     data = _make_full_eval_model(correctness=0.8)
-    out = format_summary(data, min_tasks=40, legacy_weighted=True)
-    assert "m_full" not in out  # 34 < 40 → excluded
+    out = format_summary(data, min_tasks=48, legacy_weighted=True)
+    assert "m_full" not in out
     # Header announces 0 full evals when the only model is below min_tasks.
     assert "0 full evals" in out
 
@@ -436,7 +436,7 @@ def test_format_summary_min_tasks_respected():
 
 def test_format_compact_table_excludes_partial():
     """The -v grid must only show full-eval models."""
-    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=34)
+    full = _make_full_eval_model(correctness=0.7, model_name="m_full", n=46)
     partial_data = _make_full_eval_model(correctness=0.5, model_name="m_partial", n=4)
 
     data = CompareData()
@@ -760,8 +760,8 @@ from bench_cli.compare.bootstrap import bootstrap_ci
 def test_bootstrap_ci_reproducible_with_fixed_seed():
     """SC6: bootstrap_ci returns the same bounds across runs when seed and inputs are identical."""
     scores = [0.9, 0.85, 0.7, 0.6, 0.55, 0.95, 0.8, 0.75, 0.65, 0.5] * 4  # 40 values
-    a = bootstrap_ci(scores, n_resample=500, seed=42)
-    b = bootstrap_ci(scores, n_resample=500, seed=42)
+    a = bootstrap_ci(scores, n_resample=500, seed=42, min_n=30)
+    b = bootstrap_ci(scores, n_resample=500, seed=42, min_n=30)
     assert a == b, "identical seed + inputs must produce identical CIs"
     lo, hi = a
     assert 0 <= lo <= hi <= 1
@@ -769,7 +769,7 @@ def test_bootstrap_ci_reproducible_with_fixed_seed():
 
 def test_bootstrap_ci_returns_none_when_too_few_tasks():
     """Edge case: a model with < min_n tasks cannot get a trustworthy CI; return None."""
-    scores = [0.9, 0.85, 0.7, 0.6, 0.55, 0.95, 0.8]  # 7 items < 34
+    scores = [0.9, 0.85, 0.7, 0.6, 0.55, 0.95, 0.8]  # 7 items < 46
     assert bootstrap_ci(scores) is None
 
 
@@ -879,12 +879,12 @@ import re as _re
 
 def test_capability_with_ci_renders_correctly():
     """SC6 (full): format_summary shows capability [CI_low, CI_high] when CI
-    is available (>= 34 tasks)."""
+    is available (>= 46 tasks)."""
     data = CompareData()
-    data.tasks = [f"t{i}" for i in range(34)]
+    data.tasks = [f"t{i}" for i in range(46)]
     data.models = ["m1"]
     # m1 correctness oscillates between 0.7 and 0.9 — bootstrap CI is well-defined.
-    scores = [0.7 + (0.2 if i % 2 == 0 else 0.0) for i in range(34)]
+    scores = [0.7 + (0.2 if i % 2 == 0 else 0.0) for i in range(46)]
     data.matrix = {
         f"t{i}": {
             "m1": PillarScores(
@@ -896,7 +896,7 @@ def test_capability_with_ci_renders_correctly():
                 samples=1,
             )
         }
-        for i in range(34)
+        for i in range(46)
     }
     out = format_summary(data, include_ci=True)
     # Bracket form '[lo, hi]' with one decimal place.
@@ -931,7 +931,7 @@ def test_tie_badge_in_renderer():
     the '≈' badge with an annotation pointing to the highest-ranked partner.
     Identical correctness → identical bootstrap CIs → overlap is guaranteed."""
     data = CompareData()
-    data.tasks = [f"t{i}" for i in range(34)]
+    data.tasks = [f"t{i}" for i in range(46)]
     data.models = ["a", "b"]
     data.matrix = {
         f"t{i}": {
@@ -946,7 +946,7 @@ def test_tie_badge_in_renderer():
                 avg_tokens=100, avg_time=1.0, samples=1,
             ),
         }
-        for i in range(34)
+        for i in range(46)
     }
     out = format_summary(data, include_ci=True)
     assert "≈" in out
@@ -961,7 +961,7 @@ def test_format_summary_no_ci_omits_brackets():
     (insufficient-data fallback may stay, since it carries no numeric value)."""
     import re as _re_no_ci
     data = CompareData()
-    data.tasks = [f"t{i}" for i in range(34)]
+    data.tasks = [f"t{i}" for i in range(46)]
     data.models = ["m1"]
     data.matrix = {
         f"t{i}": {
@@ -971,7 +971,7 @@ def test_format_summary_no_ci_omits_brackets():
                 avg_tokens=100, avg_time=1.0, samples=1,
             )
         }
-        for i in range(34)
+        for i in range(46)
     }
     out = format_summary(data, include_ci=False)
     # No numeric bracket pattern "[<digit>" should appear (catches CI and
